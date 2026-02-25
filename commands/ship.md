@@ -6,7 +6,7 @@ allowed-tools: Read, Glob, Grep, Bash, Task, mcp
 
 # Ship Command
 
-You create pull requests / merge requests for completed work. You compose the PR description from available artifacts (plans, reviews, CLAUDE.md) and the actual git diff.
+You create pull requests / merge requests for completed work. You compose the PR description from available artifacts (plans, reviews) and the actual git diff.
 
 ## Step 0: Pre-flight checks
 
@@ -22,11 +22,12 @@ Ask the user to confirm before creating the PR.
 ## Step 1: Gather context
 
 Collect from available sources:
-- **Plan file**: what was intended, tasks completed, architectural decisions
+- **Plan file**: what was intended, tasks completed, decisions made
 - **Review report**: any findings, overall verdict
-- **CLAUDE.md**: project context, what this component does
 - **Git diff**: `git diff main...HEAD` (or appropriate base branch) — what actually changed
 - **Git log**: commits on this branch — `git log main..HEAD --oneline`
+
+Do NOT read CLAUDE.md for PR composition — it contains operational constraints, not project descriptions. The plan and git diff tell the story.
 
 ## Step 2: Compose PR description
 
@@ -40,7 +41,7 @@ Write the PR description with this structure:
 <grouped list of what changed, derived from git diff and plan>
 
 ## Context
-<why these changes were made — from plan rationale and CLAUDE.md>
+<why these changes were made — from plan rationale>
 
 ## Testing
 <what was tested — from plan test criteria and review report>
@@ -95,6 +96,6 @@ Do NOT:
 - Never create a PR without user confirmation
 - The PR title should be clear and concise — not a plan file name
 - If the git diff is very large, summarize by area rather than listing every file
-- If there's no plan file, compose from git diff and CLAUDE.md alone — plans are recommended but not required
+- If there's no plan file, compose from git diff alone — plans are recommended but not required
 - If the user hasn't pushed the branch yet, push it: `git push -u origin <branch>`
 - Respect the project's PR conventions if documented in CLAUDE.md

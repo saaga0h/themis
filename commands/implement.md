@@ -29,7 +29,7 @@ Wait for their answer before proceeding.
 ## Step 2: Read context
 
 - Read the plan file fully
-- Read CLAUDE.md if it exists
+- Read CLAUDE.md if it exists (for build commands, constraints, gotchas)
 - Understand current state and what's already done (check for [x] marks)
 
 ## Step 3: Execute tasks sequentially
@@ -65,15 +65,24 @@ If tests fail:
 - Fix if straightforward
 - Report to user if not obvious
 
-## Step 5: Update documentation
+## Step 5: Update CLAUDE.md (only if needed)
 
-Delegate to the **context-updater** agent (runs on Sonnet) to update CLAUDE.md.
+Check if the plan's "New Constraints or Gotchas" section has content. Also check if any of the following changed:
+- Build or test commands
+- External dependencies or tooling requirements
+- Protocol contracts or message formats
+- Environment requirements
 
-Then check if README.md or other user-facing docs need updates:
+**If yes**: delegate to the **context-updater** agent.
+**If no**: skip — don't update CLAUDE.md just because code changed. The code speaks for itself.
+
+## Step 6: Update documentation
+
+Check if README.md or other user-facing docs need updates:
 - If the plan's changes affect anything documented in README, delegate to the **doc-updater** agent
 - If unsure, ask the user
 
-## Step 6: Final report
+## Step 7: Final report
 
 ```
 ## Implementation Complete
@@ -88,7 +97,7 @@ Then check if README.md or other user-facing docs need updates:
 <pass/fail summary from test-runner>
 
 ### Documentation Updated
-<what was updated in CLAUDE.md and other docs>
+<what was updated, or "No updates needed">
 
 ### Files Changed
 <list of modified files>

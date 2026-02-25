@@ -5,10 +5,40 @@ A minimal workflow system for Claude Code that separates reasoning from executio
 ## Philosophy
 
 - **Opus** reasons about architecture and complex decisions
-- **Sonnet** implements features and maintains project context
+- **Sonnet** implements features and handles judgment calls
 - **Haiku** runs tests, scans codebases, reads plans — mechanical work
 
 The user chooses the main model. The workflow handles delegation automatically.
+
+## On CLAUDE.md
+
+This workflow treats CLAUDE.md as **minimal operational context** — not project documentation.
+
+Research ([Gloaguen et al., 2025](https://arxiv.org/abs/2602.11988)) shows that LLM-generated context files with project descriptions, architecture overviews, and directory trees **reduce** agent task success rates while increasing cost by 20%+. Information the agent can discover from code is redundant at best, actively harmful at worst — the agent spends tokens reading and complying with descriptions that may have drifted from reality.
+
+CLAUDE.md should contain only what an agent **cannot figure out** from reading the code:
+
+```markdown
+# CLAUDE.md — Project Name
+
+## Build & Test
+<!-- exact commands, versions, only what's not obvious from Makefile/config -->
+
+## Conventions
+<!-- only non-obvious, non-linter-enforceable patterns -->
+
+## Constraints
+<!-- what an agent WILL get wrong without being told -->
+
+## Gotchas
+<!-- non-obvious operational issues, remove when fixed -->
+```
+
+**What belongs**: build commands, toolchain versions, protocol contracts, external dependencies, environment quirks, things learned the hard way.
+
+**What doesn't**: project descriptions, architecture overviews, directory trees, changelogs, current state. The code already says all of that.
+
+A good CLAUDE.md is 20–50 lines. If yours is longer, it's probably duplicating the codebase.
 
 ## Components
 
@@ -18,13 +48,13 @@ The user chooses the main model. The workflow handles delegation automatically.
 |-------|--------------|---------|
 | `codebase-scanner` | haiku | Maps project structure, reports facts |
 | `test-runner` | haiku | Runs tests, reports pass/fail |
-| `context-updater` | sonnet | Updates CLAUDE.md after changes |
+| `context-updater` | sonnet | Updates CLAUDE.md — operational info only |
 | `doc-updater` | haiku | Updates README following existing style |
 | `plan-reader` | haiku | Reads plan files, reports status |
-| `architecture-reviewer` | sonnet | Reviews code against CLAUDE.md, flags drift |
+| `architecture-reviewer` | sonnet | Checks internal consistency from code structure |
 | `security-reviewer` | sonnet | Finds vulnerabilities, credentials, injection paths |
 | `complexity-reviewer` | haiku | Measures function length, nesting, dependencies |
-| `convention-reviewer` | haiku | Checks naming, patterns, style against conventions |
+| `convention-reviewer` | haiku | Checks patterns against codebase majority style |
 | `coverage-reviewer` | haiku | Maps tested vs untested code, identifies gaps |
 
 Agents are single-purpose. They don't reason about what to do — they execute one thing.
@@ -37,6 +67,7 @@ Agents are single-purpose. They don't reason about what to do — they execute o
 | `/implement [plan-name]` | Execute plan, run tests, update docs |
 | `/review [scope] [--flags]` | Run code review with specialized agents |
 | `/ship [plan-name]` | Create PR/MR from completed work |
+| `/context [--dry-run]` | Rebuild CLAUDE.md from current repo state |
 
 Commands compose agents into workflows. They ask the user which model to use for the main work, then delegate subtasks to appropriate agents.
 
@@ -55,16 +86,16 @@ Commands compose agents into workflows. They ask the user which model to use for
   → plan-reader (haiku): reads plan, finds first task
   → chosen model: implements each task
   → test-runner (haiku): tests after each task
-  → context-updater (sonnet): updates CLAUDE.md
+  → context-updater (sonnet): only if build/tooling/constraints changed
   → doc-updater (haiku): updates README if needed
   → reports results
 
 /review --last-plan
   → complexity-reviewer (haiku): structural scan
-  → convention-reviewer (haiku): pattern check
+  → convention-reviewer (haiku): pattern check (from code, not CLAUDE.md)
   → coverage-reviewer (haiku): coverage map
   → security-reviewer (sonnet): vulnerability scan
-  → architecture-reviewer (sonnet): alignment check
+  → architecture-reviewer (sonnet): internal consistency check
   → synthesizes findings into review report
   → saves to .claude/reviews/
 
@@ -73,6 +104,12 @@ Commands compose agents into workflows. They ask the user which model to use for
   → composes PR description
   → user confirms
   → creates PR via GitHub/GitLab MCP or CLI
+
+/context
+  → codebase-scanner (haiku): maps project
+  → audits build commands, conventions, constraints, gotchas
+  → rebuilds CLAUDE.md from scratch
+  → user confirms before writing
 ```
 
 ## Review flags
@@ -105,6 +142,20 @@ chmod +x install.sh
 
 Installs to `~/.claude/agents/` and `~/.claude/commands/` (global).
 
+## Key design decisions
+
+### Code is the source of truth, not CLAUDE.md
+
+The `architecture-reviewer` derives architectural intent from package structure, import graphs, and naming conventions — not from prose descriptions in CLAUDE.md. The `convention-reviewer` infers conventions from the majority pattern in existing code, with CLAUDE.md only for explicit overrides. This avoids the drift problem where agents argue with stale documentation instead of reading the code.
+
+### Context updates are conditional
+
+`/implement` only calls `context-updater` when build commands, tooling, protocol contracts, or environment requirements actually changed. Most implementation runs don't touch operational constraints, so most runs skip the CLAUDE.md update entirely.
+
+### /context is explicit, not automatic
+
+CLAUDE.md regeneration is a user-triggered action (`/context`), not something that happens automatically. Use it before major refactoring, after large merges, or when things feel stale. It rebuilds from scratch by auditing the repo, preserving only user-added custom sections.
+
 ## Plan files
 
 Plans live in `.claude/plans/` within each project. They're self-contained — a fresh session with no context can pick one up and execute it.
@@ -113,7 +164,7 @@ Plans track progress with checkboxes. If a session dies, `/implement` picks up w
 
 ## Review reports
 
-Reviews are saved to `.claude/reviews/` within each project. The `/ship` command reads them when composing PR descriptions. They're also useful for tracking code quality over time.
+Reviews are saved to `.claude/reviews/` within each project. The `/ship` command reads them when composing PR descriptions.
 
 ## Designed for messy projects
 
@@ -129,7 +180,8 @@ The `/architect` command handles this by scanning what actually exists before pl
 
 - [x] `/review` command for code review workflow
 - [x] `/ship` command for PR/MR creation
-- [ ] `/consolidate` command for periodic CLAUDE.md cleanup (Opus)
+- [x] `/context` command for explicit CLAUDE.md rebuild
+- [x] Paper-informed CLAUDE.md philosophy (minimal operational context)
 - [ ] Plan composition (parent plans with child plans)
 - [ ] Hooks for auto-running test-runner after edits
 - [ ] Skills versions of commands (with supporting templates)

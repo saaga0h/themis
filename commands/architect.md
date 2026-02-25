@@ -27,7 +27,7 @@ Delegate to the **codebase-scanner** agent to map the project. This runs on Haik
 
 ## Step 2: Read existing context
 
-- Read CLAUDE.md if it exists
+- Read CLAUDE.md if it exists (for build commands, constraints, gotchas — not architecture)
 - Read any existing plans in .claude/plans/
 - Read README.md if it exists
 - Note any .claude/agents/ or .claude/commands/ that exist
@@ -56,9 +56,8 @@ Create a plan file at `.claude/plans/<descriptive-name>.md` with this structure:
 ## Recommended implementation model: <sonnet|haiku based on task complexity>
 
 ## Context
-<Why we're doing this. What problem it solves. Key architectural
-decisions and their rationale. Reference existing patterns from
-CLAUDE.md if applicable.>
+<Why we're doing this. What problem it solves. Key decisions
+and their rationale. Reference existing code patterns if applicable.>
 
 ## Prerequisites
 - [ ] <things that must be true before starting>
@@ -77,11 +76,11 @@ CLAUDE.md if applicable.>
 ## Completion Criteria
 - <specific, verifiable conditions>
 - All tests pass
-- CLAUDE.md updated
 
-## Context Updates
-When implementation is complete, add to CLAUDE.md:
-- <what should be recorded about this change>
+## New Constraints or Gotchas
+<!-- Only fill this if the plan introduces something a future agent would get wrong -->
+<!-- Examples: new build step, new external dependency, new protocol contract, non-obvious requirement -->
+<!-- Leave empty if nothing qualifies — most plans won't need this -->
 ```
 
 ## Plan quality checklist
@@ -92,7 +91,7 @@ Before saving, verify:
 - [ ] Patterns reference existing code, not abstract ideas
 - [ ] A fresh session with no context could execute each task
 - [ ] Tasks are small enough for Haiku if the plan says haiku
-- [ ] "Context Updates" section captures the WHY, not just the what
+- [ ] "New Constraints or Gotchas" contains only operational info an agent can't derive from code (or is empty)
 
 ## Step 5: Present to user
 
