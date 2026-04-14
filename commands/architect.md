@@ -67,7 +67,7 @@ and their rationale. Reference existing code patterns if applicable.>
 - **File**: <target file path>
 - **Action**: <specific what to do>
 - **Pattern**: <existing pattern to follow, with file reference>
-- **Test**: <how to verify this task>
+- **Test Spec**: <path to pre-written test file, or inline check if no test exists>
 - **Notes**: <gotchas, constraints, things to watch for>
 
 ### 2. <Next task>

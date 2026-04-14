@@ -56,6 +56,10 @@ A good CLAUDE.md is 20–50 lines. If yours is longer, it's probably duplicating
 | `complexity-reviewer` | haiku | Measures function length, nesting, dependencies |
 | `convention-reviewer` | haiku | Checks patterns against codebase majority style |
 | `coverage-reviewer` | haiku | Maps tested vs untested code, identifies gaps |
+| `interview` | sonnet | Derives AC through earned questions; detects specification vs. exploration mode |
+| `ac-drafter` | sonnet | Formats draft AC into structured criteria ready for test-architect |
+| `test-architect` | sonnet | Decides test type, boundary, and what NOT to test; produces test skeleton |
+| `test-writer` | sonnet | Writes failing tests from skeleton; confirms RED; presents Specification Review |
 
 Agents are single-purpose. They don't reason about what to do — they execute one thing.
 
@@ -68,8 +72,44 @@ Agents are single-purpose. They don't reason about what to do — they execute o
 | `/review [scope] [--flags]` | Run code review with specialized agents |
 | `/ship [plan-name]` | Create PR/MR from completed work |
 | `/context [--dry-run]` | Rebuild CLAUDE.md from current repo state |
+| `/feature <description>` | TDD-first entry point — interview, tests, then architect |
+| `/concept <intent-doc>` | TDD-first entry point from a web conversation intent document |
 
 Commands compose agents into workflows. They ask the user which model to use for the main work, then delegate subtasks to appropriate agents.
+
+## TDD Workflow
+
+The TDD-first entry points invert the default order: tests define the contract
+before architecture begins. Acceptance criteria are derived through structured
+interview, not assumed. The distinction between specification (you know what
+correct looks like) and exploration (you're finding out) is made explicit before
+any test or plan is written.
+
+```
+/feature add retry logic to MQTT client
+  → asks: architecture model? implementation model?
+  → codebase-scanner (haiku): maps project
+  → interview (sonnet): specification or exploration?
+      if exploration → writes breadcrumb to .claude/explorations/, stops
+      if specification → drafts AC with explicit assumptions, human corrects
+  → ac-drafter (sonnet): formats AC, human confirms [Touchpoint 1]
+  → test-architect (sonnet): designs test structure, human reviews [Touchpoint 2]
+  → test-writer (sonnet): writes failing tests, confirms RED
+      → test-runner (haiku): all tests FAIL — this is correct
+      → Specification Review: "does this specify the right thing?" [Touchpoint 3]
+  → /architect: creates plan with **Test Spec** field referencing test files
+      human reviews plan [Touchpoint 4]
+  → /implement: makes failing tests pass
+      → test-runner (haiku): confirms GREEN after each task
+
+/concept path/to/intent-doc.md
+  → same as /feature, but prepends intent-bridge if doc is not yet grounded
+  → detects grounded status from "## Status: grounded" marker — skips if present
+  → from interview onward: identical to /feature
+```
+
+The existing commands remain the default for work that doesn't need TDD
+entry points, and as escape hatches from inside the pipeline.
 
 ## Workflow
 
@@ -182,6 +222,8 @@ The `/architect` command handles this by scanning what actually exists before pl
 - [x] `/ship` command for PR/MR creation
 - [x] `/context` command for explicit CLAUDE.md rebuild
 - [x] Paper-informed CLAUDE.md philosophy (minimal operational context)
+- [x] TDD-first workflow (`/feature`, `/concept`) with structured AC derivation
+- [x] Exploration mode — explicit first-class alternative to TDD for hypothesis work
 - [ ] Plan composition (parent plans with child plans)
 - [ ] Hooks for auto-running test-runner after edits
 - [ ] Skills versions of commands (with supporting templates)
