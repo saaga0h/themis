@@ -47,9 +47,14 @@ For each unchecked task in the plan:
 - If something in the plan doesn't make sense given the actual code, STOP and ask the user rather than guessing
 
 ### After each task
-- Mark the task as complete in the plan file: change `[ ]` to `[x]`
 - If the task specifies a test, run it immediately by delegating to the **test-runner** agent
 - If the test fails, attempt to fix. If the fix isn't obvious, STOP and report to user
+
+### Refactor (while tests stay green)
+- Review the code just written for: duplication, naming, readability
+- Make improvements. Delegate to **test-runner** after EACH change.
+- If any test turns red, revert the refactor immediately — do not fix forward
+- Only mark the task `[x]` complete after tests are green AND a refactor pass is done
 
 ### If stuck
 - Don't guess. Don't improvise outside the plan scope.
@@ -64,6 +69,23 @@ If tests fail:
 - Check if failures are related to your changes
 - Fix if straightforward
 - Report to user if not obvious
+
+## Step 4b: Verify Against Spec
+
+If a `.claude/ac/<plan-name>.md` file exists:
+- Read it
+- For each criterion, confirm a test exists that covers it (search test files for the criterion's key behavior) and that test is currently passing
+- Report as a table:
+
+```
+| AC # | Criterion | Test exists | Passes |
+|------|-----------|-------------|--------|
+| 1    | <title>   | Yes/No      | Yes/No |
+```
+
+If any criterion has no test or a failing test:
+- Flag it explicitly in the final report
+- Do not mark implementation complete without user acknowledgement
 
 ## Step 5: Update CLAUDE.md (only if needed)
 
@@ -95,6 +117,9 @@ Check if README.md or other user-facing docs need updates:
 
 ### Test Results
 <pass/fail summary from test-runner>
+
+### Spec Verification
+<AC table from Step 4b, or "No AC file found">
 
 ### Documentation Updated
 <what was updated, or "No updates needed">

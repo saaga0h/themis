@@ -1,6 +1,6 @@
 ---
 description: Create a PR/MR for completed work. Reads plan, review report, and git diff to compose the PR description. Uses GitHub/GitLab MCP if available, falls back to CLI.
-argument-hint: [plan-name]
+argument-hint: [plan-name] [--skip-review]
 allowed-tools: Read, Glob, Grep, Bash, Task, mcp
 ---
 
@@ -14,8 +14,18 @@ Before anything else, verify:
 
 1. **Git state**: Are there uncommitted changes? If yes, ask the user if they want to commit first.
 2. **Branch**: Are we on a feature branch or main/master? If on main, warn the user — they probably want a branch.
-3. **Plan**: If `$ARGUMENTS` is provided, read `.claude/plans/$ARGUMENTS.md`. If not, check for the most recently modified plan with completed tasks.
-4. **Review**: Check `.claude/reviews/` for a recent review report. If none exists, warn: "No review report found. Consider running `/review` first. Proceed anyway?"
+3. **Plan**: If `$ARGUMENTS` is provided (excluding `--skip-review`), read `.claude/plans/$ARGUMENTS.md`. If not, check for the most recently modified plan with completed tasks.
+4. **Review**: Check `.claude/reviews/` for a recent review report.
+   - If a report exists: proceed.
+   - If `--skip-review` is in `$ARGUMENTS`: ask the user to state the reason for skipping, then proceed.
+   - If neither: **STOP** — do not proceed:
+
+     ```
+     No review report found in .claude/reviews/.
+     Run /review before shipping.
+
+     To override: re-run /ship --skip-review and state your reason.
+     ```
 
 Ask the user to confirm before creating the PR.
 

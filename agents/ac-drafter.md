@@ -62,10 +62,27 @@ Write the formatted AC to `.claude/ac/<name>.md` (same path, overwriting the dra
 ## Explicit Exclusions
 <behaviors this AC deliberately does not cover — important for test boundaries>
 
+## Coverage Target
+- **Unit**: <percentage — derive from scope: pure functions → 100%, mixed → 80%+>
+- **Integration**: <percentage or "not applicable" — applies when AC touches API/DB boundaries>
+- **Critical paths**: 100% (default — override explicitly if justified)
+- **Rationale**: <why these targets, or "default">
+
 ## Ambiguities
 <any criteria that could not be made unambiguous — requires human resolution
 before test-architect can proceed>
 ```
+
+## Step 2b: Derive coverage target
+
+Based on the criteria scope, set a reasoned coverage target for the `## Coverage Target` section:
+
+- If all criteria describe pure functions with no I/O or external calls → Unit: 100%, Integration: not applicable
+- If any criterion touches API endpoints, database, or external services → Integration: 80%+
+- If the feature is a critical path (auth, payments, data integrity) → all targets at 100%
+- Otherwise → Unit: 80%, Integration: not applicable, Critical paths: 100%
+
+State the rationale in one sentence. The human can override at the confirmation step.
 
 ## Step 3: Present and confirm
 
