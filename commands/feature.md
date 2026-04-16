@@ -36,6 +36,13 @@ Wait for both answers before proceeding.
 Delegate to the **codebase-scanner** agent to map the project structure.
 This runs on Haiku regardless of model choices above.
 
+Pass the feature description from `$ARGUMENTS` as the caller's scope so the scanner
+can resolve relevant docs from `docs/content-plan.md` if it exists.
+
+If the scanner returns a `## Relevant Docs` section with paths: read those files now,
+before interview. They give `interview` the subsystem context it needs. Do not read
+docs beyond what the scanner resolved.
+
 ## Step 2: Run interview
 
 Delegate to the **interview** agent with:

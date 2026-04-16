@@ -31,6 +31,9 @@ Wait for their answer before proceeding.
 - Read the plan file fully
 - Read CLAUDE.md if it exists (for build commands, constraints, gotchas)
 - Understand current state and what's already done (check for [x] marks)
+- If the plan has a `## Docs` section with paths listed: read those files now.
+  These are the pre-resolved scoped docs for this plan — read them all, they are minimal by design.
+  Do not scan docs/ beyond what is listed here.
 
 ## Step 3: Execute tasks sequentially
 

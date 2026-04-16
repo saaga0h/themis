@@ -61,6 +61,12 @@ This runs on Haiku regardless of model choices above.
 internally. Run it again here for a fresh snapshot — `intent-bridge` may have
 been called earlier in a different session.)
 
+Pass the intent document's title or key concepts as the caller's scope so the scanner
+can resolve relevant docs from `docs/content-plan.md` if it exists.
+
+If the scanner returns a `## Relevant Docs` section with paths: read those files now,
+before interview. Do not read docs beyond what the scanner resolved.
+
 ## Step 4: Run interview
 
 Delegate to the **interview** agent with:

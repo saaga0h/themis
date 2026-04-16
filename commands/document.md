@@ -165,16 +165,17 @@ For each needed doc, delegate to **doc-writer** (parallel — one agent per doc)
 
 **Special instructions for development.md:** must include a "When Things Look Wrong" troubleshooting table and a "Secrets & Deployment" section. The troubleshooting table maps symptoms → checks → fixes. Secrets section documents what env vars are needed without prescribing how they're injected.
 
-**content-plan.md**: generate from the actual docs/ tree. List every doc with path, tier, and one-line description:
+**content-plan.md**: generate from the actual docs/ tree. List every doc with path, tier, one-line description, and comma-separated tags. Tags are the subsystem names, concern areas, or keywords that a command can grep to find this doc — e.g. `mqtt,messaging,broker` or `auth,sessions,tokens` or `datamodel,schema,migrations`. Tags should match the vocabulary a developer would use when naming a feature or plan.
 
 ```markdown
 # Documentation Content Plan
 
-| Path | Tier | Description |
-|---|---|---|
-| README.md | root | Project overview, setup, running |
-| ARCHITECTURE.md | root | System structure, data flows, invariants |
-| docs/development.md | 1 | Config reference, all commands, troubleshooting |
+| Path | Tier | Description | Tags |
+|---|---|---|---|
+| README.md | root | Project overview, setup, running | setup,onboarding,install |
+| ARCHITECTURE.md | root | System structure, data flows, invariants | architecture,system,components |
+| docs/development.md | 1 | Config reference, all commands, troubleshooting | dev,config,env,build,commands |
+| docs/subsystems/mqtt/README.md | 2 | MQTT subsystem | mqtt,messaging,broker,pubsub |
 ...
 ```
 

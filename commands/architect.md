@@ -32,6 +32,14 @@ Delegate to the **codebase-scanner** agent to map the project. This runs on Haik
 - Read README.md if it exists
 - Note any .claude/agents/ or .claude/commands/ that exist
 
+### Resolve scoped docs (if docs/content-plan.md exists)
+
+Extract keywords from the user's request in `$ARGUMENTS` (subsystem names, concern areas,
+feature vocabulary). Grep `docs/content-plan.md` for those keywords in the Tags column.
+Read only the matching doc files. Do not read docs whose tags have no overlap with the request scope.
+
+If `docs/content-plan.md` does not exist, skip this step — do not scan docs/ manually.
+
 ## Step 3: Understand the request
 
 The user's request is: $ARGUMENTS
@@ -76,6 +84,10 @@ and their rationale. Reference existing code patterns if applicable.>
 ## Completion Criteria
 - <specific, verifiable conditions>
 - All tests pass
+
+## Docs
+<!-- Paths from docs/content-plan.md resolved for this plan's scope. /implement reads these. -->
+<!-- Leave empty if docs/content-plan.md does not exist. -->
 
 ## New Constraints or Gotchas
 <!-- Only fill this if the plan introduces something a future agent would get wrong -->
