@@ -1,44 +1,41 @@
-# Claude Code Workflow: Architect → Implement → Review → Ship
+# Themis — Claude Code Workflow System
 
-A minimal workflow system for Claude Code that separates reasoning from execution and uses the right model for each job.
+A workflow system for Claude Code built around three principles: right model for the job, tests before architecture, and docs loaded by scope not by habit.
 
 ## Philosophy
 
 - **Opus** reasons about architecture and complex decisions
-- **Sonnet** implements features and handles judgment calls
+- **Sonnet** implements features, writes docs, handles judgment calls
 - **Haiku** runs tests, scans codebases, reads plans — mechanical work
 
 The user chooses the main model. The workflow handles delegation automatically.
 
-## On CLAUDE.md
+## On context
 
-This workflow treats CLAUDE.md as **minimal operational context** — not project documentation.
+Context has a cost. Loading everything into every session degrades decisions and burns tokens on information that isn't relevant to the current task.
 
-Research ([Gloaguen et al., 2025](https://arxiv.org/abs/2602.11988)) shows that LLM-generated context files with project descriptions, architecture overviews, and directory trees **reduce** agent task success rates while increasing cost by 20%+. Information the agent can discover from code is redundant at best, actively harmful at worst — the agent spends tokens reading and complying with descriptions that may have drifted from reality.
+This workflow manages context at three layers:
 
-CLAUDE.md should contain only what an agent **cannot figure out** from reading the code:
+**CLAUDE.md** — always loaded, so kept to the minimum that prevents hard failures: build quirks, environment constraints, things an agent will get wrong immediately without being told. If `docs/development.md` exists, CLAUDE.md holds a pointer to it rather than duplicating its content. Research ([Gloaguen et al., 2025](https://arxiv.org/abs/2602.11988)) shows that bloated context files reduce agent task success rates while increasing cost by 20%+.
+
+**docs/ — tiered project documentation** — loaded on demand, never speculatively. Root docs (README, ARCHITECTURE, CONCEPTS), Tier 1 reference (development, data model, API, messaging), Tier 2 subsystem docs, Tier 3 module-level business rules. Commands resolve which docs are relevant to their scope and load only those.
+
+**Scope-based doc resolver** — commands pass their scope (feature description, plan name, subsystem) to `codebase-scanner`, which greps `docs/content-plan.md` for matching tags and returns only the relevant paths. `/architect add retry to MQTT client` loads the MQTT subsystem doc. `/review --security` loads nothing from docs/. The resolution happens inside the Haiku scan call that already runs — no extra agent cost.
 
 ```markdown
 # CLAUDE.md — Project Name
 
-## Build & Test
-<!-- exact commands, versions, only what's not obvious from Makefile/config -->
-
-## Conventions
-<!-- only non-obvious, non-linter-enforceable patterns -->
-
 ## Constraints
-<!-- what an agent WILL get wrong without being told -->
+<!-- what an agent WILL get wrong without being told — hard failures only -->
 
 ## Gotchas
 <!-- non-obvious operational issues, remove when fixed -->
+
+## Docs
+See `docs/development.md` for build commands, setup, env vars, and troubleshooting.
 ```
 
-**What belongs**: build commands, toolchain versions, protocol contracts, external dependencies, environment quirks, things learned the hard way.
-
-**What doesn't**: project descriptions, architecture overviews, directory trees, changelogs, current state. The code already says all of that.
-
-A good CLAUDE.md is 20–50 lines. If yours is longer, it's probably duplicating the codebase.
+A good CLAUDE.md is under 20 lines. Everything else belongs in docs/.
 
 ## Components
 
