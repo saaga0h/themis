@@ -56,6 +56,8 @@ A good CLAUDE.md is 20–50 lines. If yours is longer, it's probably duplicating
 | `complexity-reviewer` | haiku | Measures function length, nesting, dependencies |
 | `convention-reviewer` | haiku | Checks patterns against codebase majority style |
 | `coverage-reviewer` | haiku | Maps tested vs untested code, identifies gaps |
+| `doc-scanner` | haiku | Scans codebase for docs, maps drift between code and docs, produces structured drift report |
+| `doc-writer` | sonnet | Writes or updates one documentation file per invocation from a specific assignment |
 | `interview` | sonnet | Derives AC through earned questions; detects specification vs. exploration mode |
 | `ac-drafter` | sonnet | Formats draft AC into structured criteria ready for test-architect |
 | `test-architect` | sonnet | Decides test type, boundary, and what NOT to test; produces test skeleton |
@@ -74,6 +76,7 @@ Agents are single-purpose. They don't reason about what to do — they execute o
 | `/context [--dry-run]` | Rebuild CLAUDE.md from current repo state |
 | `/feature <description>` | TDD-first entry point — interview, tests, then architect |
 | `/concept <intent-doc>` | TDD-first entry point from a web conversation intent document |
+| `/document [--dry-run] [--full] [--tier N]` | Audit and update project documentation |
 
 Commands compose agents into workflows. They ask the user which model to use for the main work, then delegate subtasks to appropriate agents.
 
@@ -150,6 +153,17 @@ entry points, and as escape hatches from inside the pipeline.
   → audits build commands, conventions, constraints, gotchas
   → rebuilds CLAUDE.md from scratch
   → user confirms before writing
+
+/document
+  → doc-scanner (haiku): identifies project type, maps codebase, inventories docs, reports drift
+  → reviews scan: what exists, what drifted, what is missing entirely
+  → reports audit grouped by document — stops here if --dry-run
+  → updates root docs (README, ARCHITECTURE, CONCEPTS) — CONCEPTS written by orchestrator, not delegated
+  → updates Tier 1 docs in docs/ (development, datamodel, api-reference, messaging, content-plan)
+  → updates Tier 2 subsystem docs in docs/subsystems/<name>/
+  → decides Tier 3 module docs — orchestrator judges incident surface area, not an agent
+  → codebase-scanner (haiku): verifies cross-references, dead links, content-plan consistency
+  → reports final coverage: root docs, Tier 1, Tier 2, Tier 3
 ```
 
 ## Review flags
@@ -171,6 +185,29 @@ Scope with a directory path or `--last-plan`:
 /review pkg/patterns/ --security
 /review --last-plan --quick
 /review                          # full project, all reviewers
+```
+
+## Document flags
+
+Scope or change the behavior of the documentation audit:
+
+| Flag | Behavior |
+|------|----------|
+| (no flags) | Update only what has drifted |
+| `--full` | Rebuild all docs from scratch, treating code as sole source of truth |
+| `--dry-run` | Report drift only — write nothing |
+| `--tier 0` | Root docs only (README, ARCHITECTURE, CONCEPTS) |
+| `--tier 1` | `docs/` tier only (development, datamodel, api-reference, etc.) |
+| `--tier 2` | Subsystem docs only (`docs/subsystems/<name>/`) |
+| `--tier 3` | Module docs only (`docs/subsystems/<name>/modules/`) |
+
+Examples:
+```
+/document                    # audit everything, update what drifted
+/document --dry-run          # see what would change without writing
+/document --full             # rebuild all docs from code
+/document --tier 0           # update root docs only
+/document --tier 2 --full    # rebuild all subsystem docs from scratch
 ```
 
 ## Installation
@@ -224,6 +261,7 @@ The `/architect` command handles this by scanning what actually exists before pl
 - [x] Paper-informed CLAUDE.md philosophy (minimal operational context)
 - [x] TDD-first workflow (`/feature`, `/concept`) with structured AC derivation
 - [x] Exploration mode — explicit first-class alternative to TDD for hypothesis work
+- [x] `/document` command for structured, tiered documentation auditing and generation
 - [ ] Plan composition (parent plans with child plans)
 - [ ] Hooks for auto-running test-runner after edits
 - [ ] Skills versions of commands (with supporting templates)
