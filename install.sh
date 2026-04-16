@@ -39,7 +39,7 @@ echo "  Agents:   $(ls "$SCRIPT_DIR"/agents/*.md | wc -l | tr -d ' ') → $AGENT
 echo "  Commands: $(ls "$SCRIPT_DIR"/commands/*.md | wc -l | tr -d ' ') → $COMMAND_DIR/"
 echo ""
 echo "Restart Claude Code to pick up new agents and commands."
-echo "Commands available: /architect, /implement, /review, /ship, /context, /intent-bridge, /feature, /concept"
+echo "Commands available: /architect, /implement, /review, /ship, /context, /intent-bridge, /feature, /concept, /document"
 echo ""
 echo "Quick start — TDD-first:"
 echo "  cd your-project"
