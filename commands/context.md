@@ -141,3 +141,32 @@ Write to CLAUDE.md at the repo root. Report what changed versus the previous ver
 - If the repo is well-structured with a good Makefile and clear naming, CLAUDE.md might be 10 lines. That's fine.
 - Don't include project descriptions, architecture overviews, or directory trees.
 - Verify commands actually work when practical — don't just read config files.
+
+## Hard boundary with /document
+
+`/document` produces `docs/development.md` which covers setup, all build commands, all env vars, make targets, workflow, and troubleshooting — the full developer reference.
+
+CLAUDE.md is not a developer reference. It is a **last-resort safety net**: the minimum facts an agent will get wrong on first contact, before any docs are loaded.
+
+**The test for CLAUDE.md inclusion:** "If an agent starts a task cold, with no docs loaded, and doesn't know this fact — will it cause a hard failure or silently wrong result?"
+- Yes → CLAUDE.md
+- No, it's in docs/development.md → don't duplicate it here
+
+**Never put in CLAUDE.md:**
+- Full setup or prerequisites → `docs/development.md`
+- All env vars and configuration → `docs/development.md` Configuration table
+- All make targets or scripts → `docs/development.md` Make Targets
+- Architecture or system overviews → `ARCHITECTURE.md`
+- Why design choices were made → `CONCEPTS.md`
+- Subsystem explanations → `docs/subsystems/<name>/README.md`
+
+**What still belongs in CLAUDE.md:** the one-liner that prevents a hard failure — "tests require Postgres on :5433", "don't run `go build` directly, codegen runs via `make build`", "this repo has two go.mod files, don't merge them". Facts so sharp and failure-critical they must always be in context, not looked up.
+
+**If `docs/development.md` exists:** add a single reference line to CLAUDE.md:
+
+```markdown
+## Docs
+See `docs/development.md` for build commands, setup, env vars, and troubleshooting.
+```
+
+This costs one line. It ensures any agent — even one not going through the doc resolver — knows where the full reference lives. Commands that don't need it won't read it. Commands that do will find it.

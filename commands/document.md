@@ -299,3 +299,29 @@ Pass these to every doc-writer agent:
 - **doc-scanner runs first, always.** Everything else depends on its report.
 - **Parallel when independent.** Tier 1 docs, Tier 2 subsystems, and Tier 3 modules are independent — launch their doc-writer agents in parallel.
 - **Do not invent content.** If the code doesn't clearly show something, flag it and ask the user rather than guessing.
+
+## Hard boundary with /context
+
+`/document` owns the full developer reference: setup, build commands, env vars, make targets, workflow, troubleshooting, architecture, subsystems, data model, API surface, design rationale, module business rules.
+
+`/context` owns **only the failure-critical minimum** that must be present in every agent context before any docs are loaded — facts so sharp that not knowing them causes a hard failure or silently wrong result on first contact.
+
+**Never put in docs/development.md what belongs in CLAUDE.md:**
+- "Tests require an external service running at a specific address" → CLAUDE.md
+- "Don't use the standard build command, use this one instead due to codegen" → CLAUDE.md
+- Non-obvious hard constraints an agent will violate immediately without being told → CLAUDE.md
+
+Everything else — the full setup guide, all env vars, all targets, all workflow — belongs here in docs/development.md, not in CLAUDE.md.
+
+If you find failure-critical facts buried in CLAUDE.md that are actually covered by docs/development.md with no hard-failure consequence, flag it for the user — CLAUDE.md may be longer than it needs to be.
+
+**After creating or updating `docs/development.md`:** check whether CLAUDE.md contains a `## Docs` section referencing it. If not, flag it in the final report:
+
+```
+Note: CLAUDE.md has no reference to docs/development.md. Consider adding:
+
+## Docs
+See `docs/development.md` for build commands, setup, env vars, and troubleshooting.
+```
+
+Do not write to CLAUDE.md yourself — that is `/context`'s territory.
