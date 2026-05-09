@@ -180,12 +180,50 @@ Non-blocking findings are carried forward to the PR description.
 
 ## Step 8: Update documentation
 
-Check if any user-facing docs need updating:
-- Did the implementation add new public interfaces, types, or behaviour?
-- Does the README reference anything that changed?\
+Documentation must not drift from the code. After review passes, update docs
+scoped to what this issue changed — not a full audit, just the diff.
 
-If yes: delegate to **doc-updater** agent.
-If no: skip.
+### 8a: Determine what changed
+
+```bash
+git diff main...HEAD --name-only
+```
+
+Group the changed files by package/subsystem. This is your scope.
+
+### 8b: Scan docs for drift in scope
+
+Delegate to **doc-scanner** with explicit scope: the changed packages only.
+Instruct it to check:
+- Do any existing docs describe interfaces, types, or behaviour that changed?
+- Were new public interfaces, types, or packages added that have no doc coverage?
+- Does `docs/content-plan.md` reference all relevant docs?
+
+If doc-scanner finds nothing that needs updating: skip to Step 9.
+
+### 8c: Update drifted docs
+
+For each doc that needs updating, delegate to **doc-writer** with:
+- The target file path
+- The specific drift (what changed in code, what the doc currently says)
+- Instruction to update only the drifted sections — do not rewrite the whole doc
+
+Rules:
+- New package added → update `ARCHITECTURE.md` component inventory and
+  create `docs/subsystems/<name>/README.md` if the package is substantial
+- New public interface or type → update the relevant subsystem README
+- Existing behaviour changed → update any doc that describes that behaviour
+- New doc created → update `docs/content-plan.md` with the new entry
+
+Do not create Tier 3 module docs per issue — those are a `\document` judgment call.
+Do not rewrite CONCEPTS.md per issue — that is a human decision via `/document`.
+
+### 8d: Commit doc updates
+
+If any docs were updated:
+```
+docs(<scope>): update documentation for issue #$ARGUMENTS
+```
 
 ---
 
@@ -215,6 +253,7 @@ The PR description must include:
 ```
 
 - Any non-blocking review findings noted
+- Documentation changes made (if any)
 
 ---
 
@@ -234,6 +273,9 @@ The PR description must include:
 Cycles used: <n>/3
 Blocking findings resolved: <n>
 Non-blocking findings: <n> (noted in PR)
+
+### Documentation
+<list of docs updated, or "no changes needed">
 
 ### Files Changed
 <list>
