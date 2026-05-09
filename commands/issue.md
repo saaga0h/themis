@@ -6,7 +6,7 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, mcp
 
 # Issue Command
 
-You implement a single GitHub issue from start to merged PR, fully autonomously.
+You implement a single GitHub issue from start to PR, fully autonomously.
 The issue already contains the specification — description, implementation
 guidance, and verifiable Acceptance Criteria. Your job is to make every AC pass.
 
@@ -14,6 +14,16 @@ guidance, and verifiable Acceptance Criteria. Your job is to make every AC pass.
 Do not ask for approval on file operations or tool use. Run to completion.**
 
 The pipeline: fetch → scan → branch → tests (RED) → implement (GREEN) → refactor → review → fix → re-review → docs → ship.
+
+## Cycle limits — hard ceilings to prevent dead loops
+
+- **Test-fix attempts**: max 3 attempts to make a failing test pass before stopping
+- **Review cycles**: max 3 review → fix → re-review cycles before stopping
+- **Refactor passes**: max 1 refactor pass — do not loop on refactoring
+
+When any limit is hit: comment on the GitHub issue explaining exactly what was
+tried and why it's stuck, add the `blocked` label, and stop. Do not guess,
+do not try a fourth time.
 
 ---
 
@@ -61,9 +71,8 @@ Before touching any code, read:
    Every identifier, comment, and commit message must use these terms exactly.
    Terminology violations are review failures.
 
-2. `.sandcastle/CODING_STANDARDS.md` or `CODING_STANDARDS.md` — language
-   standards, architecture rules, reviewer checklist. Implement to these
-   standards from the start.
+2. `CODING_STANDARDS.md` — language standards, architecture rules, reviewer
+   checklist. Implement to these standards from the start.
 
 Then delegate to **codebase-scanner** with the issue title and key terms as scope.
 Read any docs the scanner resolves. Do not read beyond what it returns.
@@ -111,10 +120,13 @@ Do not implement anything not required by an AC.
 After each AC's tests pass, delegate to **test-runner** to confirm nothing
 regressed.
 
+**Test-fix limit: 3 attempts per AC.** If a test won't pass after 3 distinct
+implementation attempts, stop: comment on the issue explaining which AC is
+failing and what was tried, add `blocked` label, stop entirely.
+
 When all ACs pass:
 - Run the full test suite via **test-runner**
-- If anything fails: fix it before proceeding. If not fixable, comment on the
-  GitHub issue explaining the blocker and stop.
+- If anything fails: apply the same 3-attempt limit per failing test
 
 Commit the implementation:
 ```
@@ -125,11 +137,12 @@ feat(<scope>): implement issue #$ARGUMENTS — <title>
 
 ## Step 6: Refactor
 
-Review the code just written for: duplication, naming, readability, adherence
-to UBIQUITOUS_LANGUAGE.md and CODING_STANDARDS.md.
+One pass only. Review the code just written for: duplication, naming,
+readability, adherence to UBIQUITOUS_LANGUAGE.md and CODING_STANDARDS.md.
 
 Make improvements. Delegate to **test-runner** after each change.
 If any test turns red: revert the change immediately — do not fix forward.
+Do not loop — one refactor pass, then move on.
 
 Commit if changes were made:
 ```
@@ -138,20 +151,21 @@ refactor(<scope>): clean up implementation for issue #$ARGUMENTS
 
 ---
 
-## Step 7: Review
+## Step 7: Review → fix → re-review
 
-Delegate to **review command** (via Task) with `--last-plan` flag.
+**Review cycle limit: 3 cycles maximum.**
 
-All five reviewers run: complexity, conventions, coverage, security, architecture.
+Cycle N:
+1. Delegate to **review command** (via Task) with `--last-plan` flag
+2. Categorise findings as blocking or non-blocking
+3. If no blocking findings: proceed to Step 8
+4. Fix each blocking finding — run **test-runner** after each fix to confirm GREEN
+5. Increment cycle counter. If counter = 3 and blocking findings remain:
+   - Comment on the issue: "Review cycle limit reached. Remaining blocking
+     findings: <list>. Human review required."
+   - Add `blocked` label. Stop.
 
-If the review surfaces **blocking findings** (security vulnerability, AC not
-covered by a test, abstraction boundary violated per CODING_STANDARDS):
-- Fix each blocking finding
-- Re-run **test-runner** to confirm still GREEN
-- Re-delegate to **review command**
-- Repeat until no blocking findings remain
-
-Non-blocking findings are included in the PR description as known items.
+Non-blocking findings are carried forward to the PR description.
 
 ---
 
@@ -206,8 +220,9 @@ The PR description must include:
 <table>
 
 ### Review
-Blocking findings: <count> (all resolved)
-Non-blocking findings: <count> (noted in PR)
+Cycles used: <n>/3
+Blocking findings resolved: <n>
+Non-blocking findings: <n> (noted in PR)
 
 ### Files Changed
 <list>
@@ -218,10 +233,10 @@ Non-blocking findings: <count> (noted in PR)
 ## Failure modes — what to do when stuck
 
 - **Issue is ambiguous or contradictory**: comment on the GitHub issue explaining
-  the ambiguity. Add label `blocked`. Stop.
-- **Test cannot be made to pass**: comment on the issue with what was tried and
-  why it's stuck. Add label `blocked`. Stop.
-- **Review has blocking findings that cannot be resolved**: comment on the issue
-  explaining what the reviewer found and why it cannot be fixed within scope. Stop.
+  the ambiguity. Add `blocked` label. Stop.
+- **Test-fix limit (3) reached**: comment with which AC failed and what was tried.
+  Add `blocked` label. Stop.
+- **Review cycle limit (3) reached**: comment with remaining blocking findings.
+  Add `blocked` label. Stop.
 - **In all cases**: do not guess, do not improvise beyond the AC scope, do not
   ship a PR with known failures.
