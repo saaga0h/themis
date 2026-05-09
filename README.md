@@ -74,8 +74,184 @@ Agents are single-purpose. They don't reason about what to do — they execute o
 | `/feature <description>` | TDD-first entry point — interview, tests, then architect |
 | `/concept <intent-doc>` | TDD-first entry point from a web conversation intent document |
 | `/document [--dry-run] [--full] [--tier N]` | Audit and update project documentation |
+| `/issue <number>` | Implement a single GitHub issue end-to-end, fully autonomously |
+| `/factory [--max N] [--dry-run]` | Process all open `ready-for-agent` issues in order |
 
 Commands compose agents into workflows. They ask the user which model to use for the main work, then delegate subtasks to appropriate agents.
+
+## Software Factory — Running CC in Isolation
+
+The `/issue` and `/factory` commands are designed to run fully autonomously inside
+a sandboxed container. This gives you a software factory: GitHub issues as the work
+queue, Claude Code as the implementer, a container as the blast radius boundary.
+
+### Why a container
+
+Running Claude Code directly on your machine with `--dangerously-skip-permissions`
+means it has unrestricted access to your filesystem, credentials, and environment.
+A container bounds what it can touch to the mounted workspace — nothing else on
+the host is visible.
+
+### Requirements
+
+- Podman (rootless) or Docker
+- A `Containerfile` / `Dockerfile` in your repo with Claude Code installed
+- `CLAUDE_CODE_OAUTH_TOKEN` — generated via `claude setup-token` on your host
+- `GH_TOKEN` — a GitHub fine-grained token with Issues (read/write) and Pull requests (read/write)
+
+### Containerfile
+
+A minimal Containerfile that installs Claude Code:
+
+```dockerfile
+FROM node:22-bookworm
+
+RUN apt-get update && apt-get install -y git curl jq gh && rm -rf /var/lib/apt/lists/*
+
+ARG AGENT_UID=1000
+ARG AGENT_GID=1000
+RUN groupmod -g $AGENT_GID node && \
+    usermod -u $AGENT_UID -g $AGENT_GID -d /home/agent -m -l agent node
+USER ${AGENT_UID}:${AGENT_GID}
+
+RUN curl -fsSL https://claude.ai/install.sh | bash
+ENV PATH="/home/agent/.local/bin:$PATH"
+
+WORKDIR /home/agent
+ENTRYPOINT ["sleep", "infinity"]
+```
+
+Build once:
+
+```bash
+podman build -t myproject:dev .
+```
+
+### Auth token
+
+Generate a token on your host (do this once):
+
+```bash
+claude setup-token
+```
+
+Store tokens in a `.env` file in your repo root (add to `.gitignore`):
+
+```
+CLAUDE_CODE_OAUTH_TOKEN=your_token_here
+GH_TOKEN=your_github_token_here
+```
+
+### Running the factory
+
+```bash
+# Dry run — see what would be processed
+echo '/factory --dry-run' | podman run -i \
+  --userns=keep-id \
+  --entrypoint claude \
+  -v $(pwd):/home/agent/workspace \
+  -v ~/.claude:/home/agent/.claude \
+  --env-file .env \
+  -w /home/agent/workspace \
+  myproject:dev \
+  --print \
+  --dangerously-skip-permissions \
+  --max-turns 300
+
+# Full factory run
+echo '/factory' | podman run -i \
+  --userns=keep-id \
+  --entrypoint claude \
+  -v $(pwd):/home/agent/workspace \
+  -v ~/.claude:/home/agent/.claude \
+  --env-file .env \
+  -w /home/agent/workspace \
+  myproject:dev \
+  --print \
+  --dangerously-skip-permissions \
+  --max-turns 300
+
+# Single issue
+echo '/issue 42' | podman run -i \
+  --userns=keep-id \
+  --entrypoint claude \
+  -v $(pwd):/home/agent/workspace \
+  -v ~/.claude:/home/agent/.claude \
+  --env-file .env \
+  -w /home/agent/workspace \
+  myproject:dev \
+  --print \
+  --dangerously-skip-permissions \
+  --max-turns 300
+```
+
+### Makefile shorthand
+
+Wrap this in a Makefile to avoid typing the full command every time:
+
+```makefile
+IMAGE := myproject:dev
+MAX_TURNS ?= 300
+
+PODMAN_RUN := podman run -i \
+	--userns=keep-id \
+	--entrypoint claude \
+	-v $(PWD):/home/agent/workspace \
+	-v $(HOME)/.claude:/home/agent/.claude \
+	--env-file .env \
+	-w /home/agent/workspace \
+	$(IMAGE) \
+	--print \
+	--dangerously-skip-permissions \
+	--max-turns $(MAX_TURNS)
+
+run-factory:
+	echo '/factory' | $(PODMAN_RUN)
+
+dry-run:
+	echo '/factory --dry-run' | $(PODMAN_RUN)
+
+run-issue:
+	echo '/issue $(ISSUE)' | $(PODMAN_RUN)
+
+shell:
+	podman run -it --userns=keep-id --entrypoint /bin/bash \
+		-v $(PWD):/home/agent/workspace \
+		-v $(HOME)/.claude:/home/agent/.claude \
+		--env-file .env -w /home/agent/workspace $(IMAGE)
+```
+
+Then: `make run-factory`, `make run-issue ISSUE=42`, `make dry-run`.
+
+### Issue format
+
+Issues picked up by `/factory` must be labeled `ready-for-agent` and follow this structure:
+
+```markdown
+## Context
+<what this is and why>
+
+## What to build
+<implementation guidance>
+
+## Acceptance Criteria
+- [ ] AC one — verifiable, specific
+- [ ] AC two — verifiable, specific
+
+## Notes
+<constraints, deferred scope, references>
+```
+
+Each AC becomes a failing test. The agent implements until all tests pass, runs a
+full review, fixes blocking findings, and ships a PR. The human merges.
+
+### Credential notes
+
+- `--userns=keep-id` is required on rootless Podman — without it the container
+  process runs as a different UID and cannot read `~/.claude` even with `:rw` mount
+- `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token` works for headless use;
+  the interactive OAuth flow does not work inside a container
+- Store both tokens in `.env` and add `.env` to `.gitignore`
 
 ## TDD Workflow
 
@@ -259,6 +435,9 @@ The `/architect` command handles this by scanning what actually exists before pl
 - [x] TDD-first workflow (`/feature`, `/concept`) with structured AC derivation
 - [x] Exploration mode — explicit first-class alternative to TDD for hypothesis work
 - [x] `/document` command for structured, tiered documentation auditing and generation
+- [x] `/issue` command — fully autonomous GitHub issue implementation
+- [x] `/factory` command — autonomous backlog processing loop
+- [x] Sandboxed execution via Podman/Docker with `--userns=keep-id`
 - [ ] Plan composition (parent plans with child plans)
 - [ ] Hooks for auto-running test-runner after edits
 - [ ] Skills versions of commands (with supporting templates)
