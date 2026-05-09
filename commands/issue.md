@@ -164,9 +164,33 @@ refactor(<scope>): clean up implementation for issue #$ARGUMENTS
 
 **Review cycle limit: 3 cycles maximum.**
 
+### What counts as blocking
+
+Only fix findings that are **strictly blocking**. The threshold is high:
+
+- **Security vulnerability** — exploitable in Hestia's threat model (not theoretical)
+- **AC not covered** — a specified behaviour has no test and no implementation
+- **Compile failure** — the code does not build
+- **Abstraction boundary violated** — directly contradicts CODING_STANDARDS.md rules
+- **Data loss or corruption** — incorrect state transitions, lost writes
+
+Everything else is **non-blocking** regardless of how the reviewer words it:
+- Style preferences
+- "Consider" or "could be improved" suggestions
+- Performance concerns without a concrete benchmark
+- Missing features beyond the AC scope
+- Redundant code that doesn't affect correctness
+- Medium-severity findings that require future issues to address properly
+
+**Do not fix non-blocking findings.** Note them in the PR description. Do not
+let reviewer suggestions expand the scope of the implementation. The human
+reviewer decides what warrants a follow-up issue.
+
+### Cycle procedure
+
 Cycle N:
 1. Delegate to **review command** (via Task) with `--last-plan` flag
-2. Categorise findings as blocking or non-blocking
+2. Categorise each finding strictly: blocking (per above) or non-blocking
 3. If no blocking findings: proceed to Step 8
 4. Fix each blocking finding — run **test-runner** after each fix to confirm GREEN
 5. Increment cycle counter. If counter = 3 and blocking findings remain:
@@ -174,7 +198,8 @@ Cycle N:
      findings: <list>. Human review required."
    - Add `blocked` label. Stop.
 
-Non-blocking findings are carried forward to the PR description.
+Non-blocking findings are collected and included in the PR description as a
+"Review Notes" section so the human reviewer can decide what to act on.
 
 ---
 
@@ -215,7 +240,7 @@ Rules:
 - Existing behaviour changed → update any doc that describes that behaviour
 - New doc created → update `docs/content-plan.md` with the new entry
 
-Do not create Tier 3 module docs per issue — those are a `\document` judgment call.
+Do not create Tier 3 module docs per issue — those are a `/document` judgment call.
 Do not rewrite CONCEPTS.md per issue — that is a human decision via `/document`.
 
 ### 8d: Commit doc updates
@@ -252,7 +277,7 @@ The PR description must include:
 | 1  | <ac text>   | <test file:line> | ✓ PASS |
 ```
 
-- Any non-blocking review findings noted
+- **Review Notes** section listing all non-blocking findings for the human reviewer
 - Documentation changes made (if any)
 
 ---
@@ -272,7 +297,7 @@ The PR description must include:
 ### Review
 Cycles used: <n>/3
 Blocking findings resolved: <n>
-Non-blocking findings: <n> (noted in PR)
+Non-blocking findings: <n> (noted in PR — human reviewer to decide)
 
 ### Documentation
 <list of docs updated, or "no changes needed">
