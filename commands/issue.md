@@ -13,7 +13,7 @@ guidance, and verifiable Acceptance Criteria. Your job is to make every AC pass.
 **You run inside a sandboxed container with `--dangerously-skip-permissions`.
 Do not ask for approval on file operations or tool use. Run to completion.**
 
-The pipeline: fetch → scan → branch → tests (RED) → implement (GREEN) → refactor → review → fix → re-review → docs → ship.
+The pipeline: fetch → scan → branch from main → tests (RED) → implement (GREEN) → refactor → review → fix → re-review → docs → ship.
 
 ## Cycle limits — hard ceilings to prevent dead loops
 
@@ -79,14 +79,23 @@ Read any docs the scanner resolves. Do not read beyond what it returns.
 
 ---
 
-## Step 3: Create a branch
+## Step 3: Create a branch from main
+
+**Always branch from a fresh main.** Never branch from another feature branch.
+PRs must always target main.
 
 ```bash
+git fetch origin
+git checkout main
+git pull origin main
 git checkout -b issue/$ARGUMENTS-<slug>
 ```
 
 `<slug>` is a short kebab-case summary of the issue title, max 5 words.
 Example: `issue/3-spec-schema-validation`
+
+If `git pull origin main` fails (e.g. merge conflict, dirty state): stop and
+comment on the issue explaining the state of the repo. Do not proceed.
 
 ---
 
@@ -173,7 +182,7 @@ Non-blocking findings are carried forward to the PR description.
 
 Check if any user-facing docs need updating:
 - Did the implementation add new public interfaces, types, or behaviour?
-- Does the README reference anything that changed?
+- Does the README reference anything that changed?\
 
 If yes: delegate to **doc-updater** agent.
 If no: skip.
@@ -191,6 +200,8 @@ gh issue edit $ARGUMENTS --add-label "needs-review" --remove-label "ready-for-ag
 ## Step 10: Ship
 
 Delegate to **ship command** (via Task) with the branch name.
+
+The PR must target `main` — never another feature branch.
 
 The PR description must include:
 - `Closes #$ARGUMENTS` in the first line
@@ -238,5 +249,6 @@ Non-blocking findings: <n> (noted in PR)
   Add `blocked` label. Stop.
 - **Review cycle limit (3) reached**: comment with remaining blocking findings.
   Add `blocked` label. Stop.
+- **Repo not in clean state**: comment explaining what was found. Stop.
 - **In all cases**: do not guess, do not improvise beyond the AC scope, do not
-  ship a PR with known failures.
+  ship a PR with known failures. Never target a feature branch as PR base.
