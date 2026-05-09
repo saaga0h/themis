@@ -1,68 +1,40 @@
 ---
-description: Implement a GitHub issue end-to-end. Fetches the issue, scans the codebase, architects a plan, implements it, reviews, and ships a PR. Designed for well-formed issues with explicit Acceptance Criteria — skips interview and AC derivation.
+description: Implement a single GitHub issue fully autonomously. Fetches the issue, scans the codebase, writes failing tests from ACs, implements until green, reviews, fixes, re-reviews until clean, updates docs, ships PR. No human touchpoints.
 argument-hint: <issue-number>
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, mcp
 ---
 
 # Issue Command
 
-You implement a single GitHub issue from start to PR. Issues worked on via this
-command are expected to be well-formed — they contain a description, explicit
-implementation guidance, and verifiable Acceptance Criteria. The interview and
-AC derivation phases from `/concept` and `/feature` are skipped because the issue
-already encodes that work.
+You implement a single GitHub issue from start to merged PR, fully autonomously.
+The issue already contains the specification — description, implementation
+guidance, and verifiable Acceptance Criteria. Your job is to make every AC pass.
 
-The pipeline: fetch → scan → architect → implement → review → ship.
+**You run inside a sandboxed container with `--dangerously-skip-permissions`.
+Do not ask for approval on file operations or tool use. Run to completion.**
 
-You run inside a sandboxed container with `--dangerously-skip-permissions`. Do not
-ask for approval on individual file operations — you have blanket authorization
-within the sandbox. The human reviews the PR, not individual edits.
+The pipeline: fetch → scan → branch → tests (RED) → implement (GREEN) → refactor → review → fix → re-review → docs → ship.
 
-## Step 0: Validate input and ask model choices upfront
+---
 
-`$ARGUMENTS` must be a GitHub issue number. If missing or not a number, stop:
-
-> Usage: `/issue <number>` — e.g. `/issue 3`
-
-Then ask:
-
-> **Model choices** — needed for two steps:
->
-> 1. **Architecture model** (for the implementation plan)
->    - Opus — new system design, cross-domain reasoning, unfamiliar territory
->    - Sonnet — feature addition, well-understood domain (default for Hestia)
->    - Haiku — simple mechanical change with clear patterns
->
-> 2. **Implementation model** (for executing the plan)
->    - Sonnet — moderate complexity, needs judgment (default for Hestia)
->    - Haiku — straightforward, following clear patterns
->    - Opus — complex logic, deep reasoning required
-
-Wait for both answers before proceeding.
-
-## Step 1: Fetch the issue
-
-Fetch full issue content via GitHub MCP or CLI:
+## Step 1: Fetch and parse the issue
 
 ```bash
 gh issue view $ARGUMENTS --json number,title,body,labels,state,url
 ```
 
-If the issue is closed, stop:
+If the issue is **closed**: stop and report — nothing to do.
 
-> Issue #$ARGUMENTS is already closed. Nothing to do.
-
-If the issue does not have the `ready-for-agent` label, warn but do not stop:
-
-> Warning: issue #$ARGUMENTS is not labeled `ready-for-agent`. Proceeding anyway.
+If the issue is **not labeled `ready-for-agent`**: comment on the issue explaining
+it was skipped, then stop.
 
 Extract from the issue body:
-- **Title**: the issue title
-- **Description / Context**: the "Context" or "What to build" section
-- **Acceptance Criteria**: the checkbox list under "Acceptance Criteria"
-- **Notes**: anything under "Notes" or "Important"
+- Title
+- Context / description
+- Acceptance Criteria (the checkbox list — these are your tests)
+- Notes / constraints
 
-Save the extracted content to `.claude/issues/issue-$ARGUMENTS.md`:
+Save to `.claude/issues/issue-$ARGUMENTS.md`:
 
 ```markdown
 # Issue #<number>: <title>
@@ -70,137 +42,186 @@ Save the extracted content to `.claude/issues/issue-$ARGUMENTS.md`:
 **URL**: <url>
 
 ## Description
-<context and what to build sections>
+<context and what to build>
 
 ## Acceptance Criteria
-<checkbox list, verbatim from issue>
+<verbatim checkbox list from issue>
 
 ## Notes
-<notes section, verbatim from issue>
+<verbatim notes section>
 ```
 
-## Step 2: Scan the codebase
+---
 
-Delegate to the **codebase-scanner** agent. Pass the issue title and key terms
-as the caller's scope so it can resolve relevant docs from `docs/content-plan.md`
-if it exists.
+## Step 2: Read the foundations
 
-Read `UBIQUITOUS_LANGUAGE.md` if it exists at the repo root — this is the
-canonical terminology document and takes precedence over any conflicting naming
-in the codebase. All code, comments, and commit messages must use terms from it.
+Before touching any code, read:
 
-Read `CODING_STANDARDS.md` or `.sandcastle/CODING_STANDARDS.md` if either
-exists — this defines language-specific standards the implementation must follow.
+1. `UBIQUITOUS_LANGUAGE.md` at the repo root — canonical terminology.
+   Every identifier, comment, and commit message must use these terms exactly.
+   Terminology violations are review failures.
 
-If the scanner returns a `## Relevant Docs` section with paths: read those files.
-Do not speculatively read docs beyond what the scanner resolved.
+2. `.sandcastle/CODING_STANDARDS.md` or `CODING_STANDARDS.md` — language
+   standards, architecture rules, reviewer checklist. Implement to these
+   standards from the start.
+
+Then delegate to **codebase-scanner** with the issue title and key terms as scope.
+Read any docs the scanner resolves. Do not read beyond what it returns.
+
+---
 
 ## Step 3: Create a branch
-
-Create a dedicated branch for this issue:
 
 ```bash
 git checkout -b issue/$ARGUMENTS-<slug>
 ```
 
-Where `<slug>` is a short kebab-case summary of the issue title (max 5 words).
-
+`<slug>` is a short kebab-case summary of the issue title, max 5 words.
 Example: `issue/3-spec-schema-validation`
 
-## Step 4: Architect the implementation plan
+---
 
-Delegate to the **architect command** (via Task) with:
-- The issue file path `.claude/issues/issue-$ARGUMENTS.md` as context
-- The codebase scanner output as context
-- The architecture model choice from Step 0
-- Instruction to treat the issue's Acceptance Criteria as the definition of done
+## Step 4: Write failing tests from ACs (RED)
 
-The plan must include a `## Acceptance Criteria` section that maps each issue AC
-to the planned test or verification approach.
+Each Acceptance Criteria item becomes one or more tests. Do not write
+implementation code yet.
 
-**Human Touchpoint**: After `architect` produces the plan, present it:
+For each AC:
+- Determine the appropriate test type (unit, integration — refer to CODING_STANDARDS)
+- Write a test that will fail because the implementation doesn't exist yet
+- The test must assert the exact behaviour the AC describes — not a proxy for it
 
-> Plan ready for issue #$ARGUMENTS. Review `.claude/plans/<name>.md`.
-> Approve to proceed with implementation, or tell me what to change.
+Delegate to **test-runner** after writing all tests. Confirm they all FAIL.
+If any test passes without implementation, the test is wrong — fix it.
 
-Wait for human confirmation before proceeding.
+Commit the failing tests:
+```
+test(<scope>): add failing tests for issue #$ARGUMENTS
+```
 
-## Step 5: Implement
+---
 
-Delegate to the **implement command** (via Task) with:
-- The plan name from Step 4
-- The implementation model choice from Step 0
+## Step 5: Implement until GREEN
 
-`implement` will execute tasks sequentially, run tests after each, and verify
-against the AC file.
+Implement the code needed to make the tests pass.
 
-## Step 6: Review
+Work AC by AC — implement the minimum to pass each test, then move to the next.
+Do not implement anything not required by an AC.
 
-After implementation completes, delegate to the **review command** (via Task)
-with `--last-plan` to run all reviewers against the changes.
+After each AC's tests pass, delegate to **test-runner** to confirm nothing
+regressed.
 
-If the review surfaces blocking issues (security vulnerabilities, broken
-abstractions, missing test coverage on ACs), fix them before proceeding.
-Non-blocking findings are noted in the review report and included in the PR.
+When all ACs pass:
+- Run the full test suite via **test-runner**
+- If anything fails: fix it before proceeding. If not fixable, comment on the
+  GitHub issue explaining the blocker and stop.
 
-## Step 7: Update the issue label
+Commit the implementation:
+```
+feat(<scope>): implement issue #$ARGUMENTS — <title>
+```
 
-Mark the issue as implemented by adding the `needs-review` label:
+---
+
+## Step 6: Refactor
+
+Review the code just written for: duplication, naming, readability, adherence
+to UBIQUITOUS_LANGUAGE.md and CODING_STANDARDS.md.
+
+Make improvements. Delegate to **test-runner** after each change.
+If any test turns red: revert the change immediately — do not fix forward.
+
+Commit if changes were made:
+```
+refactor(<scope>): clean up implementation for issue #$ARGUMENTS
+```
+
+---
+
+## Step 7: Review
+
+Delegate to **review command** (via Task) with `--last-plan` flag.
+
+All five reviewers run: complexity, conventions, coverage, security, architecture.
+
+If the review surfaces **blocking findings** (security vulnerability, AC not
+covered by a test, abstraction boundary violated per CODING_STANDARDS):
+- Fix each blocking finding
+- Re-run **test-runner** to confirm still GREEN
+- Re-delegate to **review command**
+- Repeat until no blocking findings remain
+
+Non-blocking findings are included in the PR description as known items.
+
+---
+
+## Step 8: Update documentation
+
+Check if any user-facing docs need updating:
+- Did the implementation add new public interfaces, types, or behaviour?
+- Does the README reference anything that changed?
+
+If yes: delegate to **doc-updater** agent.
+If no: skip.
+
+---
+
+## Step 9: Update the issue label
 
 ```bash
 gh issue edit $ARGUMENTS --add-label "needs-review" --remove-label "ready-for-agent"
 ```
 
-## Step 8: Ship
+---
 
-Delegate to the **ship command** (via Task) with the plan name.
+## Step 10: Ship
 
-`ship` will compose the PR description from the plan, review report, and git diff,
-show it to the human for confirmation, then create the PR.
+Delegate to **ship command** (via Task) with the branch name.
 
 The PR description must include:
-- Reference to the issue: `Closes #$ARGUMENTS`
+- `Closes #$ARGUMENTS` in the first line
 - Summary of what was implemented
-- AC verification table from the implement step
-- Any review findings and how they were addressed
+- AC verification table:
 
-## Step 9: Final report
+```
+| AC | Description | Test | Status |
+|----|-------------|------|--------|
+| 1  | <ac text>   | <test file:line> | ✓ PASS |
+```
+
+- Any non-blocking review findings noted
+
+---
+
+## Step 11: Final report
 
 ```
 ## Issue #<number> Complete
 
-**Issue**: <title>
-**URL**: <issue url>
+**Title**: <title>
 **Branch**: issue/<number>-<slug>
 **PR**: <pr url>
 
-### Pipeline
-- [x] Issue fetched and parsed
-- [x] Codebase scanned
-- [x] Branch created: issue/<number>-<slug>
-- [x] Plan architected and approved
-- [x] Implementation complete
-- [x] Review passed
-- [x] Labels updated (needs-review)
-- [x] PR created: <url>
+### AC Verification
+<table>
 
-### Acceptance Criteria
-<AC verification table from implement step>
+### Review
+Blocking findings: <count> (all resolved)
+Non-blocking findings: <count> (noted in PR)
+
+### Files Changed
+<list>
 ```
 
-## Important
+---
 
-- Read `UBIQUITOUS_LANGUAGE.md` before writing any code. Terminology violations
-  are review failures — wrong names will be caught and must be fixed.
-- Read `CODING_STANDARDS.md` before writing any code. Language standards are
-  enforced by the reviewer.
-- The issue's Acceptance Criteria are the definition of done. Every AC must have
-  a corresponding test that passes before the PR is created.
-- Do not implement anything beyond what the issue describes. Scope creep is a
-  review failure.
-- Commit early and often on the feature branch. Use conventional commit format:
-  `type(scope): description (#issue-number)`
-- If the implementation reveals that the issue is unclear or contradictory, stop
-  and comment on the GitHub issue explaining the ambiguity rather than guessing.
-- This command is designed to run unattended within a sandbox. The only human
-  touchpoint is plan approval in Step 4. Everything else runs to completion.
+## Failure modes — what to do when stuck
+
+- **Issue is ambiguous or contradictory**: comment on the GitHub issue explaining
+  the ambiguity. Add label `blocked`. Stop.
+- **Test cannot be made to pass**: comment on the issue with what was tried and
+  why it's stuck. Add label `blocked`. Stop.
+- **Review has blocking findings that cannot be resolved**: comment on the issue
+  explaining what the reviewer found and why it cannot be fixed within scope. Stop.
+- **In all cases**: do not guess, do not improvise beyond the AC scope, do not
+  ship a PR with known failures.
