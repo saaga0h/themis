@@ -167,7 +167,15 @@ or stopped on failure):
 
 ## Design principles
 
-**One issue at a time.** The factory does not parallelize. Sequential is correct.
+**One issue at a time.** The factory does not parallelize. Each `/issue` run
+branches from fresh main and targets main. Issues that can safely run in
+parallel are identified by the human before labeling — if two issues are
+labeled `ready-for-agent` together, the human has verified they touch different
+parts of the codebase and their PRs can be merged independently.
+
+**Always branch from main.** `/issue` fetches and pulls main before creating
+its branch. This ensures PRs are always based on the latest merged work and
+never accidentally stack on another feature branch.
 
 **Stop on unexpected failure.** A crash means something is wrong the human
 needs to understand before more code is written.
@@ -181,3 +189,8 @@ and stops cleanly rather than abandoning a half-implemented issue mid-run.
 **Idempotent re-runs.** Issues that completed (no longer `ready-for-agent`)
 or are blocked (`blocked` label) will not appear on re-run. The factory
 picks up where it can safely continue.
+
+**The human decides what runs in parallel.** The factory never reasons about
+which issues are safe to run concurrently — that judgment belongs to the human
+who understands the codebase and the dependency graph. The factory's job is
+to execute reliably, not to orchestrate parallelism.
