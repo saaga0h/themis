@@ -10,9 +10,9 @@ You are the autonomous software factory loop. You process open GitHub issues
 labeled `ready-for-agent` one at a time, in order, until the backlog is empty
 or something requires human attention.
 
-**You run inside a sandboxed container with `--dangerously-skip-permissions`.
-Do not ask for approval. Run to completion. Stop only when the backlog is empty
-or a blocking failure occurs.**
+**You run inside a sandboxed container with `--dangerously-skip-permissions`
+and `--max-turns`. Do not ask for approval. Run to completion. Stop only when
+the backlog is empty, a blocking failure occurs, or turns are exhausted.**
 
 ---
 
@@ -57,8 +57,7 @@ Run /factory to process them.
 Before processing any issue, read these once — they apply to all issues:
 
 1. `UBIQUITOUS_LANGUAGE.md` — canonical terminology, applies to all code
-2. `.sandcastle/CODING_STANDARDS.md` or `CODING_STANDARDS.md` — standards and
-   reviewer checklist
+2. `CODING_STANDARDS.md` — standards and reviewer checklist
 
 These do not need to be re-read between issues.
 
@@ -68,7 +67,22 @@ These do not need to be re-read between issues.
 
 For each issue in the backlog (respecting `--max` if set):
 
-### 3a: Check for blockers
+### 3a: Check remaining turns
+
+Before starting each issue, assess whether enough turns remain to complete it.
+Each issue typically requires 50-150 turns. If you are approaching the
+`--max-turns` limit (within ~50 turns), stop the loop cleanly:
+
+```
+Turn limit approaching — stopping factory after <n> issues.
+Remaining backlog: #X, #Y, #Z
+Re-run /factory to continue.
+```
+
+Do not start an issue you cannot finish — a half-implemented issue is worse
+than an unstarted one.
+
+### 3b: Check for blockers
 
 Before starting an issue, check if it references other open issues as
 dependencies. Look for patterns like "depends on #N", "blocked by #N",
@@ -81,11 +95,11 @@ Log the skip:
 Skipping #<number> — blocked by #<dependency> (still open)
 ```
 
-### 3b: Run /issue
+### 3c: Run /issue
 
 Delegate to the **issue command** (via Task) with the issue number.
 
-### 3c: Handle the outcome
+### 3d: Handle the outcome
 
 **Success** — `/issue` completed and created a PR:
 
@@ -127,7 +141,8 @@ Add the `blocked` label. Stop the factory loop.
 
 ## Step 4: Final report
 
-After the loop completes (backlog empty, --max reached, or stopped on failure):
+After the loop completes (backlog empty, --max reached, turn limit approached,
+or stopped on failure):
 
 ```
 ## Factory Run Complete
@@ -141,32 +156,28 @@ After the loop completes (backlog empty, --max reached, or stopped on failure):
 ✓ #1 — <title> — PR: <url>
 ✓ #2 — <title> — PR: <url>
 ✗ #3 — <title> — blocked (see issue comments)
+
+### Remaining backlog
+#4 — <title>
+#5 — <title>
+(re-run /factory to continue)
 ```
 
 ---
 
 ## Design principles
 
-**One issue at a time.** The factory does not parallelize. Issues may depend
-on each other and parallel execution would cause conflicts. Sequential is
-correct here.
+**One issue at a time.** The factory does not parallelize. Sequential is correct.
 
-**Stop on unexpected failure.** A crash or unresolvable blocker means something
-is wrong that the human needs to understand before more code is written. Do not
-skip and continue — stop and report.
+**Stop on unexpected failure.** A crash means something is wrong the human
+needs to understand before more code is written.
 
-**Stop on blocked.** A `blocked` label means `/issue` found something it could
-not resolve autonomously. The human needs to see that before more issues are
-processed, because the blocker might affect subsequent issues too.
+**Stop on blocked.** A `blocked` label means `/issue` hit its cycle limits or
+found something unresolvable. The human needs to intervene.
 
-**Dependency ordering.** Issues are processed lowest-number-first by default.
-Dependency checks skip issues whose dependencies are still open, but the
-human is responsible for writing issues in a resolvable order. The factory
-does not try to reorder or resolve dependency graphs beyond simple open/closed
-checks.
+**Turn-aware.** The factory checks remaining turns before starting each issue
+and stops cleanly rather than abandoning a half-implemented issue mid-run.
 
-**Idempotent re-runs.** If the factory is stopped mid-run and re-run, it will
-re-fetch the backlog. Issues that were completed (no longer labeled
-`ready-for-agent`) will not appear. Issues that were blocked (labeled `blocked`)
-will not appear either — they require human intervention before being relabeled.
-The factory picks up where it can safely continue.
+**Idempotent re-runs.** Issues that completed (no longer `ready-for-agent`)
+or are blocked (`blocked` label) will not appear on re-run. The factory
+picks up where it can safely continue.
