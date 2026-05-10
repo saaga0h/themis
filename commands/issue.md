@@ -262,7 +262,14 @@ gh issue edit $ARGUMENTS --add-label "needs-review" --remove-label "ready-for-ag
 
 ## Step 10: Ship
 
-Delegate to **ship command** (via Task) with the branch name.
+Delegate to **ship command** (via Task) with the branch name and `--no-confirm` flag.
+
+```
+/ship <branch-name> --no-confirm
+```
+
+The `--no-confirm` flag skips the PR preview and confirmation step — the factory
+is autonomous, there is no human to confirm. The PR is created immediately.
 
 The PR must target `main` — never another feature branch.
 
