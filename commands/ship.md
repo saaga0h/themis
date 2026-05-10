@@ -1,6 +1,6 @@
 ---
 description: Create a PR/MR for completed work. Reads plan, review report, and git diff to compose the PR description. Uses GitHub/GitLab MCP if available, falls back to CLI.
-argument-hint: [plan-name] [--skip-review]
+argument-hint: [plan-name] [--skip-review] [--no-confirm]
 allowed-tools: Read, Glob, Grep, Bash, Task, mcp
 ---
 
@@ -14,7 +14,7 @@ Before anything else, verify:
 
 1. **Git state**: Are there uncommitted changes? If yes, ask the user if they want to commit first.
 2. **Branch**: Are we on a feature branch or main/master? If on main, warn the user — they probably want a branch.
-3. **Plan**: If `$ARGUMENTS` is provided (excluding `--skip-review`), read `.claude/plans/$ARGUMENTS.md`. If not, check for the most recently modified plan with completed tasks.
+3. **Plan**: If `$ARGUMENTS` is provided (excluding flags), read `.claude/plans/$ARGUMENTS.md`. If not, check for the most recently modified plan with completed tasks.
 4. **Review**: Check `.claude/reviews/` for a recent review report.
    - If a report exists: proceed.
    - If `--skip-review` is in `$ARGUMENTS`: ask the user to state the reason for skipping, then proceed.
@@ -26,8 +26,6 @@ Before anything else, verify:
 
      To override: re-run /ship --skip-review and state your reason.
      ```
-
-Ask the user to confirm before creating the PR.
 
 ## Step 1: Gather context
 
@@ -62,9 +60,11 @@ Write the PR description with this structure:
 
 Keep it concise. The PR description should help a human reviewer understand what happened and why, not repeat every line of the diff.
 
-## Step 3: Show the user
+## Step 3: Confirm or create directly
 
-Display the composed PR before creating it:
+**If `--no-confirm` is in `$ARGUMENTS`**: skip straight to Step 4 — create the PR immediately without showing a preview or waiting. This flag is set by `/issue` when running in the autonomous factory pipeline.
+
+**Otherwise**: display the composed PR before creating it:
 
 "**Ready to create PR**
 - **Branch**: <branch name>
@@ -103,7 +103,6 @@ Do NOT:
 
 ## Important
 
-- Never create a PR without user confirmation
 - The PR title should be clear and concise — not a plan file name
 - If the git diff is very large, summarize by area rather than listing every file
 - If there's no plan file, compose from git diff alone — plans are recommended but not required
