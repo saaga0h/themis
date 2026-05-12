@@ -18,7 +18,7 @@ The pipeline: fetch → scan → branch from main → tests (RED) → implement 
 ## Cycle limits — hard ceilings to prevent dead loops
 
 - **Test-fix attempts**: max 3 attempts to make a failing test pass before stopping
-- **Review cycles**: max 3 review → fix → re-review cycles before stopping
+- **Review cycles**: max 2 cycles by default; max 3 only with a context change (see Step 7)
 - **Refactor passes**: max 1 refactor pass — do not loop on refactoring
 
 When any limit is hit: comment on the GitHub issue explaining exactly what was
@@ -162,7 +162,8 @@ refactor(<scope>): clean up implementation for issue #$ARGUMENTS
 
 ## Step 7: Review → fix → re-review
 
-**Review cycle limit: 3 cycles maximum.**
+**Default review cycle limit: 2 cycles.**
+**Round 3 is only permitted when a context change justifies it** — see below.
 
 ### What counts as blocking
 
@@ -193,13 +194,37 @@ Cycle N:
 2. Categorise each finding strictly: blocking (per above) or non-blocking
 3. If no blocking findings: proceed to Step 8
 4. Fix each blocking finding — run **test-runner** after each fix to confirm GREEN
-5. Increment cycle counter. If counter = 3 and blocking findings remain:
-   - Comment on the issue: "Review cycle limit reached. Remaining blocking
-     findings: <list>. Human review required."
-   - Add `blocked` label. Stop.
+5. Increment cycle counter
 
-Non-blocking findings are collected and included in the PR description as a
-"Review Notes" section so the human reviewer can decide what to act on.
+### Round 3 gate
+
+After cycle 2, if blocking findings still remain, **do not automatically enter
+round 3**. Instead, evaluate whether a context change is available:
+
+**Permitted round 3 triggers** (at least one must apply):
+- The issue touches a **security-sensitive surface** (auth, credentials, network
+  policy, sandboxing, data persistence) — invoke the security reviewer again with
+  explicit focus on the remaining findings
+- The change modifies a **public API surface** — invoke the architecture reviewer
+  with the full interface diff as additional context
+- The change involves **numerical correctness** (floating point, linear algebra,
+  statistical computation) — invoke the complexity reviewer with tolerance and
+  reference expectations as context
+- A **new context artifact** is available that wasn't present in cycle 2 (e.g.
+  a related issue's resolution just landed on main, a doc was updated)
+
+If none of these triggers apply after cycle 2: do not enter round 3.
+Comment on the issue: "Review cycle limit reached after 2 cycles. No round 3
+trigger applies. Remaining blocking findings: <list>. Human review required."
+Add `blocked` label. Stop.
+
+If a trigger applies: enter round 3 with the trigger explicitly noted in the
+review invocation as additional context. If round 3 still leaves blocking
+findings unresolved: comment with remaining findings, add `blocked` label, stop.
+
+**Rationale**: LLM self-review past round 2 without new information produces
+diminishing returns and, for security-sensitive code, can introduce new
+vulnerabilities. Round 3 must add context, not just retry.
 
 ---
 
@@ -302,7 +327,8 @@ The PR description must include:
 <table>
 
 ### Review
-Cycles used: <n>/3
+Cycles used: <n>/2 (or <n>/3 if round 3 trigger applied)
+Round 3 trigger: <trigger name or "N/A">
 Blocking findings resolved: <n>
 Non-blocking findings: <n> (noted in PR — human reviewer to decide)
 
@@ -321,8 +347,9 @@ Non-blocking findings: <n> (noted in PR — human reviewer to decide)
   the ambiguity. Add `blocked` label. Stop.
 - **Test-fix limit (3) reached**: comment with which AC failed and what was tried.
   Add `blocked` label. Stop.
-- **Review cycle limit (3) reached**: comment with remaining blocking findings.
-  Add `blocked` label. Stop.
+- **Review cycle limit reached, no round 3 trigger**: comment with remaining
+  blocking findings and which triggers were evaluated. Add `blocked` label. Stop.
+- **Round 3 exhausted**: comment with remaining findings. Add `blocked` label. Stop.
 - **Repo not in clean state**: comment explaining what was found. Stop.
 - **In all cases**: do not guess, do not improvise beyond the AC scope, do not
   ship a PR with known failures. Never target a feature branch as PR base.
