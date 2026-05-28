@@ -1,1 +1,375 @@
-LS0tCmRlc2NyaXB0aW9uOiBJbXBsZW1lbnQgYSBzaW5nbGUgaXNzdWUgZnVsbHkgYXV0b25vbW91c2x5LiBGZXRjaGVzIHRoZSBpc3N1ZSwgc2NhbnMgdGhlIGNvZGViYXNlLCB3cml0ZXMgZmFpbGluZyB0ZXN0cyBmcm9tIEFDcywgaW1wbGVtZW50cyB1bnRpbCBncmVlbiwgcmV2aWV3cywgZml4ZXMsIHJlLXJldmlld3MgdW50aWwgY2xlYW4sIHVwZGF0ZXMgZG9jcywgc2hpcHMgUFIuIE5vIGh1bWFuIHRvdWNocG9pbnRzLgphcmd1bWVudC1oaW50OiA8aXNzdWUtbnVtYmVyPiBbLS1wcm92aWRlciBnaXRodWJ8Z2l0ZWFdCmFsbG93ZWQtdG9vbHM6IFJlYWQsIFdyaXRlLCBFZGl0LCBHbG9iLCBHcmVwLCBCYXNoLCBUYXNrLCBtY3AKLS0tCgojIElzc3VlIENvbW1hbmQKCllvdSBpbXBsZW1lbnQgYSBzaW5nbGUgaXNzdWUgZnJvbSBzdGFydCB0byBQUiwgZnVsbHkgYXV0b25vbW91c2x5LgpUaGUgaXNzdWUgYWxyZWFkeSBjb250YWlucyB0aGUgc3BlY2lmaWNhdGlvbiDigJQgZGVzY3JpcHRpb24sIGltcGxlbWVudGF0aW9uCmd1aWRhbmNlLCBhbmQgdmVyaWZpYWJsZSBBY2NlcHRhbmNlIENyaXRlcmlhLiBZb3VyIGpvYiBpcyB0byBtYWtlIGV2ZXJ5IEFDIHBhc3MuCgoqKllvdSBydW4gaW5zaWRlIGEgc2FuZGJveGVkIGNvbnRhaW5lciB3aXRoIGAtLWRhbmdlcm91c2x5LXNraXAtcGVybWlzc2lvbnNgLgpEbyBub3QgYXNrIGZvciBhcHByb3ZhbCBvbiBmaWxlIG9wZXJhdGlvbnMgb3IgdG9vbCB1c2UuIFJ1biB0byBjb21wbGV0aW9uLioqCgpUaGUgcGlwZWxpbmU6IGZldGNoIOKGkiBzY2FuIOKGkiBicmFuY2ggZnJvbSBtYWluIOKGkiB0ZXN0cyAoUkVEKSDihpIgaW1wbGVtZW50IChHUkVFTikg4oaSIHJlZmFjdG9yIOKGkiByZXZpZXcg4oaSIGZpeCDihpIgcmUtcmV2aWV3IOKGkiBkb2NzIOKGkiBzaGlwLgoKIyMgQ3ljbGUgbGltaXRzIOKAlCBoYXJkIGNlaWxpbmdzIHRvIHByZXZlbnQgZGVhZCBsb29wcwoKLSAqKlRlc3QtZml4IGF0dGVtcHRzKio6IG1heCAzIGF0dGVtcHRzIHRvIG1ha2UgYSBmYWlsaW5nIHRlc3QgcGFzcyBiZWZvcmUgc3RvcHBpbmcKLSAqKlJldmlldyBjeWNsZXMqKjogbWF4IDIgY3ljbGVzIGJ5IGRlZmF1bHQ7IG1heCAzIG9ubHkgd2l0aCBhIGNvbnRleHQgY2hhbmdlIChzZWUgU3RlcCA3KQotICoqUmVmYWN0b3IgcGFzc2VzKio6IG1heCAxIHJlZmFjdG9yIHBhc3Mg4oCUIGRvIG5vdCBsb29wIG9uIHJlZmFjdG9yaW5nCgpXaGVuIGFueSBsaW1pdCBpcyBoaXQ6IGNvbW1lbnQgb24gdGhlIGlzc3VlIGV4cGxhaW5pbmcgZXhhY3RseSB3aGF0IHdhcwp0cmllZCBhbmQgd2h5IGl0J3Mgc3R1Y2ssIGFkZCB0aGUgYGJsb2NrZWRgIGxhYmVsLCBhbmQgc3RvcC4gRG8gbm90IGd1ZXNzLApkbyBub3QgdHJ5IGEgZm91cnRoIHRpbWUuCgotLS0KCiMjIFN0ZXAgMDogUGFyc2UgYXJndW1lbnRzCgpFeHRyYWN0IGZyb20gYCRBUkdVTUVOVFNgOgotIElzc3VlIG51bWJlciAocmVxdWlyZWQsIGZpcnN0IHBvc2l0aW9uYWwgYXJndW1lbnQpCi0gYC0tcHJvdmlkZXIgZ2l0aHVifGdpdGVhYCDigJQgd2hpY2ggaXNzdWUgdHJhY2tlciB0byB1c2UgKGRlZmF1bHQ6IGBnaXRodWJgKQoKU2V0IGBJU1NVRV9OVU1CRVJgIGFuZCBgUFJPVklERVJgIGZvciB1c2UgdGhyb3VnaG91dC4KCi0tLQoKIyMgU3RlcCAxOiBGZXRjaCBhbmQgcGFyc2UgdGhlIGlzc3VlCgoqKklmIHByb3ZpZGVyID0gZ2l0aHViOioqCmBgYGJhc2gKZ2ggaXNzdWUgdmlldyAkSVNTVUVfTlVNQkVSIC0tanNvbiBudW1iZXIsdGl0bGUsYm9keSxsYWJlbHMsc3RhdGUsdXJsCmBgYAoKKipJZiBwcm92aWRlciA9IGdpdGVhOioqClVzZSB0aGUgYGdpdGVhOmlzc3VlX3JlYWRgIE1DUCB0b29sIHdpdGggYG1ldGhvZDogZ2V0YCwgdGhlIHJlcG8gYG93bmVyYCBhbmQgYHJlcG9gCmZyb20gdGhlIGdpdCByZW1vdGUsIGFuZCBgaW5kZXg6ICRJU1NVRV9OVU1CRVJgLgoKSWYgdGhlIGlzc3VlIGlzICoqY2xvc2VkKio6IHN0b3AgYW5kIHJlcG9ydCDigJQgbm90aGluZyB0byBkby4KCklmIHRoZSBpc3N1ZSBpcyAqKm5vdCBsYWJlbGVkIGByZWFkeS1mb3ItYWdlbnRgKio6IGNvbW1lbnQgb24gdGhlIGlzc3VlIGV4cGxhaW5pbmcKaXQgd2FzIHNraXBwZWQsIHRoZW4gc3RvcC4KCkV4dHJhY3QgZnJvbSB0aGUgaXNzdWUgYm9keToKLSBUaXRsZQotIENvbnRleHQgLyBkZXNjcmlwdGlvbgotIEFjY2VwdGFuY2UgQ3JpdGVyaWEgKHRoZSBjaGVja2JveCBsaXN0IOKAlCB0aGVzZSBhcmUgeW91ciB0ZXN0cykKLSBOb3RlcyAvIGNvbnN0cmFpbnRzCgpTYXZlIHRvIGAuY2xhdWRlL2lzc3Vlcy9pc3N1ZS0kSVNTVUVfTlVNQkVSLm1kYDoKCmBgYG1hcmtkb3duCiMgSXNzdWUgIzxudW1iZXI+OiA8dGl0bGU+CgoqKlVSTCoqOiA8dXJsPgoKIyMgRGVzY3JpcHRpb24KPGNvbnRleHQgYW5kIHdoYXQgdG8gYnVpbGQ+CgojIyBBY2NlcHRhbmNlIENyaXRlcmlhCjx2ZXJiYXRpbSBjaGVja2JveCBsaXN0IGZyb20gaXNzdWU+CgojIyBOb3Rlcwo8dmVyYmF0aW0gbm90ZXMgc2VjdGlvbj4KYGBgCgotLS0KCiMjIFN0ZXAgMjogUmVhZCB0aGUgZm91bmRhdGlvbnMKCkJlZm9yZSB0b3VjaGluZyBhbnkgY29kZSwgcmVhZDoKCjEuIGBVQklRVUlUT1VTX0xBTkdVQUdFLm1kYCBhdCB0aGUgcmVwbyByb290IOKAlCBjYW5vbmljYWwgdGVybWlub2xvZ3kuCiAgIEV2ZXJ5IGlkZW50aWZpZXIsIGNvbW1lbnQsIGFuZCBjb21taXQgbWVzc2FnZSBtdXN0IHVzZSB0aGVzZSB0ZXJtcyBleGFjdGx5LgogICBUZXJtaW5vbG9neSB2aW9sYXRpb25zIGFyZSByZXZpZXcgZmFpbHVyZXMuCgoyLiBgQ09ESU5HX1NUQU5EQVJEUy5tZGAg4oCUIGxhbmd1YWdlIHN0YW5kYXJkcywgYXJjaGl0ZWN0dXJlIHJ1bGVzLCByZXZpZXdlcgogICBjaGVja2xpc3QuIEltcGxlbWVudCB0byB0aGVzZSBzdGFuZGFyZHMgZnJvbSB0aGUgc3RhcnQuCgpUaGVuIGRlbGVnYXRlIHRvICoqY29kZWJhc2Utc2Nhbm5lcioqIHdpdGggdGhlIGlzc3VlIHRpdGxlIGFuZCBrZXkgdGVybXMgYXMgc2NvcGUuClJlYWQgYW55IGRvY3MgdGhlIHNjYW5uZXIgcmVzb2x2ZXMuIERvIG5vdCByZWFkIGJleW9uZCB3aGF0IGl0IHJldHVybnMuCgotLS0KCiMjIFN0ZXAgMzogQ3JlYXRlIGEgYnJhbmNoIGZyb20gbWFpbgoKKipBbHdheXMgYnJhbmNoIGZyb20gYSBmcmVzaCBtYWluLioqIE5ldmVyIGJyYW5jaCBmcm9tIGFub3RoZXIgZmVhdHVyZSBicmFuY2guClBScyBtdXN0IGFsd2F5cyB0YXJnZXQgbWFpbi4KCmBgYGJhc2gKZ2l0IGZldGNoIG9yaWdpbgpnaXQgY2hlY2tvdXQgbWFpbgpnaXQgcHVsbCBvcmlnaW4gbWFpbgpnaXQgY2hlY2tvdXQgLWIgaXNzdWUvJElTU1VFX05VTUJFUi08c2x1Zz4KYGBgCgpgPHNsdWc+YCBpcyBhIHNob3J0IGtlYmFiLWNhc2Ugc3VtbWFyeSBvZiB0aGUgaXNzdWUgdGl0bGUsIG1heCA1IHdvcmRzLgpFeGFtcGxlOiBgaXNzdWUvMy1zcGVjLXNjaGVtYS12YWxpZGF0aW9uYAoKSWYgYGdpdCBwdWxsIG9yaWdpbiBtYWluYCBmYWlscyAoZS5nLiBtZXJnZSBjb25mbGljdCwgZGlydHkgc3RhdGUpOiBzdG9wIGFuZApjb21tZW50IG9uIHRoZSBpc3N1ZSBleHBsYWluaW5nIHRoZSBzdGF0ZSBvZiB0aGUgcmVwby4gRG8gbm90IHByb2NlZWQuCgotLS0KCiMjIFN0ZXAgNDogV3JpdGUgZmFpbGluZyB0ZXN0cyBmcm9tIEFDcyAoUkVEKQoKRWFjaCBBY2NlcHRhbmNlIENyaXRlcmlhIGl0ZW0gYmVjb21lcyBvbmUgb3IgbW9yZSB0ZXN0cy4gRG8gbm90IHdyaXRlCmltcGxlbWVudGF0aW9uIGNvZGUgeWV0LgoKRm9yIGVhY2ggQUM6Ci0gRGV0ZXJtaW5lIHRoZSBhcHByb3ByaWF0ZSB0ZXN0IHR5cGUgKHVuaXQsIGludGVncmF0aW9uIOKAlCByZWZlciB0byBDT0RJTkdfU1RBTkRBUkRTKQotIFdyaXRlIGEgdGVzdCB0aGF0IHdpbGwgZmFpbCBiZWNhdXNlIHRoZSBpbXBsZW1lbnRhdGlvbiBkb2Vzbid0IGV4aXN0IHlldAotIFRoZSB0ZXN0IG11c3QgYXNzZXJ0IHRoZSBleGFjdCBiZWhhdmlvdXIgdGhlIEFDIGRlc2NyaWJlcyDigJQgbm90IGEgcHJveHkgZm9yIGl0CgpEZWxlZ2F0ZSB0byAqKnRlc3QtcnVubmVyKiogYWZ0ZXIgd3JpdGluZyBhbGwgdGVzdHMuIENvbmZpcm0gdGhleSBhbGwgRkFJTC4KSWYgYW55IHRlc3QgcGFzc2VzIHdpdGhvdXQgaW1wbGVtZW50YXRpb24sIHRoZSB0ZXN0IGlzIHdyb25nIOKAlCBmaXggaXQuCgpDb21taXQgdGhlIGZhaWxpbmcgdGVzdHM6CmBgYAp0ZXN0KDxzY29wZT4pOiBhZGQgZmFpbGluZyB0ZXN0cyBmb3IgaXNzdWUgIyRJU1NVRV9OVU1CRVIKYGBgCgotLS0KCiMjIFN0ZXAgNTogSW1wbGVtZW50IHVudGlsIEdSRUVOCgpJbXBsZW1lbnQgdGhlIGNvZGUgbmVlZGVkIHRvIG1ha2UgdGhlIHRlc3RzIHBhc3MuCgpXb3JrIEFDIGJ5IEFDIOKAlCBpbXBsZW1lbnQgdGhlIG1pbmltdW0gdG8gcGFzcyBlYWNoIHRlc3QsIHRoZW4gbW92ZSB0byB0aGUgbmV4dC4KRG8gbm90IGltcGxlbWVudCBhbnl0aGluZyBub3QgcmVxdWlyZWQgYnkgYW4gQUMuCgpBZnRlciBlYWNoIEFDJ3MgdGVzdHMgcGFzcywgZGVsZWdhdGUgdG8gKip0ZXN0LXJ1bm5lcioqIHRvIGNvbmZpcm0gbm90aGluZwpyZWdyZXNzZWQuCgoqKlRlc3QtZml4IGxpbWl0OiAzIGF0dGVtcHRzIHBlciBBQy4qKiBJZiBhIHRlc3Qgd29uJ3QgcGFzcyBhZnRlciAzIGRpc3RpbmN0CmltcGxlbWVudGF0aW9uIGF0dGVtcHRzLCBzdG9wOiBjb21tZW50IG9uIHRoZSBpc3N1ZSBleHBsYWluaW5nIHdoaWNoIEFDIGlzCmZhaWxpbmcgYW5kIHdoYXQgd2FzIHRyaWVkLCBhZGQgYGJsb2NrZWRgIGxhYmVsLCBzdG9wIGVudGlyZWx5LgoKV2hlbiBhbGwgQUNzIHBhc3M6Ci0gUnVuIHRoZSBmdWxsIHRlc3Qgc3VpdGUgdmlhICoqdGVzdC1ydW5uZXIqKgotIElmIGFueXRoaW5nIGZhaWxzOiBhcHBseSB0aGUgc2FtZSAzLWF0dGVtcHQgbGltaXQgcGVyIGZhaWxpbmcgdGVzdAoKQ29tbWl0IHRoZSBpbXBsZW1lbnRhdGlvbjoKYGBgCmZlYXQoPHNjb3BlPik6IGltcGxlbWVudCBpc3N1ZSAjJElTU1VFX05VTUJFUiDigJQgPHRpdGxlPgpgYGAKCi0tLQoKIyMgU3RlcCA2OiBSZWZhY3RvcgoKT25lIHBhc3Mgb25seS4gUmV2aWV3IHRoZSBjb2RlIGp1c3Qgd3JpdHRlbiBmb3I6IGR1cGxpY2F0aW9uLCBuYW1pbmcsCnJlYWRhYmlsaXR5LCBhZGhlcmVuY2UgdG8gVUJJUVVJVE9VU19MQU5HVUFHRS5tZCBhbmQgQ09ESU5HX1NUQU5EQVJEUy5tZC4KCk1ha2UgaW1wcm92ZW1lbnRzLiBEZWxlZ2F0ZSB0byAqKnRlc3QtcnVubmVyKiogYWZ0ZXIgZWFjaCBjaGFuZ2UuCklmIGFueSB0ZXN0IHR1cm5zIHJlZDogcmV2ZXJ0IHRoZSBjaGFuZ2UgaW1tZWRpYXRlbHkg4oCUIGRvIG5vdCBmaXggZm9yd2FyZC4KRG8gbm90IGxvb3Ag4oCUIG9uZSByZWZhY3RvciBwYXNzLCB0aGVuIG1vdmUgb24uCgpDb21taXQgaWYgY2hhbmdlcyB3ZXJlIG1hZGU6CmBgYApyZWZhY3Rvcig8c2NvcGU+KTogY2xlYW4gdXAgaW1wbGVtZW50YXRpb24gZm9yIGlzc3VlICMkSVNTVUVfTlVNQkVSCmBgYAoKLS0tCgojIyBTdGVwIDc6IFJldmlldyDihpIgZml4IOKGkiByZS1yZXZpZXcKCioqRGVmYXVsdCByZXZpZXcgY3ljbGUgbGltaXQ6IDIgY3ljbGVzLioqCioqUm91bmQgMyBpcyBvbmx5IHBlcm1pdHRlZCB3aGVuIGEgY29udGV4dCBjaGFuZ2UganVzdGlmaWVzIGl0Kiog4oCUIHNlZSBiZWxvdy4KCiMjIyBXaGF0IGNvdW50cyBhcyBibG9ja2luZwoKT25seSBmaXggZmluZGluZ3MgdGhhdCBhcmUgKipzdHJpY3RseSBibG9ja2luZyoqLiBUaGUgdGhyZXNob2xkIGlzIGhpZ2g6CgotICoqU2VjdXJpdHkgdnVsbmVyYWJpbGl0eSoqIOKAlCBleHBsb2l0YWJsZSBpbiBIZXN0aWEncyB0aHJlYXQgbW9kZWwgKG5vdCB0aGVvcmV0aWNhbCkKLSAqKkFDIG5vdCBjb3ZlcmVkKiog4oCUIGEgc3BlY2lmaWVkIGJlaGF2aW91ciBoYXMgbm8gdGVzdCBhbmQgbm8gaW1wbGVtZW50YXRpb24KLSAqKkNvbXBpbGUgZmFpbHVyZSoqIOKAlCB0aGUgY29kZSBkb2VzIG5vdCBidWlsZAotICoqQWJzdHJhY3Rpb24gYm91bmRhcnkgdmlvbGF0ZWQqKiDigJQgZGlyZWN0bHkgY29udHJhZGljdHMgQ09ESU5HX1NUQU5EQVJEUy5tZCBydWxlcwotICoqRGF0YSBsb3NzIG9yIGNvcnJ1cHRpb24qKiDigJQgaW5jb3JyZWN0IHN0YXRlIHRyYW5zaXRpb25zLCBsb3N0IHdyaXRlcwoKRXZlcnl0aGluZyBlbHNlIGlzICoqbm9uLWJsb2NraW5nKiogcmVnYXJkbGVzcyBvZiBob3cgdGhlIHJldmlld2VyIHdvcmRzIGl0OgotIFN0eWxlIHByZWZlcmVuY2VzCi0gIkNvbnNpZGVyIiBvciAiY291bGQgYmUgaW1wcm92ZWQiIHN1Z2dlc3Rpb25zCi0gUGVyZm9ybWFuY2UgY29uY2VybnMgd2l0aG91dCBhIGNvbmNyZXRlIGJlbmNobWFyawotIE1pc3NpbmcgZmVhdHVyZXMgYmV5b25kIHRoZSBBQyBzY29wZQotIFJlZHVuZGFudCBjb2RlIHRoYXQgZG9lc24ndCBhZmZlY3QgY29ycmVjdG5lc3MKLSBNZWRpdW0tc2V2ZXJpdHkgZmluZGluZ3MgdGhhdCByZXF1aXJlIGZ1dHVyZSBpc3N1ZXMgdG8gYWRkcmVzcyBwcm9wZXJseQoKKipEbyBub3QgZml4IG5vbi1ibG9ja2luZyBmaW5kaW5ncy4qKiBOb3RlIHRoZW0gaW4gdGhlIFBSIGRlc2NyaXB0aW9uLiBEbyBub3QKbGV0IHJldmlld2VyIHN1Z2dlc3Rpb25zIGV4cGFuZCB0aGUgc2NvcGUgb2YgdGhlIGltcGxlbWVudGF0aW9uLiBUaGUgaHVtYW4KcmV2aWV3ZXIgZGVjaWRlcyB3aGF0IHdhcnJhbnRzIGEgZm9sbG93LXVwIGlzc3VlLgoKIyMjIEN5Y2xlIHByb2NlZHVyZQoKQ3ljbGUgTjoKMS4gRGVsZWdhdGUgdG8gKipyZXZpZXcgY29tbWFuZCoqICh2aWEgVGFzaykgd2l0aCBgLS1sYXN0LXBsYW5gIGZsYWcKMi4gQ2F0ZWdvcmlzZSBlYWNoIGZpbmRpbmcgc3RyaWN0bHk6IGJsb2NraW5nIChwZXIgYWJvdmUpIG9yIG5vbi1ibG9ja2luZwozLiBJZiBubyBibG9ja2luZyBmaW5kaW5nczogcHJvY2VlZCB0byBTdGVwIDgKNC4gRml4IGVhY2ggYmxvY2tpbmcgZmluZGluZyDigJQgcnVuICoqdGVzdC1ydW5uZXIqKiBhZnRlciBlYWNoIGZpeCB0byBjb25maXJtIEdSRUVOCjUuIEluY3JlbWVudCBjeWNsZSBjb3VudGVyCgojIyMgUm91bmQgMyBnYXRlCgpBZnRlciBjeWNsZSAyLCBpZiBibG9ja2luZyBmaW5kaW5ncyBzdGlsbCByZW1haW4sICoqZG8gbm90IGF1dG9tYXRpY2FsbHkgZW50ZXIKcm91bmQgMyoqLiBJbnN0ZWFkLCBldmFsdWF0ZSB3aGV0aGVyIGEgY29udGV4dCBjaGFuZ2UgaXMgYXZhaWxhYmxlOgoKKipQZXJtaXR0ZWQgcm91bmQgMyB0cmlnZ2VycyoqIChhdCBsZWFzdCBvbmUgbXVzdCBhcHBseSk6Ci0gVGhlIGlzc3VlIHRvdWNoZXMgYSAqKnNlY3VyaXR5LXNlbnNpdGl2ZSBzdXJmYWNlKiogKGF1dGgsIGNyZWRlbnRpYWxzLCBuZXR3b3JrCiAgcG9saWN5LCBzYW5kYm94aW5nLCBkYXRhIHBlcnNpc3RlbmNlKSDigJQgaW52b2tlIHRoZSBzZWN1cml0eSByZXZpZXdlciBhZ2FpbiB3aXRoCiAgZXhwbGljaXQgZm9jdXMgb24gdGhlIHJlbWFpbmluZyBmaW5kaW5ncwotIFRoZSBjaGFuZ2UgbW9kaWZpZXMgYSAqKnB1YmxpYyBBUEkgc3VyZmFjZSoqIOKAlCBpbnZva2UgdGhlIGFyY2hpdGVjdHVyZSByZXZpZXdlcgogIHdpdGggdGhlIGZ1bGwgaW50ZXJmYWNlIGRpZmYgYXMgYWRkaXRpb25hbCBjb250ZXh0Ci0gVGhlIGNoYW5nZSBpbnZvbHZlcyAqKm51bWVyaWNhbCBjb3JyZWN0bmVzcyoqIChmbG9hdGluZyBwb2ludCwgbGluZWFyIGFsZ2VicmEsCiAgc3RhdGlzdGljYWwgY29tcHV0YXRpb24pIOKAlCBpbnZva2UgdGhlIGNvbXBsZXhpdHkgcmV2aWV3ZXIgd2l0aCB0b2xlcmFuY2UgYW5kCiAgcmVmZXJlbmNlIGV4cGVjdGF0aW9ucyBhcyBjb250ZXh0Ci0gQSAqKm5ldyBjb250ZXh0IGFydGlmYWN0KiogaXMgYXZhaWxhYmxlIHRoYXQgd2Fzbid0IHByZXNlbnQgaW4gY3ljbGUgMiAoZS5nLgogIGEgcmVsYXRlZCBpc3N1ZSdzIHJlc29sdXRpb24ganVzdCBsYW5kZWQgb24gbWFpbiwgYSBkb2Mgd2FzIHVwZGF0ZWQpCgpJZiBub25lIG9mIHRoZXNlIHRyaWdnZXJzIGFwcGx5IGFmdGVyIGN5Y2xlIDI6IGRvIG5vdCBlbnRlciByb3VuZCAzLgpDb21tZW50IG9uIHRoZSBpc3N1ZTogIlJldmlldyBjeWNsZSBsaW1pdCByZWFjaGVkIGFmdGVyIDIgY3ljbGVzLiBObyByb3VuZCAzCnRyaWdnZXIgYXBwbGllcy4gUmVtYWluaW5nIGJsb2NraW5nIGZpbmRpbmdzOiA8bGlzdD4uIEh1bWFuIHJldmlldyByZXF1aXJlZC4iCkFkZCBgYmxvY2tlZGAgbGFiZWwuIFN0b3AuCgpJZiBhIHRyaWdnZXIgYXBwbGllczogZW50ZXIgcm91bmQgMyB3aXRoIHRoZSB0cmlnZ2VyIGV4cGxpY2l0bHkgbm90ZWQgaW4gdGhlCnJldmlldyBpbnZvY2F0aW9uIGFzIGFkZGl0aW9uYWwgY29udGV4dC4gSWYgcm91bmQgMyBzdGlsbCBsZWF2ZXMgYmxvY2tpbmcKZmluZGluZ3MgdW5yZXNvbHZlZDogY29tbWVudCB3aXRoIHJlbWFpbmluZyBmaW5kaW5ncywgYWRkIGBibG9ja2VkYCBsYWJlbCwgc3RvcC4KCioqUmF0aW9uYWxlKio6IExMTSBzZWxmLXJldmlldyBwYXN0IHJvdW5kIDIgd2l0aG91dCBuZXcgaW5mb3JtYXRpb24gcHJvZHVjZXMKZGltaW5pc2hpbmcgcmV0dXJucyBhbmQsIGZvciBzZWN1cml0eS1zZW5zaXRpdmUgY29kZSwgY2FuIGludHJvZHVjZSBuZXcKdnVsbmVyYWJpbGl0aWVzLiBSb3VuZCAzIG11c3QgYWRkIGNvbnRleHQsIG5vdCBqdXN0IHJldHJ5LgoKLS0tCgojIyBTdGVwIDg6IFVwZGF0ZSBkb2N1bWVudGF0aW9uCgpEb2N1bWVudGF0aW9uIG11c3Qgbm90IGRyaWZ0IGZyb20gdGhlIGNvZGUuIEFmdGVyIHJldmlldyBwYXNzZXMsIHVwZGF0ZSBkb2NzCnNjb3BlZCB0byB3aGF0IHRoaXMgaXNzdWUgY2hhbmdlZCDigJQgbm90IGEgZnVsbCBhdWRpdCwganVzdCB0aGUgZGlmZi4KCiMjIyA4YTogRGV0ZXJtaW5lIHdoYXQgY2hhbmdlZAoKYGBgYmFzaApnaXQgZGlmZiBtYWluLi4uSEVBRCAtLW5hbWUtb25seQpgYGAKCkdyb3VwIHRoZSBjaGFuZ2VkIGZpbGVzIGJ5IHBhY2thZ2Uvc3Vic3lzdGVtLiBUaGlzIGlzIHlvdXIgc2NvcGUuCgojIyMgOGI6IFNjYW4gZG9jcyBmb3IgZHJpZnQgaW4gc2NvcGUKCkRlbGVnYXRlIHRvICoqZG9jLXNjYW5uZXIqKiB3aXRoIGV4cGxpY2l0IHNjb3BlOiB0aGUgY2hhbmdlZCBwYWNrYWdlcyBvbmx5LgpJbnN0cnVjdCBpdCB0byBjaGVjazoKLSBEbyBhbnkgZXhpc3RpbmcgZG9jcyBkZXNjcmliZSBpbnRlcmZhY2VzLCB0eXBlcywgb3IgYmVoYXZpb3VyIHRoYXQgY2hhbmdlZD8KLSBXZXJlIG5ldyBwdWJsaWMgaW50ZXJmYWNlcywgdHlwZXMsIG9yIHBhY2thZ2VzIGFkZGVkIHRoYXQgaGF2ZSBubyBkb2MgY292ZXJhZ2U/Ci0gRG9lcyBgZG9jcy9jb250ZW50LXBsYW4ubWRgIHJlZmVyZW5jZSBhbGwgcmVsZXZhbnQgZG9jcz8KCklmIGRvYy1zY2FubmVyIGZpbmRzIG5vdGhpbmcgdGhhdCBuZWVkcyB1cGRhdGluZzogc2tpcCB0byBTdGVwIDkuCgojIyMgOGM6IFVwZGF0ZSBkcmlmdGVkIGRvY3MKCkZvciBlYWNoIGRvYyB0aGF0IG5lZWRzIHVwZGF0aW5nLCBkZWxlZ2F0ZSB0byAqKmRvYy13cml0ZXIqKiB3aXRoOgotIFRoZSB0YXJnZXQgZmlsZSBwYXRoCi0gVGhlIHNwZWNpZmljIGRyaWZ0ICh3aGF0IGNoYW5nZWQgaW4gY29kZSwgd2hhdCB0aGUgZG9jIGN1cnJlbnRseSBzYXlzKQotIEluc3RydWN0aW9uIHRvIHVwZGF0ZSBvbmx5IHRoZSBkcmlmdGVkIHNlY3Rpb25zIOKAlCBkbyBub3QgcmV3cml0ZSB0aGUgd2hvbGUgZG9jCgpSdWxlczoKLSBOZXcgcGFja2FnZSBhZGRlZCDihpIgdXBkYXRlIGBBUkNISVRFQ1RVUkUubWRgIGNvbXBvbmVudCBpbnZlbnRvcnkgYW5kCiAgY3JlYXRlIGBkb2NzL3N1YnN5c3RlbXMvPG5hbWU+L1JFQURNRS5tZGAgaWYgdGhlIHBhY2thZ2UgaXMgc3Vic3RhbnRpYWwKLSBOZXcgcHVibGljIGludGVyZmFjZSBvciB0eXBlIOKGkiB1cGRhdGUgdGhlIHJlbGV2YW50IHN1YnN5c3RlbSBSRUFETUUKLSBFeGlzdGluZyBiZWhhdmlvdXIgY2hhbmdlZCDihpIgdXBkYXRlIGFueSBkb2MgdGhhdCBkZXNjcmliZXMgdGhhdCBiZWhhdmlvdXIKLSBOZXcgZG9jIGNyZWF0ZWQg4oaSIHVwZGF0ZSBgZG9jcy9jb250ZW50LXBsYW4ubWRgIHdpdGggdGhlIG5ldyBlbnRyeQoKRG8gbm90IGNyZWF0ZSBUaWVyIDMgbW9kdWxlIGRvY3MgcGVyIGlzc3VlIOKAlCB0aG9zZSBhcmUgYSBgL2RvY3VtZW50YCBqdWRnbWVudCBjYWxsLgpEbyBub3QgcmV3cml0ZSBDT05DRVBUUy5tZCBwZXIgaXNzdWUg4oCUIHRoYXQgaXMgYSBodW1hbiBkZWNpc2lvbiB2aWEgYC9kb2N1bWVudGAuCgojIyMgOGQ6IENvbW1pdCBkb2MgdXBkYXRlcwoKSWYgYW55IGRvY3Mgd2VyZSB1cGRhdGVkOgpgYGAKZG9jcyg8c2NvcGU+KTogdXBkYXRlIGRvY3VtZW50YXRpb24gZm9yIGlzc3VlICMkSVNTVUVfTlVNQkVSCmBgYAoKLS0tCgojIyBTdGVwIDk6IFVwZGF0ZSB0aGUgaXNzdWUgbGFiZWwKCioqSWYgcHJvdmlkZXIgPSBnaXRodWI6KioKYGBgYmFzaApnaCBpc3N1ZSBlZGl0ICRJU1NVRV9OVU1CRVIgLS1hZGQtbGFiZWwgIm5lZWRzLXJldmlldyIgLS1yZW1vdmUtbGFiZWwgInJlYWR5LWZvci1hZ2VudCIKYGBgCgoqKklmIHByb3ZpZGVyID0gZ2l0ZWE6KioKVXNlIGBnaXRlYTppc3N1ZV93cml0ZWAgTUNQIHRvb2wgd2l0aCBgbWV0aG9kOiByZXBsYWNlX2xhYmVsc2AgdG8gc3dhcApgcmVhZHktZm9yLWFnZW50YCBmb3IgYG5lZWRzLXJldmlld2AuCgotLS0KCiMjIFN0ZXAgMTA6IFNoaXAKCkRlbGVnYXRlIHRvICoqc2hpcCBjb21tYW5kKiogKHZpYSBUYXNrKSB3aXRoIHRoZSBicmFuY2ggbmFtZSBhbmQgYC0tbm8tY29uZmlybWAgZmxhZy4KCmBgYAovc2hpcCA8YnJhbmNoLW5hbWU+IC0tbm8tY29uZmlybQpgYGAKClRoZSBgLS1uby1jb25maXJtYCBmbGFnIHNraXBzIHRoZSBQUiBwcmV2aWV3IGFuZCBjb25maXJtYXRpb24gc3RlcCDigJQgdGhlIGZhY3RvcnkKaXMgYXV0b25vbW91cywgdGhlcmUgaXMgbm8gaHVtYW4gdG8gY29uZmlybS4gVGhlIFBSIGlzIGNyZWF0ZWQgaW1tZWRpYXRlbHkuCgpUaGUgUFIgbXVzdCB0YXJnZXQgYG1haW5gIOKAlCBuZXZlciBhbm90aGVyIGZlYXR1cmUgYnJhbmNoLgoKVGhlIFBSIGRlc2NyaXB0aW9uIG11c3QgaW5jbHVkZToKLSBgQ2xvc2VzICMkSVNTVUVfTlVNQkVSYCBpbiB0aGUgZmlyc3QgbGluZQotIFN1bW1hcnkgb2Ygd2hhdCB3YXMgaW1wbGVtZW50ZWQKLSBBQyB2ZXJpZmljYXRpb24gdGFibGU6CgpgYGAKfCBBQyB8IERlc2NyaXB0aW9uIHwgVGVzdCB8IFN0YXR1cyB8CnwtLS0tfC0tLS0tLS0tLS0tLS18LS0tLS0tfC0tLS0tLS0tfAp8IDEgIHwgPGFjIHRleHQ+ICAgfCA8dGVzdCBmaWxlOmxpbmU+IHwg4pyTIFBBU1MgfApgYGAKCi0gKipSZXZpZXcgTm90ZXMqKiBzZWN0aW9uIGxpc3RpbmcgYWxsIG5vbi1ibG9ja2luZyBmaW5kaW5ncyBmb3IgdGhlIGh1bWFuIHJldmlld2VyCi0gRG9jdW1lbnRhdGlvbiBjaGFuZ2VzIG1hZGUgKGlmIGFueSkKCi0tLQoKIyMgU3RlcCAxMTogRmluYWwgcmVwb3J0CgpgYGAKIyMgSXNzdWUgIzxudW1iZXI+IENvbXBsZXRlCgoqKlRpdGxlKio6IDx0aXRsZT4KKipCcmFuY2gqKjogaXNzdWUvPG51bWJlcj4tPHNsdWc+CioqUFIqKjogPHByIHVybD4KCiMjIyBBQyBWZXJpZmljYXRpb24KPHRhYmxlPgoKIyMjIFJldmlldwpDeWNsZXMgdXNlZDogPG4+LzIgKG9yIDxuPi8zIGlmIHJvdW5kIDMgdHJpZ2dlciBhcHBsaWVkKQpSb3VuZCAzIHRyaWdnZXI6IDx0cmlnZ2VyIG5hbWUgb3IgIk4vQSI+CkJsb2NraW5nIGZpbmRpbmdzIHJlc29sdmVkOiA8bj4KTm9uLWJsb2NraW5nIGZpbmRpbmdzOiA8bj4gKG5vdGVkIGluIFBSIOKAlCBodW1hbiByZXZpZXdlciB0byBkZWNpZGUpCgojIyMgRG9jdW1lbnRhdGlvbgo8bGlzdCBvZiBkb2NzIHVwZGF0ZWQsIG9yICJubyBjaGFuZ2VzIG5lZWRlZCI+CgojIyMgRmlsZXMgQ2hhbmdlZAo8bGlzdD4KYGBgCgotLS0KCiMjIEZhaWx1cmUgbW9kZXMg4oCUIHdoYXQgdG8gZG8gd2hlbiBzdHVjawoKLSAqKklzc3VlIGlzIGFtYmlndW91cyBvciBjb250cmFkaWN0b3J5Kio6IGNvbW1lbnQgb24gdGhlIGlzc3VlIGV4cGxhaW5pbmcKICB0aGUgYW1iaWd1aXR5LiBBZGQgYGJsb2NrZWRgIGxhYmVsLiBTdG9wLgotICoqVGVzdC1maXggbGltaXQgKDMpIHJlYWNoZWQqKjogY29tbWVudCB3aXRoIHdoaWNoIEFDIGZhaWxlZCBhbmQgd2hhdCB3YXMgdHJpZWQuCiAgQWRkIGBibG9ja2VkYCBsYWJlbC4gU3RvcC4KLSAqKlJldmlldyBjeWNsZSBsaW1pdCByZWFjaGVkLCBubyByb3VuZCAzIHRyaWdnZXIqKjogY29tbWVudCB3aXRoIHJlbWFpbmluZwogIGJsb2NraW5nIGZpbmRpbmdzIGFuZCB3aGljaCB0cmlnZ2VycyB3ZXJlIGV2YWx1YXRlZC4gQWRkIGBibG9ja2VkYCBsYWJlbC4gU3RvcC4KLSAqKlJvdW5kIDMgZXhoYXVzdGVkKio6IGNvbW1lbnQgd2l0aCByZW1haW5pbmcgZmluZGluZ3MuIEFkZCBgYmxvY2tlZGAgbGFiZWwuIFN0b3AuCi0gKipSZXBvIG5vdCBpbiBjbGVhbiBzdGF0ZSoqOiBjb21tZW50IGV4cGxhaW5pbmcgd2hhdCB3YXMgZm91bmQuIFN0b3AuCi0gKipJbiBhbGwgY2FzZXMqKjogZG8gbm90IGd1ZXNzLCBkbyBub3QgaW1wcm92aXNlIGJleW9uZCB0aGUgQUMgc2NvcGUsIGRvIG5vdAogIHNoaXAgYSBQUiB3aXRoIGtub3duIGZhaWx1cmVzLiBOZXZlciB0YXJnZXQgYSBmZWF0dXJlIGJyYW5jaCBhcyBQUiBiYXNlLgo=
+---
+description: Implement a single issue fully autonomously. Fetches the issue, scans the codebase, writes failing tests from ACs, implements until green, reviews, fixes, re-reviews until clean, updates docs, ships PR. No human touchpoints.
+argument-hint: <issue-number> [--provider github|gitea]
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, mcp
+---
+
+# Issue Command
+
+You implement a single issue from start to PR, fully autonomously.
+The issue already contains the specification — description, implementation
+guidance, and verifiable Acceptance Criteria. Your job is to make every AC pass.
+
+**You run inside a sandboxed container with `--dangerously-skip-permissions`.
+Do not ask for approval on file operations or tool use. Run to completion.**
+
+The pipeline: fetch → scan → branch from main → tests (RED) → implement (GREEN) → refactor → review → fix → re-review → docs → ship.
+
+## Cycle limits — hard ceilings to prevent dead loops
+
+- **Test-fix attempts**: max 3 attempts to make a failing test pass before stopping
+- **Review cycles**: max 2 cycles by default; max 3 only with a context change (see Step 7)
+- **Refactor passes**: max 1 refactor pass — do not loop on refactoring
+
+When any limit is hit: comment on the issue explaining exactly what was
+tried and why it's stuck, add the `blocked` label, and stop. Do not guess,
+do not try a fourth time.
+
+---
+
+## Step 0: Parse arguments
+
+Extract from `$ARGUMENTS`:
+- Issue number (required, first positional argument)
+- `--provider github|gitea` — which issue tracker to use (default: `github`)
+
+Set `ISSUE_NUMBER` and `PROVIDER` for use throughout.
+
+---
+
+## Step 1: Fetch and parse the issue
+
+**If provider = github:**
+```bash
+gh issue view $ISSUE_NUMBER --json number,title,body,labels,state,url
+```
+
+**If provider = gitea:**
+Use the `gitea:issue_read` MCP tool with `method: get`, the repo `owner` and `repo`
+from the git remote, and `index: $ISSUE_NUMBER`.
+
+If the issue is **closed**: stop and report — nothing to do.
+
+If the issue is **not labeled `ready-for-agent`**: comment on the issue explaining
+it was skipped, then stop.
+
+Extract from the issue body:
+- Title
+- Context / description
+- Acceptance Criteria (the checkbox list — these are your tests)
+- Notes / constraints
+
+Save to `.claude/issues/issue-$ISSUE_NUMBER.md`:
+
+```markdown
+# Issue #<number>: <title>
+
+**URL**: <url>
+
+## Description
+<context and what to build>
+
+## Acceptance Criteria
+<verbatim checkbox list from issue>
+
+## Notes
+<verbatim notes section>
+```
+
+---
+
+## Step 2: Read the foundations
+
+Before touching any code, read:
+
+1. `UBIQUITOUS_LANGUAGE.md` at the repo root — canonical terminology.
+   Every identifier, comment, and commit message must use these terms exactly.
+   Terminology violations are review failures.
+
+2. `CODING_STANDARDS.md` — language standards, architecture rules, reviewer
+   checklist. Implement to these standards from the start.
+
+Then delegate to **codebase-scanner** with the issue title and key terms as scope.
+Read any docs the scanner resolves. Do not read beyond what it returns.
+
+---
+
+## Step 3: Create a branch from main
+
+**Always branch from a fresh main.** Never branch from another feature branch.
+PRs must always target main.
+
+```bash
+git fetch origin
+git checkout main
+git pull origin main
+git checkout -b issue/$ISSUE_NUMBER-<slug>
+```
+
+`<slug>` is a short kebab-case summary of the issue title, max 5 words.
+Example: `issue/3-spec-schema-validation`
+
+If `git pull origin main` fails (e.g. merge conflict, dirty state): stop and
+comment on the issue explaining the state of the repo. Do not proceed.
+
+---
+
+## Step 4: Write failing tests from ACs (RED)
+
+Each Acceptance Criteria item becomes one or more tests. Do not write
+implementation code yet.
+
+For each AC:
+- Determine the appropriate test type (unit, integration — refer to CODING_STANDARDS)
+- Write a test that will fail because the implementation doesn't exist yet
+- The test must assert the exact behaviour the AC describes — not a proxy for it
+
+Delegate to **test-runner** after writing all tests. Confirm they all FAIL.
+If any test passes without implementation, the test is wrong — fix it.
+
+Commit the failing tests:
+```
+test(<scope>): add failing tests for issue #$ISSUE_NUMBER
+```
+
+---
+
+## Step 5: Implement until GREEN
+
+Implement the code needed to make the tests pass.
+
+Work AC by AC — implement the minimum to pass each test, then move to the next.
+Do not implement anything not required by an AC.
+
+After each AC's tests pass, delegate to **test-runner** to confirm nothing
+regressed.
+
+**Test-fix limit: 3 attempts per AC.** If a test won't pass after 3 distinct
+implementation attempts, stop: comment on the issue explaining which AC is
+failing and what was tried, add `blocked` label, stop entirely.
+
+When all ACs pass:
+- Run the full test suite via **test-runner**
+- If anything fails: apply the same 3-attempt limit per failing test
+
+Commit the implementation:
+```
+feat(<scope>): implement issue #$ISSUE_NUMBER — <title>
+```
+
+---
+
+## Step 6: Refactor
+
+One pass only. Review the code just written for: duplication, naming,
+readability, adherence to UBIQUITOUS_LANGUAGE.md and CODING_STANDARDS.md.
+
+Make improvements. Delegate to **test-runner** after each change.
+If any test turns red: revert the change immediately — do not fix forward.
+Do not loop — one refactor pass, then move on.
+
+Commit if changes were made:
+```
+refactor(<scope>): clean up implementation for issue #$ISSUE_NUMBER
+```
+
+---
+
+## Step 7: Review → fix → re-review
+
+**Default review cycle limit: 2 cycles.**
+**Round 3 is only permitted when a context change justifies it** — see below.
+
+### What counts as blocking
+
+Only fix findings that are **strictly blocking**. The threshold is high:
+
+- **Security vulnerability** — exploitable in Hestia's threat model (not theoretical)
+- **AC not covered** — a specified behaviour has no test and no implementation
+- **Compile failure** — the code does not build
+- **Abstraction boundary violated** — directly contradicts CODING_STANDARDS.md rules
+- **Data loss or corruption** — incorrect state transitions, lost writes
+
+Everything else is **non-blocking** regardless of how the reviewer words it:
+- Style preferences
+- "Consider" or "could be improved" suggestions
+- Performance concerns without a concrete benchmark
+- Missing features beyond the AC scope
+- Redundant code that doesn't affect correctness
+- Medium-severity findings that require future issues to address properly
+
+**Do not fix non-blocking findings.** Note them in the PR description. Do not
+let reviewer suggestions expand the scope of the implementation. The human
+reviewer decides what warrants a follow-up issue.
+
+### Cycle procedure
+
+Cycle N:
+1. Delegate to **review command** (via Task) with `--last-plan` flag
+2. Categorise each finding strictly: blocking (per above) or non-blocking
+3. If no blocking findings: proceed to Step 8
+4. Fix each blocking finding — run **test-runner** after each fix to confirm GREEN
+5. Increment cycle counter
+
+### Round 3 gate
+
+After cycle 2, if blocking findings still remain, **do not automatically enter
+round 3**. Instead, evaluate whether a context change is available:
+
+**Permitted round 3 triggers** (at least one must apply):
+- The issue touches a **security-sensitive surface** (auth, credentials, network
+  policy, sandboxing, data persistence) — invoke the security reviewer again with
+  explicit focus on the remaining findings
+- The change modifies a **public API surface** — invoke the architecture reviewer
+  with the full interface diff as additional context
+- The change involves **numerical correctness** (floating point, linear algebra,
+  statistical computation) — invoke the complexity reviewer with tolerance and
+  reference expectations as context
+- A **new context artifact** is available that wasn't present in cycle 2 (e.g.
+  a related issue's resolution just landed on main, a doc was updated)
+
+If none of these triggers apply after cycle 2: do not enter round 3.
+Comment on the issue: "Review cycle limit reached after 2 cycles. No round 3
+trigger applies. Remaining blocking findings: <list>. Human review required."
+Add `blocked` label. Stop.
+
+If a trigger applies: enter round 3 with the trigger explicitly noted in the
+review invocation as additional context. If round 3 still leaves blocking
+findings unresolved: comment with remaining findings, add `blocked` label, stop.
+
+**Rationale**: LLM self-review past round 2 without new information produces
+diminishing returns and, for security-sensitive code, can introduce new
+vulnerabilities. Round 3 must add context, not just retry.
+
+---
+
+## Step 8: Update documentation
+
+Documentation must not drift from the code. After review passes, update docs
+scoped to what this issue changed — not a full audit, just the diff.
+
+### 8a: Determine what changed
+
+```bash
+git diff main...HEAD --name-only
+```
+
+Group the changed files by package/subsystem. This is your scope.
+
+### 8b: Scan docs for drift in scope
+
+Delegate to **doc-scanner** with explicit scope: the changed packages only.
+Instruct it to check:
+- Do any existing docs describe interfaces, types, or behaviour that changed?
+- Were new public interfaces, types, or packages added that have no doc coverage?
+- Does `docs/content-plan.md` reference all relevant docs?
+
+If doc-scanner finds nothing that needs updating: skip to Step 9.
+
+### 8c: Update drifted docs
+
+For each doc that needs updating, delegate to **doc-writer** with:
+- The target file path
+- The specific drift (what changed in code, what the doc currently says)
+- Instruction to update only the drifted sections — do not rewrite the whole doc
+
+Rules:
+- New package added → update `ARCHITECTURE.md` component inventory and
+  create `docs/subsystems/<name>/README.md` if the package is substantial
+- New public interface or type → update the relevant subsystem README
+- Existing behaviour changed → update any doc that describes that behaviour
+- New doc created → update `docs/content-plan.md` with the new entry
+
+Do not create Tier 3 module docs per issue — those are a `/document` judgment call.
+Do not rewrite CONCEPTS.md per issue — that is a human decision via `/document`.
+
+### 8d: Commit doc updates
+
+If any docs were updated:
+```
+docs(<scope>): update documentation for issue #$ISSUE_NUMBER
+```
+
+---
+
+## Step 9: Update the issue label
+
+**If provider = github:**
+```bash
+gh issue edit $ISSUE_NUMBER --add-label "needs-review" --remove-label "ready-for-agent"
+```
+
+**If provider = gitea:**
+Use `gitea:issue_write` MCP tool with `method: replace_labels` to swap
+`ready-for-agent` for `needs-review`.
+
+---
+
+## Step 10: Ship
+
+Delegate to **ship command** (via Task) with the branch name and `--no-confirm` flag.
+
+```
+/ship <branch-name> --no-confirm
+```
+
+The `--no-confirm` flag skips the PR preview and confirmation step — the factory
+is autonomous, there is no human to confirm. The PR is created immediately.
+
+The PR must target `main` — never another feature branch.
+
+The PR description must include:
+- `Closes #$ISSUE_NUMBER` in the first line
+- Summary of what was implemented
+- AC verification table:
+
+```
+| AC | Description | Test | Status |
+|----|-------------|------|--------|
+| 1  | <ac text>   | <test file:line> | ✓ PASS |
+```
+
+- **Review Notes** section listing all non-blocking findings for the human reviewer
+- Documentation changes made (if any)
+
+---
+
+## Step 11: Final report
+
+```
+## Issue #<number> Complete
+
+**Title**: <title>
+**Branch**: issue/<number>-<slug>
+**PR**: <pr url>
+
+### AC Verification
+<table>
+
+### Review
+Cycles used: <n>/2 (or <n>/3 if round 3 trigger applied)
+Round 3 trigger: <trigger name or "N/A">
+Blocking findings resolved: <n>
+Non-blocking findings: <n> (noted in PR — human reviewer to decide)
+
+### Documentation
+<list of docs updated, or "no changes needed">
+
+### Files Changed
+<list>
+```
+
+---
+
+## Failure modes — what to do when stuck
+
+- **Issue is ambiguous or contradictory**: comment on the issue explaining
+  the ambiguity. Add `blocked` label. Stop.
+- **Test-fix limit (3) reached**: comment with which AC failed and what was tried.
+  Add `blocked` label. Stop.
+- **Review cycle limit reached, no round 3 trigger**: comment with remaining
+  blocking findings and which triggers were evaluated. Add `blocked` label. Stop.
+- **Round 3 exhausted**: comment with remaining findings. Add `blocked` label. Stop.
+- **Repo not in clean state**: comment explaining what was found. Stop.
+- **In all cases**: do not guess, do not improvise beyond the AC scope, do not
+  ship a PR with known failures. Never target a feature branch as PR base.
