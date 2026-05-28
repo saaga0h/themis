@@ -1,1 +1,214 @@
-LS0tCmRlc2NyaXB0aW9uOiBBdXRvbm9tb3VzIHNvZnR3YXJlIGZhY3RvcnkgbG9vcC4gRmV0Y2hlcyBvcGVuIHJlYWR5LWZvci1hZ2VudCBpc3N1ZXMgaW4gb3JkZXIsIHJ1bnMgL2lzc3VlIG9uIGVhY2gsIGNvbnRpbnVlcyB1bnRpbCB0aGUgYmFja2xvZyBpcyBlbXB0eSBvciBhIGJsb2NraW5nIGZhaWx1cmUgb2NjdXJzLiBEZXNpZ25lZCB0byBydW4gdW5hdHRlbmRlZCBpbnNpZGUgYSBzYW5kYm94Lgphcmd1bWVudC1oaW50OiBbLS1wcm92aWRlciBnaXRodWJ8Z2l0ZWFdIFstLW1heCA8bj5dIFstLWRyeS1ydW5dCmFsbG93ZWQtdG9vbHM6IFJlYWQsIFdyaXRlLCBFZGl0LCBHbG9iLCBHcmVwLCBCYXNoLCBUYXNrLCBtY3AKLS0tCgojIEZhY3RvcnkgQ29tbWFuZAoKWW91IGFyZSB0aGUgYXV0b25vbW91cyBzb2Z0d2FyZSBmYWN0b3J5IGxvb3AuIFlvdSBwcm9jZXNzIG9wZW4gaXNzdWVzCmxhYmVsZWQgYHJlYWR5LWZvci1hZ2VudGAgb25lIGF0IGEgdGltZSwgaW4gb3JkZXIsIHVudGlsIHRoZSBiYWNrbG9nIGlzIGVtcHR5Cm9yIHNvbWV0aGluZyByZXF1aXJlcyBodW1hbiBhdHRlbnRpb24uCgoqKllvdSBydW4gaW5zaWRlIGEgc2FuZGJveGVkIGNvbnRhaW5lciB3aXRoIGAtLWRhbmdlcm91c2x5LXNraXAtcGVybWlzc2lvbnNgCmFuZCBgLS1tYXgtdHVybnNgLiBEbyBub3QgYXNrIGZvciBhcHByb3ZhbC4gUnVuIHRvIGNvbXBsZXRpb24uIFN0b3Agb25seSB3aGVuCnRoZSBiYWNrbG9nIGlzIGVtcHR5LCBhIGJsb2NraW5nIGZhaWx1cmUgb2NjdXJzLCBvciB0dXJucyBhcmUgZXhoYXVzdGVkLioqCgotLS0KCiMjIFN0ZXAgMDogUGFyc2UgYXJndW1lbnRzCgotIGAtLXByb3ZpZGVyIGdpdGh1YnxnaXRlYWAg4oCUIHdoaWNoIGlzc3VlIHRyYWNrZXIgdG8gdXNlIChkZWZhdWx0OiBgZ2l0aHViYCkKLSBgLS1tYXggPG4+YCDigJQgcHJvY2VzcyBhdCBtb3N0IE4gaXNzdWVzIHRoaXMgcnVuIChkZWZhdWx0OiB1bmxpbWl0ZWQpCi0gYC0tZHJ5LXJ1bmAg4oCUIGZldGNoIGFuZCBsaXN0IGlzc3VlcyB0aGF0IHdvdWxkIGJlIHByb2Nlc3NlZCwgYnV0IGRvIG5vdGhpbmcKClNldCBgUFJPVklERVJgLCBgTUFYYCwgYW5kIGBEUllfUlVOYCBmb3IgdXNlIHRocm91Z2hvdXQuCgotLS0KCiMjIFN0ZXAgMTogRmV0Y2ggdGhlIGJhY2tsb2cKCioqSWYgcHJvdmlkZXIgPSBnaXRodWI6KioKYGBgYmFzaApnaCBpc3N1ZSBsaXN0IFwKICAtLWxhYmVsIHJlYWR5LWZvci1hZ2VudCBcCiAgLS1zdGF0ZSBvcGVuIFwKICAtLWpzb24gbnVtYmVyLHRpdGxlLGxhYmVscyBcCiAgLS1qcSAnc29ydF9ieSgubnVtYmVyKSB8IC5bXScKYGBgCgoqKklmIHByb3ZpZGVyID0gZ2l0ZWE6KioKVXNlIHRoZSBgZ2l0ZWE6aXNzdWVfcmVhZGAgTUNQIHRvb2wgd2l0aCBgbWV0aG9kOiBsaXN0YCwgdGhlIHJlcG8gYG93bmVyYCBhbmQKYHJlcG9gIGZyb20gdGhlIGdpdCByZW1vdGUsIGB0eXBlOiBpc3N1ZXNgLCBgc3RhdGU6IG9wZW5gLCBhbmQKYGxhYmVsczogcmVhZHktZm9yLWFnZW50YC4KCklmIG5vIGlzc3VlczogcmVwb3J0IGFuZCBzdG9wLgoKYGBgCkJhY2tsb2cgaXMgZW1wdHkg4oCUIGZub3RoaW5nIHRvIGRvLgpgYGAKCklmIGAtLWRyeS1ydW5gOiBsaXN0IHRoZSBpc3N1ZXMgYW5kIHN0b3AuCgpgYGAKSXNzdWVzIHRoYXQgd291bGQgYmUgcHJvY2Vzc2VkIChpbiBvcmRlcik6CiMxIOKAlCA8dGl0bGU+CiMyIOKAlCA8dGl0bGU+CiMzIOKAlCA8dGl0bGU+CgpSdW4gL2ZhY3RvcnkgdG8gcHJvY2VzcyB0aGVtLgpgYGAKCi0tLQoKIyMgU3RlcCAyOiBSZWFkIGZvdW5kYXRpb25zIG9uY2UKCkJlZm9yZSBwcm9jZXNzaW5nIGFueSBpc3N1ZSwgcmVhZCB0aGVzZSBvbmNlIOKAlCB0aGV5IGFwcGx5IHRvIGFsbCBpc3N1ZXM6CgoxLiBgVUJJUVVJVE9VU19MQU5HVUFHRS5tZGAg4oCUIGNhbm9uaWNhbCB0ZXJtaW5vbG9neSwgYXBwbGllcyB0byBhbGwgY29kZQoyLiBgQ09ESU5HX1NUQU5EQVJEUy5tZGAg4oCUIHN0YW5kYXJkcyBhbmQgcmV2aWV3ZXIgY2hlY2tsaXN0CgpUaGVzZSBkbyBub3QgbmVlZCB0byBiZSByZS1yZWFkIGJldHdlZW4gaXNzdWVzLgoKLS0tCgojIyBTdGVwIDM6IFByb2Nlc3MgaXNzdWVzIGluIG9yZGVyCgpGb3IgZWFjaCBpc3N1ZSBpbiB0aGUgYmFja2xvZyAocmVzcGVjdGluZyBgLS1tYXhgIGlmIHNldCk6CgojIyMgM2E6IENoZWNrIHJlbWFpbmluZyB0dXJucwoKQmVmb3JlIHN0YXJ0aW5nIGVhY2ggaXNzdWUsIGFzc2VzcyB3aGV0aGVyIGVub3VnaCB0dXJucyByZW1haW4gdG8gY29tcGxldGUgaXQuCkVhY2ggaXNzdWUgdHlwaWNhbGx5IHJlcXVpcmVzIDUwLTE1MCB0dXJucy4gSWYgeW91IGFyZSBhcHByb2FjaGluZyB0aGUKYC0tbWF4LXR1cm5zYCBsaW1pdCAod2l0aGluIH41MCB0dXJucyksIHN0b3AgdGhlIGxvb3AgY2xlYW5seToKCmBgYApUdXJuIGxpbWl0IGFwcHJvYWNoaW5nIOKAlCBzdG9wcGluZyBmYWN0b3J5IGFmdGVyIDxuPiBpc3N1ZXMuClJlbWFpbmluZyBiYWNrbG9nOiAjWCwgI1ksICNaClJlLXJ1biAvZmFjdG9yeSB0byBjb250aW51ZS4KYGBgCgpEbyBub3Qgc3RhcnQgYW4gaXNzdWUgeW91IGNhbm5vdCBmaW5pc2gg4oCUIGEgaGFsZi1pbXBsZW1lbnRlZCBpc3N1ZSBpcyB3b3JzZQp0aGFuIGFuIHVuc3RhcnRlZCBvbmUuCgojIyMgM2I6IENoZWNrIGZvciBibG9ja2VycwoKQmVmb3JlIHN0YXJ0aW5nIGFuIGlzc3VlLCBjaGVjayBpZiBpdCByZWZlcmVuY2VzIG90aGVyIG9wZW4gaXNzdWVzIGFzCmRlcGVuZGVuY2llcy4gTG9vayBmb3IgcGF0dGVybnMgbGlrZSAiZGVwZW5kcyBvbiAjTiIsICJibG9ja2VkIGJ5ICNOIiwKb3IgIm5lZWRzICNOIiBpbiB0aGUgaXNzdWUgYm9keS4KCklmIGEgcmVmZXJlbmNlZCBpc3N1ZSBpcyBzdGlsbCBvcGVuOiBza2lwIHRoaXMgaXNzdWUgYW5kIGNvbnRpbnVlIHRvIHRoZSBuZXh0LgpMb2cgdGhlIHNraXA6CgpgYGAKU2tpcHBpbmcgIzxudW1iZXI+IOKAlCBibG9ja2VkIGJ5ICM8ZGVwZW5kZW5jeT4gKHN0aWxsIG9wZW4pCmBgYAoKIyMjIDNjOiBSdW4gL2lzc3VlCgpEZWxlZ2F0ZSB0byB0aGUgKippc3N1ZSBjb21tYW5kKiogKHZpYSBUYXNrKSB3aXRoIHRoZSBpc3N1ZSBudW1iZXIgYW5kIHByb3ZpZGVyOgoKYGBgCi9pc3N1ZSA8bnVtYmVyPiAtLXByb3ZpZGVyICRQUk9WSURFUgpgYGAKCiMjIyAzZDogSGFuZGxlIHRoZSBvdXRjb21lCgoqKlN1Y2Nlc3MqKiDigJQgYC9pc3N1ZWAgY29tcGxldGVkIGFuZCBjcmVhdGVkIGEgUFI6CgpgYGAK4pyTIElzc3VlICM8bnVtYmVyPiDigJQgUFIgY3JlYXRlZDogPHVybD4KYGBgCgpDb250aW51ZSB0byB0aGUgbmV4dCBpc3N1ZS4KCioqQmxvY2tlZCoqIOKAlCBgL2lzc3VlYCBhZGRlZCB0aGUgYGJsb2NrZWRgIGxhYmVsIGFuZCBzdG9wcGVkOgoKYGBgCuKclyBJc3N1ZSAjPG51bWJlcj4g4oCUIGJsb2NrZWQsIG5lZWRzIGh1bWFuIGF0dGVudGlvbgogIFNlZSBpc3N1ZSBjb21tZW50cyBmb3IgZGV0YWlscy4KYGBgCgpTdG9wIHRoZSBmYWN0b3J5IGxvb3AuIERvIG5vdCBjb250aW51ZSB0byB0aGUgbmV4dCBpc3N1ZSDigJQgYSBibG9ja2VkIGlzc3VlCm1lYW5zIHNvbWV0aGluZyB1bmV4cGVjdGVkIHdhcyBmb3VuZCB0aGF0IHRoZSBodW1hbiBuZWVkcyB0byBzZWUgYmVmb3JlCnRoZSBmYWN0b3J5IGNvbnRpbnVlcy4KCioqVW5leHBlY3RlZCBmYWlsdXJlKiog4oCUIGAvaXNzdWVgIGNyYXNoZWQgb3IgcHJvZHVjZWQgbm8gUFI6CgpgYGAK4pyXIElzc3VlICM8bnVtYmVyPiDigJQgdW5leHBlY3RlZCBmYWlsdXJlCiAgPGVycm9yIGRldGFpbHM+CmBgYAoKQ29tbWVudCBvbiB0aGUgaXNzdWU6CgoqKklmIHByb3ZpZGVyID0gZ2l0aHViOioqCmBgYGJhc2gKZ2ggaXNzdWUgY29tbWVudCAkTlVNQkVSIC0tYm9keSAiRmFjdG9yeSBydW4gZmFpbGVkIHVuZXhwZWN0ZWRseSBvbiB0aGlzIGlzc3VlLgpFcnJvcjogPGRldGFpbHM+ClRoZSBmYWN0b3J5IGhhcyBzdG9wcGVkLiBIdW1hbiBhdHRlbnRpb24gcmVxdWlyZWQuIgpgYGAKCioqSWYgcHJvdmlkZXIgPSBnaXRlYToqKgpVc2UgYGdpdGVhOmlzc3VlX3dyaXRlYCBNQ1AgdG9vbCB3aXRoIGBtZXRob2Q6IGNyZWF0ZV9jb21tZW50YC4KCkFkZCB0aGUgYGJsb2NrZWRgIGxhYmVsLiBTdG9wIHRoZSBmYWN0b3J5IGxvb3AuCgotLS0KCiMjIFN0ZXAgNDogRmluYWwgcmVwb3J0CgpBZnRlciB0aGUgbG9vcCBjb21wbGV0ZXMgKGJhY2tsb2cgZW1wdHksIC0tbWF4IHJlYWNoZWQsIHR1cm4gbGltaXQgYXBwcm9hY2hlZCwKb3Igc3RvcHBlZCBvbiBmYWlsdXJlKToKCmBgYAojIyBGYWN0b3J5IFJ1biBDb21wbGV0ZQoKKipQcm92aWRlcioqOiA8Z2l0aHVifGdpdGVhPgoqKklzc3VlcyBwcm9jZXNzZWQqKjogPG4+CioqUFJzIGNyZWF0ZWQqKjogPG4+CioqU2tpcHBlZCAoYmxvY2tlZCBieSBkZXBlbmRlbmN5KSoqOiA8bj4KKipTdG9wcGVkIG9uKio6IDxpc3N1ZSBudW1iZXIgYW5kIHJlYXNvbiwgb3IgImJhY2tsb2cgZW1wdHkiPgoKIyMjIFJlc3VsdHMK4pyTICMxIOKAlCA8dGl0bGU+IOKAlCBQUjogPHVybD4K4pyTICMyIOKAlCA8dGl0bGU+IOKAlCBQUjogPHVybD4K4pyXICMzIOKAlCA8dGl0bGU+IOKAlCBibG9ja2VkIChzZWUgaXNzdWUgY29tbWVudHMpCgojIyMgUmVtYWluaW5nIGJhY2tsb2cKIzQg4oCUIDx0aXRsZT4KIzUg4oCUIDx0aXRsZT4KKHJlLXJ1biAvZmFjdG9yeSB0byBjb250aW51ZSkKYGBgCgotLS0KCiMjIERlc2lnbiBwcmluY2lwbGVzCgoqKk9uZSBpc3N1ZSBhdCBhIHRpbWUuKiogVGhlIGZhY3RvcnkgZG9lcyBub3QgcGFyYWxsZWxpemUuIEVhY2ggYC9pc3N1ZWAgcnVuCmJyYW5jaGVzIGZyb20gZnJlc2ggbWFpbiBhbmQgdGFyZ2V0cyBtYWluLiBJc3N1ZXMgdGhhdCBjYW4gc2FmZWx5IHJ1biBpbgpwYXJhbGxlbCBhcmUgaWRlbnRpZmllZCBieSB0aGUgaHVtYW4gYmVmb3JlIGxhYmVsaW5nIOKAlCBpZiB0d28gaXNzdWVzIGFyZQpsYWJlbGVkIGByZWFkeS1mb3ItYWdlbnRgIHRvZ2V0aGVyLCB0aGUgaHVtYW4gaGFzIHZlcmlmaWVkIHRoZXkgdG91Y2ggZGlmZmVyZW50CnBhcnRzIG9mIHRoZSBjb2RlYmFzZSBhbmQgdGhlaXIgUFJzIGNhbiBiZSBtZXJnZWQgaW5kZXBlbmRlbnRseS4KCioqQWx3YXlzIGJyYW5jaCBmcm9tIG1haW4uKiogYC9pc3N1ZWAgZmV0Y2hlcyBhbmQgcHVsbHMgbWFpbiBiZWZvcmUgY3JlYXRpbmcKaXRzIGJyYW5jaC4gVGhpcyBlbnN1cmVzIFBScyBhcmUgYWx3YXlzIGJhc2VkIG9uIHRoZSBsYXRlc3QgbWVyZ2VkIHdvcmsgYW5kCm5ldmVyIGFjY2lkZW50YWxseSBzdGFjayBvbiBhbm90aGVyIGZlYXR1cmUgYnJhbmNoLgoKKipTdG9wIG9uIHVuZXhwZWN0ZWQgZmFpbHVyZS4qKiBBIGNyYXNoIG1lYW5zIHNvbWV0aGluZyBpcyB3cm9uZyB0aGUgaHVtYW4KbmVlZHMgdG8gdW5kZXJzdGFuZCBiZWZvcmUgbW9yZSBjb2RlIGlzIHdyaXR0ZW4uCgoqKlN0b3Agb24gYmxvY2tlZC4qKiBBIGBibG9ja2VkYCBsYWJlbCBtZWFucyBgL2lzc3VlYCBoaXQgaXRzIGN5Y2xlIGxpbWl0cyBvcgpmb3VuZCBzb21ldGhpbmcgdW5yZXNvbHZhYmxlLiBUaGUgaHVtYW4gbmVlZHMgdG8gaW50ZXJ2ZW5lLgoKKipUdXJuLWF3YXJlLioqIFRoZSBmYWN0b3J5IGNoZWNrcyByZW1haW5pbmcgdHVybnMgYmVmb3JlIHN0YXJ0aW5nIGVhY2ggaXNzdWUKYW5kIHN0b3BzIGNsZWFubHkgcmF0aGVyIHRoYW4gYWJhbmRvbmluZyBhIGhhbGYtaW1wbGVtZW50ZWQgaXNzdWUgbWlkLXJ1bi4KCioqSWRlbXBvdGVudCByZS1ydW5zLioqIElzc3VlcyB0aGF0IGNvbXBsZXRlZCAobm8gbG9uZ2VyIGByZWFkeS1mb3ItYWdlbnRgKQpvciBhcmUgYmxvY2tlZCAoYGJsb2NrZWRgIGxhYmVsKSB3aWxsIG5vdCBhcHBlYXIgb24gcmUtcnVuLiBUaGUgZmFjdG9yeQpwaWNrcyB1cCB3aGVyZSBpdCBjYW4gc2FmZWx5IGNvbnRpbnVlLgoKKipUaGUgaHVtYW4gZGVjaWRlcyB3aGF0IHJ1bnMgaW4gcGFyYWxsZWwuKiogVGhlIGZhY3RvcnkgbmV2ZXIgcmVhc29ucyBhYm91dAp3aGljaCBpc3N1ZXMgYXJlIHNhZmUgdG8gcnVuIGNvbmN1cnJlbnRseSDigJQgdGhhdCBqdWRnbWVudCBiZWxvbmdzIHRvIHRoZSBodW1hbgp3aG8gdW5kZXJzdGFuZHMgdGhlIGNvZGViYXNlIGFuZCB0aGUgZGVwZW5kZW5jeSBncmFwaC4gVGhlIGZhY3RvcnkncyBqb2IgaXMKdG8gZXhlY3V0ZSByZWxpYWJseSwgbm90IHRvIG9yY2hlc3RyYXRlIHBhcmFsbGVsaXNtLgo=
+---
+description: Autonomous software factory loop. Fetches open ready-for-agent issues in order, runs /issue on each, continues until the backlog is empty or a blocking failure occurs. Designed to run unattended inside a sandbox.
+argument-hint: [--provider github|gitea] [--max <n>] [--dry-run]
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, mcp
+---
+
+# Factory Command
+
+You are the autonomous software factory loop. You process open issues
+labeled `ready-for-agent` one at a time, in order, until the backlog is empty
+or something requires human attention.
+
+**You run inside a sandboxed container with `--dangerously-skip-permissions`
+and `--max-turns`. Do not ask for approval. Run to completion. Stop only when
+the backlog is empty, a blocking failure occurs, or turns are exhausted.**
+
+---
+
+## Step 0: Parse arguments
+
+- `--provider github|gitea` — which issue tracker to use (default: `github`)
+- `--max <n>` — process at most N issues this run (default: unlimited)
+- `--dry-run` — fetch and list issues that would be processed, but do nothing
+
+Set `PROVIDER`, `MAX`, and `DRY_RUN` for use throughout.
+
+---
+
+## Step 1: Fetch the backlog
+
+**If provider = github:**
+```bash
+gh issue list \
+  --label ready-for-agent \
+  --state open \
+  --json number,title,labels \
+  --jq 'sort_by(.number) | .[]'
+```
+
+**If provider = gitea:**
+Use the `gitea:issue_read` MCP tool with `method: list`, the repo `owner` and
+`repo` from the git remote, `type: issues`, `state: open`, and
+`labels: ready-for-agent`.
+
+If no issues: report and stop.
+
+```
+Backlog is empty — nothing to do.
+```
+
+If `--dry-run`: list the issues and stop.
+
+```
+Issues that would be processed (in order):
+#1 — <title>
+#2 — <title>
+#3 — <title>
+
+Run /factory to process them.
+```
+
+---
+
+## Step 2: Read foundations once
+
+Before processing any issue, read these once — they apply to all issues:
+
+1. `UBIQUITOUS_LANGUAGE.md` — canonical terminology, applies to all code
+2. `CODING_STANDARDS.md` — standards and reviewer checklist
+
+These do not need to be re-read between issues.
+
+---
+
+## Step 3: Process issues in order
+
+For each issue in the backlog (respecting `--max` if set):
+
+### 3a: Check remaining turns
+
+Before starting each issue, assess whether enough turns remain to complete it.
+Each issue typically requires 50-150 turns. If you are approaching the
+`--max-turns` limit (within ~50 turns), stop the loop cleanly:
+
+```
+Turn limit approaching — stopping factory after <n> issues.
+Remaining backlog: #X, #Y, #Z
+Re-run /factory to continue.
+```
+
+Do not start an issue you cannot finish — a half-implemented issue is worse
+than an unstarted one.
+
+### 3b: Check for blockers
+
+Before starting an issue, check if it references other open issues as
+dependencies. Look for patterns like "depends on #N", "blocked by #N",
+or "needs #N" in the issue body.
+
+If a referenced issue is still open: skip this issue and continue to the next.
+Log the skip:
+
+```
+Skipping #<number> — blocked by #<dependency> (still open)
+```
+
+### 3c: Run /issue
+
+Delegate to the **issue command** (via Task) with the issue number and provider:
+
+```
+/issue <number> --provider $PROVIDER
+```
+
+### 3d: Handle the outcome
+
+**Success** — `/issue` completed and created a PR:
+
+```
+✓ Issue #<number> — PR created: <url>
+```
+
+Continue to the next issue.
+
+**Blocked** — `/issue` added the `blocked` label and stopped:
+
+```
+✗ Issue #<number> — blocked, needs human attention
+  See issue comments for details.
+```
+
+Stop the factory loop. Do not continue to the next issue — a blocked issue
+means something unexpected was found that the human needs to see before
+the factory continues.
+
+**Unexpected failure** — `/issue` crashed or produced no PR:
+
+```
+✗ Issue #<number> — unexpected failure
+  <error details>
+```
+
+Comment on the issue:
+
+**If provider = github:**
+```bash
+gh issue comment $NUMBER --body "Factory run failed unexpectedly on this issue.
+Error: <details>
+The factory has stopped. Human attention required."
+```
+
+**If provider = gitea:**
+Use `gitea:issue_write` MCP tool with `method: create_comment`.
+
+Add the `blocked` label. Stop the factory loop.
+
+---
+
+## Step 4: Final report
+
+After the loop completes (backlog empty, --max reached, turn limit approached,
+or stopped on failure):
+
+```
+## Factory Run Complete
+
+**Provider**: <github|gitea>
+**Issues processed**: <n>
+**PRs created**: <n>
+**Skipped (blocked by dependency)**: <n>
+**Stopped on**: <issue number and reason, or "backlog empty">
+
+### Results
+✓ #1 — <title> — PR: <url>
+✓ #2 — <title> — PR: <url>
+✗ #3 — <title> — blocked (see issue comments)
+
+### Remaining backlog
+#4 — <title>
+#5 — <title>
+(re-run /factory to continue)
+```
+
+---
+
+## Design principles
+
+**One issue at a time.** The factory does not parallelize. Each `/issue` run
+branches from fresh main and targets main. Issues that can safely run in
+parallel are identified by the human before labeling — if two issues are
+labeled `ready-for-agent` together, the human has verified they touch different
+parts of the codebase and their PRs can be merged independently.
+
+**Always branch from main.** `/issue` fetches and pulls main before creating
+its branch. This ensures PRs are always based on the latest merged work and
+never accidentally stack on another feature branch.
+
+**Stop on unexpected failure.** A crash means something is wrong the human
+needs to understand before more code is written.
+
+**Stop on blocked.** A `blocked` label means `/issue` hit its cycle limits or
+found something unresolvable. The human needs to intervene.
+
+**Turn-aware.** The factory checks remaining turns before starting each issue
+and stops cleanly rather than abandoning a half-implemented issue mid-run.
+
+**Idempotent re-runs.** Issues that completed (no longer `ready-for-agent`)
+or are blocked (`blocked` label) will not appear on re-run. The factory
+picks up where it can safely continue.
+
+**The human decides what runs in parallel.** The factory never reasons about
+which issues are safe to run concurrently — that judgment belongs to the human
+who understands the codebase and the dependency graph. The factory's job is
+to execute reliably, not to orchestrate parallelism.
