@@ -15,6 +15,9 @@ Do not ask for approval on file operations or tool use. Run to completion.**
 
 The pipeline: fetch → scan → branch from main → tests (RED) → implement (GREEN) → refactor → review → fix → re-review → docs → ship.
 
+**Each step produces exactly one commit. Do not combine steps. Do not skip commits.
+The commit history must show the pipeline stages clearly.**
+
 ## Cycle limits — hard ceilings to prevent dead loops
 
 - **Test-fix attempts**: max 3 attempts to make a failing test pass before stopping
@@ -116,25 +119,42 @@ comment on the issue explaining the state of the repo. Do not proceed.
 
 ## Step 4: Write failing tests from ACs (RED)
 
-Each Acceptance Criteria item becomes one or more tests. Do not write
-implementation code yet.
+**This step writes ONLY test files. Do NOT create any implementation files.**
 
-For each AC:
+Each Acceptance Criteria item becomes one or more tests. For each AC:
 - Determine the appropriate test type (unit, integration — refer to CODING_STANDARDS)
 - Write a test that will fail because the implementation doesn't exist yet
 - The test must assert the exact behaviour the AC describes — not a proxy for it
+- If the test needs minimal type stubs to compile, create the absolute minimum
+  (empty struct, interface with no methods) — not the real implementation
 
-Delegate to **test-runner** after writing all tests. Confirm they all FAIL.
-If any test passes without implementation, the test is wrong — fix it.
+**Run the tests. They MUST fail or fail to compile.** Delegate to **test-runner**.
+If any test passes without real implementation, the test is wrong — fix it.
 
-Commit the failing tests:
+**Commit the failing tests NOW. This commit is mandatory and must happen before
+any implementation code is written.**
+
 ```
 test(<scope>): add failing tests for issue #$ISSUE_NUMBER
 ```
 
+**CHECKPOINT — verify this commit exists before proceeding:**
+```bash
+git log --oneline -1
+```
+The most recent commit MUST start with `test(`. If it does not, you have
+skipped this step. Stop and commit the tests now. Do not proceed to Step 5
+until this commit exists in the git log.
+
 ---
 
 ## Step 5: Implement until GREEN
+
+**Verify Step 4's commit exists before writing any implementation:**
+```bash
+git log --oneline -1 | grep "^[a-f0-9]* test("
+```
+If this produces no output, STOP — go back to Step 4 and commit the tests first.
 
 Implement the code needed to make the tests pass.
 
@@ -152,7 +172,7 @@ When all ACs pass:
 - Run the full test suite via **test-runner**
 - If anything fails: apply the same 3-attempt limit per failing test
 
-Commit the implementation:
+**Commit the implementation:**
 ```
 feat(<scope>): implement issue #$ISSUE_NUMBER — <title>
 ```
@@ -168,10 +188,12 @@ Make improvements. Delegate to **test-runner** after each change.
 If any test turns red: revert the change immediately — do not fix forward.
 Do not loop — one refactor pass, then move on.
 
-Commit if changes were made:
+**Commit if changes were made:**
 ```
 refactor(<scope>): clean up implementation for issue #$ISSUE_NUMBER
 ```
+
+If no refactoring was needed, skip this commit — do not create an empty commit.
 
 ---
 
@@ -184,7 +206,7 @@ refactor(<scope>): clean up implementation for issue #$ISSUE_NUMBER
 
 Only fix findings that are **strictly blocking**. The threshold is high:
 
-- **Security vulnerability** — exploitable in Hestia's threat model (not theoretical)
+- **Security vulnerability** — exploitable in the project's threat model (not theoretical)
 - **AC not covered** — a specified behaviour has no test and no implementation
 - **Compile failure** — the code does not build
 - **Abstraction boundary violated** — directly contradicts CODING_STANDARDS.md rules
@@ -209,7 +231,11 @@ Cycle N:
 2. Categorise each finding strictly: blocking (per above) or non-blocking
 3. If no blocking findings: proceed to Step 8
 4. Fix each blocking finding — run **test-runner** after each fix to confirm GREEN
-5. Increment cycle counter
+5. **Commit the fixes for this cycle:**
+   ```
+   fix(<scope>): resolve review findings cycle N for issue #$ISSUE_NUMBER
+   ```
+6. Increment cycle counter
 
 ### Round 3 gate
 
@@ -245,6 +271,8 @@ vulnerabilities. Round 3 must add context, not just retry.
 
 ## Step 8: Update documentation
 
+**This step is NOT optional. Always execute it regardless of remaining turns.**
+
 Documentation must not drift from the code. After review passes, update docs
 scoped to what this issue changed — not a full audit, just the diff.
 
@@ -256,17 +284,25 @@ git diff main...HEAD --name-only
 
 Group the changed files by package/subsystem. This is your scope.
 
-### 8b: Scan docs for drift in scope
+### 8b: Check for required doc updates
+
+For each changed package, check directly (these are file-existence checks,
+not a doc-scanner delegation):
+
+1. Does `docs/subsystems/<package-name>/README.md` exist? If the package is
+   new and substantial (new types, interfaces, or functions), it MUST be created.
+2. Does `ARCHITECTURE.md` list this package in its component inventory?
+   If not, it MUST be updated.
+3. Does `docs/content-plan.md` reference any new docs? If not, update it.
+
+### 8c: Scan existing docs for drift
 
 Delegate to **doc-scanner** with explicit scope: the changed packages only.
 Instruct it to check:
 - Do any existing docs describe interfaces, types, or behaviour that changed?
 - Were new public interfaces, types, or packages added that have no doc coverage?
-- Does `docs/content-plan.md` reference all relevant docs?
 
-If doc-scanner finds nothing that needs updating: skip to Step 9.
-
-### 8c: Update drifted docs
+### 8d: Update drifted docs
 
 For each doc that needs updating, delegate to **doc-writer** with:
 - The target file path
@@ -280,14 +316,19 @@ Rules:
 - Existing behaviour changed → update any doc that describes that behaviour
 - New doc created → update `docs/content-plan.md` with the new entry
 
-Do not create Tier 3 module docs per issue — those are a `/document` judgment call.
+Do not create Tier 3 module docs per issue — those are a `/document` judgement call.
 Do not rewrite CONCEPTS.md per issue — that is a human decision via `/document`.
 
-### 8d: Commit doc updates
+### 8e: Commit doc updates
 
-If any docs were updated:
+**If any docs were updated, this commit is mandatory:**
 ```
 docs(<scope>): update documentation for issue #$ISSUE_NUMBER
+```
+
+**CHECKPOINT — verify doc commit if docs were changed:**
+```bash
+git diff --cached --name-only | grep -E "^(docs/|ARCHITECTURE\.md|CONCEPTS\.md)" || echo "no doc files staged"
 ```
 
 ---
@@ -343,6 +384,9 @@ The PR description must include:
 **Branch**: issue/<number>-<slug>
 **PR**: <pr url>
 
+### Commits
+<list each commit with its message — should show the pipeline stages>
+
 ### AC Verification
 <table>
 
@@ -373,3 +417,21 @@ Non-blocking findings: <n> (noted in PR — human reviewer to decide)
 - **Repo not in clean state**: comment explaining what was found. Stop.
 - **In all cases**: do not guess, do not improvise beyond the AC scope, do not
   ship a PR with known failures. Never target a feature branch as PR base.
+
+---
+
+## Expected commit history
+
+A correctly executed issue produces this commit sequence:
+
+```
+test(<scope>):     add failing tests for issue #N
+feat(<scope>):     implement issue #N — <title>
+refactor(<scope>): clean up implementation for issue #N     (if needed)
+fix(<scope>):      resolve review findings cycle 1 for #N   (if needed)
+fix(<scope>):      resolve review findings cycle 2 for #N   (if needed)
+docs(<scope>):     update documentation for issue #N        (if docs changed)
+```
+
+If your commit history does not match this pattern, you have skipped steps.
+Go back and fix the history before shipping.
