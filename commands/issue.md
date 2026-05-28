@@ -119,32 +119,52 @@ comment on the issue explaining the state of the repo. Do not proceed.
 
 ## Step 4: Write failing tests from ACs (RED)
 
-**This step writes ONLY test files. Do NOT create any implementation files.**
+**This step writes ONLY test files. Do NOT create or modify any implementation files.**
+**Do NOT think about the implementation yet. Focus only on what the ACs require.**
 
 Each Acceptance Criteria item becomes one or more tests. For each AC:
 - Determine the appropriate test type (unit, integration — refer to CODING_STANDARDS)
-- Write a test that will fail because the implementation doesn't exist yet
-- The test must assert the exact behaviour the AC describes — not a proxy for it
+- Write a test that asserts the exact behaviour the AC describes — not a proxy for it
 - If the test needs minimal type stubs to compile, create the absolute minimum
   (empty struct, interface with no methods) — not the real implementation
 
-**Run the tests. They MUST fail or fail to compile.** Delegate to **test-runner**.
+### 4a: Verify no implementation files were created
+
+After writing all test files, run:
+```bash
+git diff --name-only | grep -v _test.go | grep -v .claude/ | grep -v doc.go
+```
+If this command produces ANY output, you have created implementation files.
+**Delete them now.** Only `*_test.go` files and minimal stubs (empty types in
+existing files) are permitted at this point.
+
+### 4b: Run tests — they MUST fail
+
+Delegate to **test-runner**. Tests must fail or fail to compile.
 If any test passes without real implementation, the test is wrong — fix it.
 
-**Commit the failing tests NOW. This commit is mandatory and must happen before
-any implementation code is written.**
+### 4c: Commit the failing tests
 
 ```
 test(<scope>): add failing tests for issue #$ISSUE_NUMBER
 ```
 
-**CHECKPOINT — verify this commit exists before proceeding:**
+### 4d: CHECKPOINT — verify commit and clean working tree
+
 ```bash
 git log --oneline -1
+git status --porcelain
 ```
-The most recent commit MUST start with `test(`. If it does not, you have
-skipped this step. Stop and commit the tests now. Do not proceed to Step 5
-until this commit exists in the git log.
+
+The most recent commit MUST start with `test(`.
+`git status` MUST show a clean working tree (no modified files, no untracked files
+except in `.claude/`).
+
+If the working tree is not clean, you wrote implementation files alongside tests.
+**This is a violation.** Run `git checkout -- .` to discard uncommitted changes,
+then proceed to Step 5.
+
+Do not proceed to Step 5 until both checks pass.
 
 ---
 
@@ -156,10 +176,14 @@ git log --oneline -1 | grep "^[a-f0-9]* test("
 ```
 If this produces no output, STOP — go back to Step 4 and commit the tests first.
 
-Implement the code needed to make the tests pass.
+Now implement the code needed to make the tests pass.
 
 Work AC by AC — implement the minimum to pass each test, then move to the next.
 Do not implement anything not required by an AC.
+
+**Do NOT modify test files during implementation.** If a test is wrong, that
+is a signal that the AC needs clarification — comment on the issue and add
+`blocked` label, do not silently fix the test to match your implementation.
 
 After each AC's tests pass, delegate to **test-runner** to confirm nothing
 regressed.
