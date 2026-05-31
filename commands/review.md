@@ -44,6 +44,8 @@ Wait for confirmation.
 
 Before running reviewers:
 - Read CLAUDE.md (needed by architecture-reviewer and convention-reviewer)
+- Read CODING_STANDARDS.md if it exists (pass to convention-reviewer and coverage-reviewer)
+- Read UBIQUITOUS_LANGUAGE.md if it exists (pass to convention-reviewer and architecture-reviewer)
 - If scoped to a plan, read the plan file to know which files changed
 - If scoped to a directory, verify the directory exists
 
