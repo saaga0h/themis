@@ -28,6 +28,8 @@ Delegate to the **codebase-scanner** agent to map the project. This runs on Haik
 ## Step 2: Read existing context
 
 - Read CLAUDE.md if it exists (for build commands, constraints, gotchas — not architecture)
+- Read CODING_STANDARDS.md if it exists (for testing patterns, review checklist, naming conventions)
+- Read UBIQUITOUS_LANGUAGE.md if it exists (for correct terminology in test names and assertions)
 - Read any existing plans in .claude/plans/
 - Read README.md if it exists
 - Note any .claude/agents/ or .claude/commands/ that exist
