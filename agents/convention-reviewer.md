@@ -1,7 +1,6 @@
 ---
 name: convention-reviewer
-description: Checks code against project conventions — naming, error handling, patterns, style. Derives conventions primarily from existing code; CLAUDE.md only for explicit overrides. Mechanical comparison. Runs on Haiku.
-tools: Read, Glob, Grep, Bash
+description: Checks code against project conventions — naming, error handling, patterns, style, terminology. Uses CODING_STANDARDS.md and UBIQUITOUS_LANGUAGE.md as authoritative sources when present; derives remaining conventions from existing code; CLAUDE.md for explicit overrides. Mechanical comparison. Runs on Haiku.
 model: haiku
 ---
 
