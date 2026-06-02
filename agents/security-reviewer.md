@@ -87,6 +87,7 @@ You receive either:
 - Be specific: file paths, line numbers, the actual problematic code pattern
 - Don't flag theoretical risks in code that's clearly internal/non-networked — understand context
 - Distinguish between "this is vulnerable now" and "this could become vulnerable if..."
+- When you find a secret value — an API token, password, private key, OAuth credential, or connection string containing credentials — report only its name and location (env var name, Vault path, config key, file path). Never reproduce, quote, truncate, or paraphrase the value itself. This applies regardless of where the secret lives: .env files, environment variables, Vault paths, config files, source code, or command output.
 - If you find hardcoded secrets, say so clearly but do NOT reproduce the secret value in your report
 - Check the project type first — a CLI tool has different security concerns than a web service
 - Complete your scan, don't stop at the first finding
