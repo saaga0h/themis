@@ -27,6 +27,8 @@ docs(<scope>):     update documentation             (if docs changed)
  
 ## 3. Audit the review notes
  
+The section under audit is the PR's **Review Notes** — which the factory is required to populate with *every* non-blocking finding it waved through. A sparse Review Notes section on a non-trivial diff is itself suspect: the factory found nothing worth noting, or it under-reported.
+ 
 The factory labels its own findings blocking / non-blocking. **Treat every label as a claim, not a decision.** For each note:
  
 - Re-derive it against the contracts. A "non-blocking" note that is actually a contract violation is blocking — that is what the fix-commit stage exists for.

@@ -59,6 +59,7 @@ A good CLAUDE.md is under 20 lines. Everything else belongs in docs/.
 | `ac-drafter` | sonnet | Formats draft AC into structured criteria ready for test-architect |
 | `test-architect` | sonnet | Decides test type, boundary, and what NOT to test; produces test skeleton |
 | `test-writer` | sonnet | Writes failing tests from skeleton; confirms RED; presents Specification Review |
+| `pr-composer` | sonnet | Composes the factory PR's AC verification table and Review Notes in a fresh context, for `/ship --pr-sections` |
 
 Agents are single-purpose. They don't reason about what to do — they execute one thing.
 

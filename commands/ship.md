@@ -1,6 +1,6 @@
 ---
 description: Create a PR/MR for completed work. Reads plan, review report, and git diff to compose the PR description. Uses GitHub/GitLab MCP if available, falls back to CLI.
-argument-hint: [plan-name] [--skip-review] [--no-confirm]
+argument-hint: [plan-name] [--skip-review] [--no-confirm] [--pr-sections <path>]
 allowed-tools: Read, Glob, Grep, Bash, Task, mcp
 ---
 
@@ -55,10 +55,25 @@ Write the PR description with this structure:
 <what was tested — from plan test criteria and review report>
 
 ## Review Notes
-<any findings from /review that were addressed, or flagged as known>
+<every non-blocking review finding, for the human to triage — or supplied via --pr-sections; see below>
 ```
 
 Keep it concise. The PR description should help a human reviewer understand what happened and why, not repeat every line of the diff.
+
+**Caller-supplied sections (`--pr-sections <path>`).** A caller may hand you
+pre-composed body sections rather than have you derive them. If `--pr-sections
+<path>` is in `$ARGUMENTS`, read that file and splice its contents **verbatim**
+into the PR body, immediately after the Testing section, in place of the Review
+Notes block above. The factory always supplies this — its file holds the AC
+verification table and the full Review Notes list, both built by `pr-composer` in a
+fresh context precisely so this command never has to compose them from a deep
+context. A standalone caller may point `--pr-sections` at any file of pre-built
+sections, or omit it.
+
+**When `--pr-sections` is omitted** (a manual ship), compose the Review Notes
+yourself from the `/review` findings that were addressed or flagged as known. Do
+not narrow a factory-style Review Notes list to only addressed findings — the
+unaddressed non-blocking ones are the point of the handoff.
 
 ## Step 3: Confirm or create directly
 

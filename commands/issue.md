@@ -244,9 +244,12 @@ Everything else is **non-blocking** regardless of how the reviewer words it:
 - Redundant code that doesn't affect correctness
 - Medium-severity findings that require future issues to address properly
 
-**Do not fix non-blocking findings.** Note them in the PR description. Do not
-let reviewer suggestions expand the scope of the implementation. The human
-reviewer decides what warrants a follow-up issue.
+**Do not fix non-blocking findings.** As you categorise each one, append it to
+`.claude/issues/issue-$ISSUE_NUMBER-review-notes.md` immediately — capture the
+finding while the review context is fresh, not by reconstructing the list at ship
+time. One bullet per finding: what it is, where (`file:line`), and why it is
+non-blocking. Do not let reviewer suggestions expand the scope of the
+implementation. The human reviewer decides what warrants a follow-up issue.
 
 ### Cycle procedure
 
@@ -372,10 +375,29 @@ Use `gitea:issue_write` MCP tool with `method: replace_labels` to swap
 
 ## Step 10: Ship
 
-Delegate to **ship command** (via Task) with the branch name and `--no-confirm` flag.
+### 10a: Compose the PR body sections
+
+Delegate to the **pr-composer** agent (via Task) to build the factory-specific PR
+sections — the AC verification table and the Review Notes list — in a fresh
+context. Do not compose them inline here: this run's context is at its deepest, and
+mapping each AC to its test must be correct. Pass the agent:
+
+- The issue number `$ISSUE_NUMBER`
+- The captured review-notes file: `.claude/issues/issue-$ISSUE_NUMBER-review-notes.md`
+  (it may be absent if there were no non-blocking findings — that is valid)
+- The output path: `.claude/issues/issue-$ISSUE_NUMBER-pr-sections.md`
+
+The agent reads the issue's ACs, the test files on the branch, and the captured
+review notes, then writes the AC verification table and Review Notes section to the
+output path. It does not run tests or create the PR.
+
+### 10b: Ship
+
+Delegate to **ship command** (via Task) with the branch name, `--no-confirm`, and
+the composed sections:
 
 ```
-/ship <branch-name> --no-confirm
+/ship <branch-name> --no-confirm --pr-sections .claude/issues/issue-$ISSUE_NUMBER-pr-sections.md
 ```
 
 The `--no-confirm` flag skips the PR preview and confirmation step — the factory
@@ -383,18 +405,13 @@ is autonomous, there is no human to confirm. The PR is created immediately.
 
 The PR must target `main` — never another feature branch.
 
-The PR description must include:
+The PR description must include (the AC verification table and Review Notes come
+from the composed sections file above — this command owns *what* the PR must
+contain; `pr-composer` and `/ship` own *building* it):
 - `Closes #$ISSUE_NUMBER` in the first line
 - Summary of what was implemented
-- AC verification table:
-
-```
-| AC | Description | Test | Status |
-|----|-------------|------|--------|
-| 1  | <ac text>   | <test file:line> | ✓ PASS |
-```
-
-- **Review Notes** section listing all non-blocking findings for the human reviewer
+- AC verification table — every AC mapped to the test that proves it
+- **Review Notes** section listing every non-blocking finding for the human reviewer
 - Documentation changes made (if any)
 
 ---
