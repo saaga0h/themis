@@ -414,6 +414,26 @@ contain; `pr-composer` and `/ship` own *building* it):
 - **Review Notes** section listing every non-blocking finding for the human reviewer
 - Documentation changes made (if any)
 
+### 10c: Accumulate non-blocking findings
+
+If .claude/issues/issue-$ISSUE_NUMBER-review-notes.md exists and is non-empty,
+append its contents to .claude/review-backlog.md at the repo root:
+
+bashif [ -s ".claude/issues/issue-$ISSUE_NUMBER-review-notes.md" ]; then
+  echo "" >> .claude/review-backlog.md
+  echo "## Issue #$ISSUE_NUMBER — $(date -u +%Y-%m-%d)" >> .claude/review-backlog.md
+  cat ".claude/issues/issue-$ISSUE_NUMBER-review-notes.md" >> .claude/review-backlog.md
+  git add .claude/review-backlog.md
+  git commit --amend --no-edit
+fi
+
+This creates a single running file of all non-blocking findings across factory
+runs. The periodic /review command and the human can scan this file to spot
+cross-cutting patterns before they accumulate into a wall of findings.
+
+Do not create a separate commit — amend onto the doc commit (Step 8e) or the
+last commit if no docs were changed.
+
 ---
 
 ## Step 11: Final report
