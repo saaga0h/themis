@@ -52,6 +52,11 @@ When you find a secret value — an API token, password, private key, OAuth cred
 - Rate limiting presence
 - Default passwords or admin accounts
 
+### Cross-reference (multi-binary projects)
+- For new or modified HTTP servers: compare server configuration (timeouts, body-size limits, graceful shutdown, TLS) against existing servers in `cmd/`. Flag any that are missing patterns present in siblings.
+- For new or modified MQTT clients: compare broker authentication, client-ID strategy, and topic ACL patterns against existing MQTT clients. Flag inconsistencies — if one binary authenticates to the broker and another does not, that is a finding.
+- For new message structs published to MQTT: verify required fields per CODING_STANDARDS.md (typically `timestamp` and `agent_id`). Flag omissions.
+
 ## Input
 
 You receive either:
