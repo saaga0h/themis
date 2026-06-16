@@ -19,6 +19,8 @@ coordinate agent execution, enforce cycle limits, and manage pipeline state.
 | Commands | `commands/` | Slash command prompts that drive top-level user workflows |
 | Skills | `skills/` | Reusable skill prompts composed into agents and commands |
 | Go binary | `cmd/themis/` | v2.0 pipeline orchestrator (deterministic, compiled) |
+| Agent invoker | `internal/agent/` | `Invoker` interface and `ClaudeCodeInvoker` for spawning Claude Code |
+| Git helpers | `internal/git/` | Context-aware git subprocess helpers for commit snapshot and branch queries |
 
 ### Agents (`agents/`)
 
@@ -70,6 +72,24 @@ Current skills: `deepening`, `deepen`, `design-it-twice`, `grill-me`,
 `hearth-sync`, `issue-writer`, `pr-review`, `renovate-merge-safe`,
 `renovate-plan-major`, `renovate-triage`, `review-walker`, `split-walker`,
 `ui-reader`.
+
+### Agent Invoker (`internal/agent/`)
+
+`Invoker` interface with `Invoke(ctx, InvokeOptions) (*InvokeResult, error)` as
+the seam between deterministic pipeline control and LLM creative work.
+`ClaudeCodeInvoker` implements the interface by spawning `claude --print
+--dangerously-skip-permissions --max-turns N --model MODEL`, feeding the prompt
+via stdin, and capturing stdout. Detects commits made during invocation by
+snapshotting `git log` before/after via `internal/git`. Tests use a
+`fakeInvoker` — no real `claude` process required for unit tests.
+
+### Git Helpers (`internal/git/`)
+
+Context-aware wrappers around git subprocess calls. All functions accept
+`context.Context` so callers can cancel in-flight git operations. Validates that
+`dir` is an absolute path before constructing subprocesses. Functions:
+`CommitsBefore`, `CommitsAfter`, `WorkingTreeClean`, `CurrentBranch`. Tested
+against real temporary git repositories (no mocking).
 
 ### Go Binary (`cmd/themis/`)
 
