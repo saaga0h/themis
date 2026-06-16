@@ -1,6 +1,9 @@
 IMAGE := themis:dev
 MAX_TURNS ?= 600
 PROVIDER ?= gitea
+BINARY     := butler
+CMD        := ./cmd/themis
+BUILD_DIR  := bin
 
 PODMAN_RUN := podman run -i \
 	--userns=keep-id \
@@ -37,7 +40,11 @@ build-image: ## Build the factory container image
 	podman build -t $(IMAGE) --memory=16g .
 
 build: ## Build the themis binary
-	go build ./cmd/themis/
+	mkdir -p $(BUILD_DIR)
+	go build -o $(BUILD_DIR)/$(BINARY) $(CMD)
+
+run: build ## Build and run
+	$(BUILD_DIR)/$(BINARY)
 
 test: ## Run Go tests
 	go test ./...
