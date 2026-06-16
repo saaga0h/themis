@@ -197,6 +197,24 @@ func TestAdvanceRound3CycleExhaustedReturnsError(t *testing.T) {
 
 // --- Test-fix attempt limits ---
 
+func TestAdvanceTestFixAttemptRetry(t *testing.T) {
+	ps := &PipelineState{
+		CurrentStep:     StepTestRed,
+		MaxReviewCycles: 2,
+		TestFixAttempts: map[string]int{"AC-1": 1},
+	}
+	next, err := ps.Advance(StepResult{Success: false, TestACKey: "AC-1"})
+	if err != nil {
+		t.Fatalf("unexpected error on retry: %v", err)
+	}
+	if next != StepTestRed {
+		t.Errorf("expected StepTestRed for retry, got %v", next)
+	}
+	if ps.TestFixAttempts["AC-1"] != 2 {
+		t.Errorf("expected attempt count 2, got %d", ps.TestFixAttempts["AC-1"])
+	}
+}
+
 func TestAdvanceTestFixAttemptExceeded(t *testing.T) {
 	ps := &PipelineState{
 		CurrentStep:     StepTestRed,
@@ -304,5 +322,20 @@ func TestSaveStateWritesValidJSON(t *testing.T) {
 	var m map[string]interface{}
 	if err := json.Unmarshal(data, &m); err != nil {
 		t.Errorf("state.json is not valid JSON: %v", err)
+	}
+}
+
+func TestLoadStateMalformedJSON(t *testing.T) {
+	dir := t.TempDir()
+	stateDir := filepath.Join(dir, ".themis")
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "state.json"), []byte("{not valid json"), 0o600); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	_, err := LoadState(dir)
+	if err == nil {
+		t.Error("expected error for malformed JSON, got nil")
 	}
 }
