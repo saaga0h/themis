@@ -17,7 +17,7 @@
 
 ## Architecture
 
-`main()` selects the subcommand via `os.Args[1]` switch. The `issue` subcommand delegates to `runIssue()`, which parses args and wires together the `tracker.Fetcher`, `agent.Invoker`, and `runner.IssueWriter` implementations before calling `runner.Run`.
+`main()` selects the subcommand via `os.Args[1]` switch. The `issue` subcommand delegates to `runIssue()`, which parses args then calls `newIssueConfig` to wire together the `tracker.Fetcher`, `agent.Invoker`, `runner.IssueWriter`, and `checkpoint.CheckpointFn` implementations before calling `runner.Run`.
 
 Unknown subcommands print `unknown command: <name>` to stderr and exit 1. Invocation with no arguments prints a usage line to stderr and exits 1.
 
@@ -60,6 +60,7 @@ Module: `git.home.federation.fi/lavernea/themis`, Go 1.22.
 - `internal/runner` — pipeline orchestration
 - `internal/tracker` — issue fetching
 - `internal/agent` — agent invocation interface
+- `internal/checkpoint` — step checkpoint wired as `CheckpointFn`
 
 ## Related Documents
 

@@ -12,6 +12,7 @@
 | File | Status | Description |
 |------|--------|-------------|
 | docs/subsystems/themis/README.md | exists | `cmd/themis` CLI binary — build, usage, subcommands |
+| docs/subsystems/checkpoint/README.md | exists | Commit prefix and working-tree verification after each pipeline step |
 
 ## Planned (not yet created)
 
@@ -20,5 +21,4 @@
 - `docs/subsystems/profile/README.md` — project profile schema (issue #9)
 - `docs/subsystems/invoker/README.md` — agent invocation layer (issue #10)
 - `docs/subsystems/tracker/README.md` — issue fetcher and AC parser (issue #11)
-- `docs/subsystems/checkpoint/README.md` — commit prefix and working-tree verification (issue #11)
 - `docs/subsystems/runner/README.md` — pipeline orchestration and state wiring (issue #11)

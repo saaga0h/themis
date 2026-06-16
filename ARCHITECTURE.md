@@ -125,9 +125,11 @@ against real temporary git repositories (no mocking).
 Entry point for the v2.0 deterministic orchestration layer. Implements the
 `version` subcommand (reports `0.1.0`) and the `issue` subcommand, which runs
 the full pipeline for a given issue number. The `issue` subcommand resolves the
-repo root, selects a tracker fetcher based on provider (from args), and delegates
-to `runner.Run`. Gitea credentials are read from the `GITEA_OWNER`, `GITEA_REPO`,
-`GITEA_API_URL`, and `GITEA_TOKEN` environment variables.
+repo root, selects a tracker fetcher based on provider (from args), wires the
+production `Config` via `newIssueConfig` (which calls `checkpoint.NewStepCheckpoint`
+and sets it as `CheckpointFn`), and delegates to `runner.Run`. Gitea credentials
+are read from the `GITEA_OWNER`, `GITEA_REPO`, `GITEA_API_URL`, and `GITEA_TOKEN`
+environment variables.
 
 ### Issue Tracker Integration (`internal/tracker/`)
 
@@ -135,12 +137,21 @@ to `runner.Run`. Gitea credentials are read from the `GITEA_OWNER`, `GITEA_REPO`
 
 ### Checkpoint Verification (`internal/checkpoint/`)
 
-Two functions that the pipeline runner calls after each agent step:
+Three functions that the pipeline runner calls after each agent step:
 
+- `NewStepCheckpoint(ctx context.Context, dir string) (func(context.Context, pipeline.Step, string) error, error)` — snapshots the current git HEAD, then returns a stateful checkpoint function. On each call the function verifies the working tree is clean, checks that required steps produced a new commit with the expected prefix (see table below), and advances the snapshot so the next call only sees commits from that step.
 - `VerifyCommitPrefix(ctx context.Context, dir, prefix string) error` — confirms the last commit message starts with the expected conventional-commit prefix (e.g., `test(`, `feat(`). Delegates to `git.LastCommitMessage`.
 - `VerifyCleanWorkingTree(ctx context.Context, dir string) error` — confirms no uncommitted changes remain. Delegates to `git.WorkingTreeClean`.
 
-All git subprocess calls are delegated to `internal/git`.
+| Step | Required prefix | Commit required? |
+|------|-----------------|-----------------|
+| TestRed | `test(` | yes |
+| Implement | `feat(` | yes |
+| Refactor | `refactor(` | no (optional) |
+| Fix | `fix(` | yes |
+| Docs | `docs(` | no (optional) |
+
+All git subprocess calls are delegated to `internal/git`. `NewStepCheckpoint` is wired into the production runner by `cmd/themis/main.go::newIssueConfig`.
 
 ### Pipeline Runner (`internal/runner/`)
 
