@@ -23,6 +23,8 @@ coordinate agent execution, enforce cycle limits, and manage pipeline state.
 | Prompt templates | `templates/` | Per-step markdown prompt templates with `{{KEY}}` placeholders |
 | Prompt substitution | `internal/prompt/` | `{{KEY}}` placeholder substitution for template rendering |
 | Project profile | `internal/profile/` | Per-project YAML configuration schema and loader |
+| Agent invoker | `internal/agent/` | `Invoker` interface and `ClaudeCodeInvoker` for spawning Claude Code |
+| Git helpers | `internal/git/` | Context-aware git subprocess helpers for commit snapshot and branch queries |
 
 ### Agents (`agents/`)
 
@@ -97,6 +99,23 @@ and whether docs and refactor steps are enabled. `Load(dir string) (*Profile, er
 returns sensible defaults (sonnet/haiku mix, round3=auto, 3 test-fix attempts,
 both steps enabled) when the file is absent. Uses `yaml.v3` with `KnownFields(true)`
 strict mode and validates model names and round3 values at load time.
+### Agent Invoker (`internal/agent/`)
+
+`Invoker` interface with `Invoke(ctx, InvokeOptions) (*InvokeResult, error)` as
+the seam between deterministic pipeline control and LLM creative work.
+`ClaudeCodeInvoker` implements the interface by spawning `claude --print
+--dangerously-skip-permissions --max-turns N --model MODEL`, feeding the prompt
+via stdin, and capturing stdout. Detects commits made during invocation by
+snapshotting `git log` before/after via `internal/git`. Tests use a
+`fakeInvoker` — no real `claude` process required for unit tests.
+
+### Git Helpers (`internal/git/`)
+
+Context-aware wrappers around git subprocess calls. All functions accept
+`context.Context` so callers can cancel in-flight git operations. Validates that
+`dir` is an absolute path before constructing subprocesses. Functions:
+`CommitsBefore`, `CommitsAfter`, `WorkingTreeClean`, `CurrentBranch`. Tested
+against real temporary git repositories (no mocking).
 
 ### Go Binary (`cmd/themis/`)
 
