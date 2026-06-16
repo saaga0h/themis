@@ -24,6 +24,14 @@ const (
 	StepShip
 )
 
+func (s Step) String() string {
+	names := [...]string{"Fetch", "Scan", "Branch", "TestRed", "Implement", "Refactor", "Review", "Fix", "Docs", "Ship"}
+	if int(s) < len(names) {
+		return names[s]
+	}
+	return fmt.Sprintf("Step(%d)", int(s))
+}
+
 type Round3Trigger int
 
 const (
@@ -61,8 +69,6 @@ func (ps *PipelineState) Advance(result StepResult) (Step, error) {
 			if ps.TestFixAttempts[result.TestACKey] >= 3 {
 				return 0, fmt.Errorf("test-fix attempts for %q exceeded maximum of 3", result.TestACKey)
 			}
-		}
-		if result.TestACKey != "" && !result.Success {
 			ps.TestFixAttempts[result.TestACKey]++
 			return StepTestRed, nil
 		}
@@ -72,18 +78,8 @@ func (ps *PipelineState) Advance(result StepResult) (Step, error) {
 
 	case StepReview:
 		if result.BlockingFindings {
-			maxCycle := ps.MaxReviewCycles
-			if maxCycle == 0 {
-				maxCycle = 2
-			}
-			if ps.ReviewCycle >= 3 {
-				return 0, errors.New("review cycle 3 exhausted: blocking findings remain after maximum cycles")
-			}
-			if ps.ReviewCycle >= maxCycle {
-				if result.Round3Trigger == TriggerNone {
-					return 0, fmt.Errorf("review cycle limit %d reached with blocking findings and no round-3 trigger", maxCycle)
-				}
-				// round-3 granted
+			if err := ps.checkReviewCycleLimit(result.Round3Trigger); err != nil {
+				return 0, err
 			}
 			ps.ReviewCycle++
 			ps.recordStep(result)
@@ -103,6 +99,23 @@ func (ps *PipelineState) Advance(result StepResult) (Step, error) {
 		ps.CurrentStep = next
 		return next, nil
 	}
+}
+
+func (ps *PipelineState) maxReviewCycles() int {
+	if ps.MaxReviewCycles == 0 {
+		return 2
+	}
+	return ps.MaxReviewCycles
+}
+
+func (ps *PipelineState) checkReviewCycleLimit(trigger Round3Trigger) error {
+	if ps.ReviewCycle >= 3 {
+		return errors.New("review cycle 3 exhausted: blocking findings remain after maximum cycles")
+	}
+	if ps.ReviewCycle >= ps.maxReviewCycles() && trigger == TriggerNone {
+		return fmt.Errorf("review cycle limit %d reached with blocking findings and no round-3 trigger", ps.maxReviewCycles())
+	}
+	return nil
 }
 
 func (ps *PipelineState) recordStep(result StepResult) {
