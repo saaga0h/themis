@@ -2,24 +2,25 @@ package git
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
 // CommitsBefore returns all commit SHAs currently reachable from HEAD in dir.
-func CommitsBefore(dir string) ([]string, error) {
-	out, err := runGit(dir, "log", "--format=%H")
+func CommitsBefore(ctx context.Context, dir string) ([]string, error) {
+	out, err := runGit(ctx, dir, "log", "--format=%H")
 	if err != nil {
 		return nil, fmt.Errorf("git log: %w", err)
 	}
 	return parseLines(out), nil
 }
 
-// CommitsAfter returns SHAs added since the before snapshot by diffing against
-// the current log.
-func CommitsAfter(dir string, before []string) ([]string, error) {
-	current, err := CommitsBefore(dir)
+// CommitsAfter returns SHAs added since the before snapshot.
+func CommitsAfter(ctx context.Context, dir string, before []string) ([]string, error) {
+	current, err := CommitsBefore(ctx, dir)
 	if err != nil {
 		return nil, err
 	}
@@ -37,8 +38,8 @@ func CommitsAfter(dir string, before []string) ([]string, error) {
 }
 
 // WorkingTreeClean reports whether the working tree has no uncommitted changes.
-func WorkingTreeClean(dir string) (bool, error) {
-	out, err := runGit(dir, "status", "--porcelain")
+func WorkingTreeClean(ctx context.Context, dir string) (bool, error) {
+	out, err := runGit(ctx, dir, "status", "--porcelain")
 	if err != nil {
 		return false, fmt.Errorf("git status: %w", err)
 	}
@@ -46,16 +47,19 @@ func WorkingTreeClean(dir string) (bool, error) {
 }
 
 // CurrentBranch returns the name of the currently checked-out branch.
-func CurrentBranch(dir string) (string, error) {
-	out, err := runGit(dir, "rev-parse", "--abbrev-ref", "HEAD")
+func CurrentBranch(ctx context.Context, dir string) (string, error) {
+	out, err := runGit(ctx, dir, "rev-parse", "--abbrev-ref", "HEAD")
 	if err != nil {
 		return "", fmt.Errorf("git rev-parse: %w", err)
 	}
 	return strings.TrimSpace(out), nil
 }
 
-func runGit(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
+func runGit(ctx context.Context, dir string, args ...string) (string, error) {
+	if !filepath.IsAbs(dir) {
+		return "", fmt.Errorf("dir must be an absolute path, got %q", dir)
+	}
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

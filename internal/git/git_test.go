@@ -1,6 +1,7 @@
 package git
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -77,7 +78,7 @@ func addCommit(t *testing.T, dir, filename, content, msg string) {
 
 func TestCommitsBeforeReturnsCurrentSHAs(t *testing.T) {
 	dir := initTestRepo(t)
-	shas, err := CommitsBefore(dir)
+	shas, err := CommitsBefore(context.Background(), dir)
 	if err != nil {
 		t.Fatalf("CommitsBefore failed: %v", err)
 	}
@@ -95,8 +96,9 @@ func TestCommitsBeforeReturnsCurrentSHAs(t *testing.T) {
 
 func TestCommitsAfterFindsNewCommits(t *testing.T) {
 	dir := initTestRepo(t)
+	ctx := context.Background()
 
-	before, err := CommitsBefore(dir)
+	before, err := CommitsBefore(ctx, dir)
 	if err != nil {
 		t.Fatalf("CommitsBefore: %v", err)
 	}
@@ -104,7 +106,7 @@ func TestCommitsAfterFindsNewCommits(t *testing.T) {
 	addCommit(t, dir, "a.txt", "a", "add a")
 	addCommit(t, dir, "b.txt", "b", "add b")
 
-	newCommits, err := CommitsAfter(dir, before)
+	newCommits, err := CommitsAfter(ctx, dir, before)
 	if err != nil {
 		t.Fatalf("CommitsAfter: %v", err)
 	}
@@ -115,13 +117,14 @@ func TestCommitsAfterFindsNewCommits(t *testing.T) {
 
 func TestCommitsAfterNoNewCommits(t *testing.T) {
 	dir := initTestRepo(t)
+	ctx := context.Background()
 
-	before, err := CommitsBefore(dir)
+	before, err := CommitsBefore(ctx, dir)
 	if err != nil {
 		t.Fatalf("CommitsBefore: %v", err)
 	}
 
-	newCommits, err := CommitsAfter(dir, before)
+	newCommits, err := CommitsAfter(ctx, dir, before)
 	if err != nil {
 		t.Fatalf("CommitsAfter: %v", err)
 	}
@@ -134,7 +137,7 @@ func TestCommitsAfterNoNewCommits(t *testing.T) {
 
 func TestWorkingTreeCleanOnCleanRepo(t *testing.T) {
 	dir := initTestRepo(t)
-	clean, err := WorkingTreeClean(dir)
+	clean, err := WorkingTreeClean(context.Background(), dir)
 	if err != nil {
 		t.Fatalf("WorkingTreeClean: %v", err)
 	}
@@ -149,7 +152,7 @@ func TestWorkingTreeCleanOnDirtyRepo(t *testing.T) {
 	if err := os.WriteFile(f, []byte("dirty"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	clean, err := WorkingTreeClean(dir)
+	clean, err := WorkingTreeClean(context.Background(), dir)
 	if err != nil {
 		t.Fatalf("WorkingTreeClean: %v", err)
 	}
@@ -162,7 +165,7 @@ func TestWorkingTreeCleanOnDirtyRepo(t *testing.T) {
 
 func TestCurrentBranch(t *testing.T) {
 	dir := initTestRepo(t)
-	branch, err := CurrentBranch(dir)
+	branch, err := CurrentBranch(context.Background(), dir)
 	if err != nil {
 		t.Fatalf("CurrentBranch: %v", err)
 	}

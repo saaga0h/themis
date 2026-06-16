@@ -45,7 +45,7 @@ func (c *ClaudeCodeInvoker) Invoke(ctx context.Context, opts InvokeOptions) (*In
 	}
 
 	workDir := opts.WorkDir
-	before, err := git.CommitsBefore(workDir)
+	before, err := git.CommitsBefore(ctx, workDir)
 	if err != nil {
 		return nil, fmt.Errorf("snapshotting commits: %w", err)
 	}
@@ -67,7 +67,7 @@ func (c *ClaudeCodeInvoker) Invoke(ctx context.Context, opts InvokeOptions) (*In
 	}
 
 	output := stdout.String()
-	newCommits, err := git.CommitsAfter(workDir, before)
+	newCommits, err := git.CommitsAfter(ctx, workDir, before)
 	if err != nil {
 		return nil, fmt.Errorf("detecting new commits: %w", err)
 	}
