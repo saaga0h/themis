@@ -1,5 +1,5 @@
 ---
-description: Run code review using specialized review agents. Supports full review, scoped review, or individual perspectives (--security, --architecture, --complexity, --conventions, --coverage, --numerical, --quick).
+description: Run code review using specialized review agents. Supports full review, scoped review, or individual perspectives (--security, --architecture, --complexity, --conventions, --coverage, --depth, --numerical, --quick).
 argument-hint: [scope] [--flags]
 allowed-tools: Read, Glob, Grep, Bash, Task
 ---
