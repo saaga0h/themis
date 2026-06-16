@@ -1,0 +1,308 @@
+package pipeline
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+// --- Step constants ---
+
+func TestAllStepsDefined(t *testing.T) {
+	steps := []struct {
+		name string
+		step Step
+	}{
+		{"Fetch", StepFetch},
+		{"Scan", StepScan},
+		{"Branch", StepBranch},
+		{"TestRed", StepTestRed},
+		{"Implement", StepImplement},
+		{"Refactor", StepRefactor},
+		{"Review", StepReview},
+		{"Fix", StepFix},
+		{"Docs", StepDocs},
+		{"Ship", StepShip},
+	}
+	if len(steps) != 10 {
+		t.Fatalf("expected 10 steps, got %d", len(steps))
+	}
+	seen := map[Step]string{}
+	for _, s := range steps {
+		if prev, ok := seen[s.step]; ok {
+			t.Errorf("step %v (%s) has the same value as %s", s.step, s.name, prev)
+		}
+		seen[s.step] = s.name
+	}
+}
+
+// --- PipelineState struct ---
+
+func TestPipelineStateFields(t *testing.T) {
+	ps := PipelineState{
+		IssueNumber:     42,
+		CurrentStep:     StepFetch,
+		ReviewCycle:     0,
+		MaxReviewCycles: 2,
+		TestFixAttempts: map[string]int{"AC-1": 1},
+		Commits:         []string{"abc123"},
+		StartedAt:       time.Now(),
+		StepHistory:     []StepResult{{Success: true}},
+	}
+	if ps.IssueNumber != 42 {
+		t.Error("IssueNumber not stored")
+	}
+	if ps.CurrentStep != StepFetch {
+		t.Error("CurrentStep not stored")
+	}
+	if ps.MaxReviewCycles != 2 {
+		t.Error("MaxReviewCycles not stored")
+	}
+	if ps.TestFixAttempts["AC-1"] != 1 {
+		t.Error("TestFixAttempts not stored")
+	}
+	if len(ps.Commits) != 1 {
+		t.Error("Commits not stored")
+	}
+	if len(ps.StepHistory) != 1 {
+		t.Error("StepHistory not stored")
+	}
+}
+
+// --- Advance() happy path ---
+
+func TestAdvanceHappyPath(t *testing.T) {
+	happyPath := []struct {
+		from Step
+		to   Step
+	}{
+		{StepFetch, StepScan},
+		{StepScan, StepBranch},
+		{StepBranch, StepTestRed},
+		{StepTestRed, StepImplement},
+		{StepImplement, StepRefactor},
+		{StepRefactor, StepReview},
+		{StepReview, StepDocs},
+		{StepDocs, StepShip},
+	}
+
+	for _, tc := range happyPath {
+		ps := &PipelineState{
+			CurrentStep:     tc.from,
+			MaxReviewCycles: 2,
+			TestFixAttempts: map[string]int{},
+		}
+		next, err := ps.Advance(StepResult{Success: true})
+		if err != nil {
+			t.Errorf("%v → Advance(success): unexpected error: %v", tc.from, err)
+			continue
+		}
+		if next != tc.to {
+			t.Errorf("%v → Advance(success): got %v, want %v", tc.from, next, tc.to)
+		}
+	}
+}
+
+// --- Review cycle logic ---
+
+func TestAdvanceReviewBlockingReturnsFix(t *testing.T) {
+	ps := &PipelineState{
+		CurrentStep:     StepReview,
+		ReviewCycle:     0,
+		MaxReviewCycles: 2,
+		TestFixAttempts: map[string]int{},
+	}
+	next, err := ps.Advance(StepResult{Success: true, BlockingFindings: true})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if next != StepFix {
+		t.Errorf("expected StepFix, got %v", next)
+	}
+	if ps.ReviewCycle != 1 {
+		t.Errorf("expected ReviewCycle=1, got %d", ps.ReviewCycle)
+	}
+}
+
+func TestAdvanceFixReturnsReview(t *testing.T) {
+	ps := &PipelineState{
+		CurrentStep:     StepFix,
+		ReviewCycle:     1,
+		MaxReviewCycles: 2,
+		TestFixAttempts: map[string]int{},
+	}
+	next, err := ps.Advance(StepResult{Success: true})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if next != StepReview {
+		t.Errorf("expected StepReview, got %v", next)
+	}
+}
+
+func TestAdvanceReviewCycleLimitExceededNoRound3(t *testing.T) {
+	ps := &PipelineState{
+		CurrentStep:     StepReview,
+		ReviewCycle:     2,
+		MaxReviewCycles: 2,
+		TestFixAttempts: map[string]int{},
+	}
+	_, err := ps.Advance(StepResult{Success: true, BlockingFindings: true})
+	if err == nil {
+		t.Error("expected error when review cycle limit reached without round-3 trigger")
+	}
+}
+
+func TestAdvanceRound3TriggerPermitsCycle3(t *testing.T) {
+	ps := &PipelineState{
+		CurrentStep:     StepReview,
+		ReviewCycle:     2,
+		MaxReviewCycles: 2,
+		TestFixAttempts: map[string]int{},
+	}
+	next, err := ps.Advance(StepResult{
+		Success:          true,
+		BlockingFindings: true,
+		Round3Trigger:    TriggerSecurity,
+	})
+	if err != nil {
+		t.Fatalf("round-3 trigger should permit cycle 3, got error: %v", err)
+	}
+	if next != StepFix {
+		t.Errorf("expected StepFix for round-3, got %v", next)
+	}
+	if ps.ReviewCycle != 3 {
+		t.Errorf("expected ReviewCycle=3, got %d", ps.ReviewCycle)
+	}
+}
+
+func TestAdvanceRound3CycleExhaustedReturnsError(t *testing.T) {
+	ps := &PipelineState{
+		CurrentStep:     StepReview,
+		ReviewCycle:     3,
+		MaxReviewCycles: 2,
+		TestFixAttempts: map[string]int{},
+	}
+	_, err := ps.Advance(StepResult{
+		Success:          true,
+		BlockingFindings: true,
+		Round3Trigger:    TriggerSecurity,
+	})
+	if err == nil {
+		t.Error("expected error after cycle 3 exhausted")
+	}
+}
+
+// --- Test-fix attempt limits ---
+
+func TestAdvanceTestFixAttemptExceeded(t *testing.T) {
+	ps := &PipelineState{
+		CurrentStep:     StepTestRed,
+		MaxReviewCycles: 2,
+		TestFixAttempts: map[string]int{"AC-1": 3},
+	}
+	_, err := ps.Advance(StepResult{Success: false, TestACKey: "AC-1"})
+	if err == nil {
+		t.Error("expected error when test-fix attempts exceed 3")
+	}
+}
+
+// --- SaveState / LoadState ---
+
+func TestSaveLoadRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+
+	original := &PipelineState{
+		IssueNumber:     7,
+		CurrentStep:     StepImplement,
+		ReviewCycle:     1,
+		MaxReviewCycles: 2,
+		TestFixAttempts: map[string]int{"AC-1": 2, "AC-2": 0},
+		Commits:         []string{"sha1", "sha2"},
+		StartedAt:       time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+		StepHistory:     []StepResult{{Success: true}, {Success: false, BlockingFindings: true}},
+	}
+
+	if err := SaveState(dir, original); err != nil {
+		t.Fatalf("SaveState failed: %v", err)
+	}
+
+	loaded, err := LoadState(dir)
+	if err != nil {
+		t.Fatalf("LoadState failed: %v", err)
+	}
+	if loaded == nil {
+		t.Fatal("LoadState returned nil with no error")
+	}
+
+	if loaded.IssueNumber != original.IssueNumber {
+		t.Errorf("IssueNumber: got %d, want %d", loaded.IssueNumber, original.IssueNumber)
+	}
+	if loaded.CurrentStep != original.CurrentStep {
+		t.Errorf("CurrentStep: got %v, want %v", loaded.CurrentStep, original.CurrentStep)
+	}
+	if loaded.ReviewCycle != original.ReviewCycle {
+		t.Errorf("ReviewCycle: got %d, want %d", loaded.ReviewCycle, original.ReviewCycle)
+	}
+	if loaded.MaxReviewCycles != original.MaxReviewCycles {
+		t.Errorf("MaxReviewCycles: got %d, want %d", loaded.MaxReviewCycles, original.MaxReviewCycles)
+	}
+	if len(loaded.TestFixAttempts) != len(original.TestFixAttempts) {
+		t.Errorf("TestFixAttempts length: got %d, want %d", len(loaded.TestFixAttempts), len(original.TestFixAttempts))
+	}
+	for k, v := range original.TestFixAttempts {
+		if loaded.TestFixAttempts[k] != v {
+			t.Errorf("TestFixAttempts[%q]: got %d, want %d", k, loaded.TestFixAttempts[k], v)
+		}
+	}
+	if len(loaded.Commits) != len(original.Commits) {
+		t.Errorf("Commits length: got %d, want %d", len(loaded.Commits), len(original.Commits))
+	}
+	if !loaded.StartedAt.Equal(original.StartedAt) {
+		t.Errorf("StartedAt: got %v, want %v", loaded.StartedAt, original.StartedAt)
+	}
+	if len(loaded.StepHistory) != len(original.StepHistory) {
+		t.Errorf("StepHistory length: got %d, want %d", len(loaded.StepHistory), len(original.StepHistory))
+	}
+
+	// Verify the state file exists at the right path
+	statePath := filepath.Join(dir, ".themis", "state.json")
+	if _, err := os.Stat(statePath); err != nil {
+		t.Errorf("state file not found at %s: %v", statePath, err)
+	}
+}
+
+func TestLoadStateMissingFileReturnsNil(t *testing.T) {
+	dir := t.TempDir()
+	state, err := LoadState(dir)
+	if err != nil {
+		t.Fatalf("LoadState on missing file should return nil error, got: %v", err)
+	}
+	if state != nil {
+		t.Errorf("LoadState on missing file should return nil state, got: %+v", state)
+	}
+}
+
+func TestSaveStateWritesValidJSON(t *testing.T) {
+	dir := t.TempDir()
+	ps := &PipelineState{
+		IssueNumber:     1,
+		CurrentStep:     StepFetch,
+		MaxReviewCycles: 2,
+		TestFixAttempts: map[string]int{},
+		StartedAt:       time.Now(),
+	}
+	if err := SaveState(dir, ps); err != nil {
+		t.Fatalf("SaveState failed: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, ".themis", "state.json"))
+	if err != nil {
+		t.Fatalf("could not read state file: %v", err)
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Errorf("state.json is not valid JSON: %v", err)
+	}
+}
