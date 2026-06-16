@@ -50,6 +50,7 @@ A good CLAUDE.md is under 20 lines. Everything else belongs in docs/.
 | `plan-reader` | haiku | Reads plan files, reports status |
 | `architecture-reviewer` | sonnet | Checks internal consistency from code structure |
 | `security-reviewer` | sonnet | Finds vulnerabilities, credentials, injection paths |
+| `depth-reviewer` | sonnet | Finds shallow modules via deletion test; classifies by dependency category; ranks deepening candidates |
 | `complexity-reviewer` | haiku | Measures function length, nesting, dependencies |
 | `convention-reviewer` | haiku | Checks patterns against codebase majority style |
 | `coverage-reviewer` | haiku | Maps tested vs untested code, identifies gaps |
@@ -357,6 +358,11 @@ entry points, and as escape hatches from inside the pipeline.
   → coverage-reviewer (haiku): coverage map
   → security-reviewer (sonnet): vulnerability scan
   → architecture-reviewer (sonnet): internal consistency check
+  → synthesizes findings into review report
+  → saves to .claude/reviews/
+
+/review --depth
+  → depth-reviewer (sonnet): applies deletion test, classifies by dependency category, ranks deepening candidates
   → synthesizes findings into review report
   → saves to .claude/reviews/
 
