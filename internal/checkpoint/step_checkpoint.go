@@ -41,7 +41,7 @@ func NewStepCheckpoint(ctx context.Context, dir string) (func(context.Context, p
 
 		prefix, hasPrefix := stepPrefix[step]
 		if len(newCommits) == 0 {
-			if !optionalCommit[step] && hasPrefix {
+			if hasPrefix && !optionalCommit[step] {
 				return fmt.Errorf("step %v requires a new commit with prefix %q but no new commit was found", step, prefix)
 			}
 		} else if hasPrefix {

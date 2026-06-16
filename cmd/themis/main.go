@@ -69,8 +69,6 @@ func runIssue(args []string) error {
 	return nil
 }
 
-// newIssueConfig builds a runner.Config for a real issue run, wiring in the
-// production checkpoint function.
 func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir string, fetcher tracker.Fetcher, issueWriter runner.IssueWriter) (runner.Config, error) {
 	checkpointFn, err := checkpoint.NewStepCheckpoint(ctx, workDir)
 	if err != nil {
