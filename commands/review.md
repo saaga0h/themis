@@ -21,6 +21,7 @@ Parse `$ARGUMENTS` for:
 | `--complexity` | complexity-reviewer | haiku |
 | `--conventions` | convention-reviewer | haiku |
 | `--coverage` | coverage-reviewer | haiku |
+| `--depth` | depth-reviewer | sonnet |
 | `--numerical` | numerical-reviewer | sonnet |
 | `--quick` | complexity + conventions | haiku |
 | (no flags) | all five standard agents | mixed |
@@ -63,7 +64,8 @@ Run the haiku agents first (they're faster), then sonnet agents.
 3. coverage-reviewer (haiku) — fast coverage map
 4. security-reviewer (sonnet) — deeper analysis
 5. architecture-reviewer (sonnet) — deepest analysis
-6. numerical-reviewer (sonnet) — only when `--numerical` is passed or auto-detected
+6. depth-reviewer (sonnet) — only when `--depth` is passed
+7. numerical-reviewer (sonnet) — only when `--numerical` is passed or auto-detected
 
 **Auto-detection for numerical review**: if the diff contains any of the following,
 automatically add numerical-reviewer even if `--numerical` was not passed:
@@ -107,6 +109,9 @@ Combine all agent outputs into a unified review report:
 
 ### Test Coverage
 <summary from coverage-reviewer, or "Not reviewed">
+
+### Module Depth
+<summary from depth-reviewer, or "Not reviewed">
 
 ### Numerical Correctness
 <summary from numerical-reviewer, or "Not reviewed">
