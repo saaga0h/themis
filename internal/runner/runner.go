@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"git.home.federation.fi/lavernea/themis/internal/agent"
+	"git.home.federation.fi/lavernea/themis/internal/git"
 	"git.home.federation.fi/lavernea/themis/internal/pipeline"
 	"git.home.federation.fi/lavernea/themis/internal/profile"
 	"git.home.federation.fi/lavernea/themis/internal/prompt"
@@ -113,8 +114,41 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 	for {
 		step := state.CurrentStep
 
-		// Infrastructure steps: advance without agent invocation.
-		if step == pipeline.StepFetch || step == pipeline.StepScan || step == pipeline.StepBranch {
+		// Fetch step: git fetch origin.
+		if step == pipeline.StepFetch {
+			if err := git.Fetch(ctx, cfg.WorkDir); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: git fetch failed: %v\n", err)
+			}
+			next, err := state.Advance(pipeline.StepResult{Success: true})
+			if err != nil {
+				return nil, fmt.Errorf("advancing step %v: %w", step, err)
+			}
+			if err := pipeline.SaveState(cfg.WorkDir, state); err != nil {
+				return nil, fmt.Errorf("saving state at step %v: %w", step, err)
+			}
+			state.CurrentStep = next
+			continue
+		}
+
+		// Scan step: auto-advance (codebase scanning happens in agent steps).
+		if step == pipeline.StepScan {
+			next, err := state.Advance(pipeline.StepResult{Success: true})
+			if err != nil {
+				return nil, fmt.Errorf("advancing step %v: %w", step, err)
+			}
+			if err := pipeline.SaveState(cfg.WorkDir, state); err != nil {
+				return nil, fmt.Errorf("saving state at step %v: %w", step, err)
+			}
+			state.CurrentStep = next
+			continue
+		}
+
+		// Branch step: create and checkout issue branch.
+		if step == pipeline.StepBranch {
+			branchName := fmt.Sprintf("issue/%d-%s", cfg.IssueNumber, slugify(issue.Title))
+			if err := git.CheckoutNewBranch(ctx, cfg.WorkDir, branchName); err != nil {
+				return nil, fmt.Errorf("creating branch %s: %w", branchName, err)
+			}
 			next, err := state.Advance(pipeline.StepResult{Success: true})
 			if err != nil {
 				return nil, fmt.Errorf("advancing step %v: %w", step, err)
@@ -249,8 +283,8 @@ func deriveStepResult(step pipeline.Step, r *agent.InvokeResult, cfg Config) pip
 		}
 		if len(r.CommitsMade) > 0 || r.Completed {
 			return pipeline.StepResult{Success: true}
-    }
-    return pipeline.StepResult{Success: false, TestACKey: key}
+		}
+		return pipeline.StepResult{Success: false, TestACKey: key}
 
 	case pipeline.StepReview:
 		blocking := hasBlockingFindings(r.Stdout)
@@ -362,4 +396,23 @@ func changedFiles(workDir string) string {
 	// Best-effort: read files changed vs origin/main.
 	// In test environments this may be empty, which is fine.
 	return ""
+}
+
+// slugify converts a title into a branch-safe name.
+func slugify(s string) string {
+	s = strings.ToLower(s)
+	s = strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			return r
+		}
+		return '-'
+	}, s)
+	for strings.Contains(s, "--") {
+		s = strings.ReplaceAll(s, "--", "-")
+	}
+	s = strings.Trim(s, "-")
+	if len(s) > 50 {
+		s = s[:50]
+	}
+	return s
 }
