@@ -82,6 +82,15 @@ func Fetch(ctx context.Context, dir string) error {
 	return nil
 }
 
+// PushBranch pushes the current branch to origin.
+func PushBranch(ctx context.Context, dir, branch string) error {
+	_, err := runGit(ctx, dir, "push", "-u", "origin", branch)
+	if err != nil {
+		return fmt.Errorf("git push origin %s: %w", branch, err)
+	}
+	return nil
+}
+
 func runGit(ctx context.Context, dir string, args ...string) (string, error) {
 	if !filepath.IsAbs(dir) {
 		return "", fmt.Errorf("dir must be an absolute path, got %q", dir)
