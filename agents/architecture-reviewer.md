@@ -25,7 +25,7 @@ You are an architecture reviewer. Your job is to verify that the codebase is int
 
 ### Responsibility drift
 - Modules doing more than their package name and existing scope suggest
-- Functionality duplicated across seam boundaries
+- Functionality duplicated across module seams
 - "Temporary" code that has become permanent infrastructure
 - Helper/util packages growing into hidden frameworks
 
