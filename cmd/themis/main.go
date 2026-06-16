@@ -46,7 +46,9 @@ func runIssue(args []string) error {
 	repoRoot := findRepoRoot(workDir)
 	templateDir := filepath.Join(repoRoot, "templates")
 
-	fetcher, err := tracker.NewFetcher(parsed.provider, os.Getenv("GITEA_API_URL"), os.Getenv("GITEA_TOKEN"))
+	fetcher, err := tracker.NewFetcher(parsed.provider,
+		os.Getenv("GITEA_OWNER"), os.Getenv("GITEA_REPO"),
+		os.Getenv("GITEA_API_URL"), os.Getenv("GITEA_TOKEN"))
 	if err != nil {
 		return fmt.Errorf("creating fetcher: %w", err)
 	}

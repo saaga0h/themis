@@ -130,7 +130,7 @@ func TestGiteaFetcher_ReturnsErrorOn404(t *testing.T) {
 // NewFetcher factory
 
 func TestNewFetcher_GitHub(t *testing.T) {
-	f, err := tracker.NewFetcher("github", "", "")
+	f, err := tracker.NewFetcher("github", "", "", "", "")
 	if err != nil {
 		t.Fatalf("NewFetcher(github) error: %v", err)
 	}
@@ -140,7 +140,7 @@ func TestNewFetcher_GitHub(t *testing.T) {
 }
 
 func TestNewFetcher_Gitea(t *testing.T) {
-	f, err := tracker.NewFetcher("gitea", "https://example.com", "token")
+	f, err := tracker.NewFetcher("gitea", "owner", "repo", "https://example.com", "token")
 	if err != nil {
 		t.Fatalf("NewFetcher(gitea) error: %v", err)
 	}
@@ -150,7 +150,7 @@ func TestNewFetcher_Gitea(t *testing.T) {
 }
 
 func TestNewFetcher_InvalidProvider(t *testing.T) {
-	_, err := tracker.NewFetcher("invalid", "", "")
+	_, err := tracker.NewFetcher("invalid", "", "", "", "")
 	if err == nil {
 		t.Error("NewFetcher(invalid) should return error")
 	}

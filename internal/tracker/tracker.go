@@ -159,13 +159,13 @@ func (g *GiteaFetcher) Fetch(ctx context.Context, number int) (*IssueData, error
 }
 
 // NewFetcher returns a Fetcher for the given provider.
-// provider must be "github" or "gitea".
-func NewFetcher(provider, apiBase, token string) (Fetcher, error) {
+// provider must be "github" or "gitea". owner and repo are required for Gitea.
+func NewFetcher(provider, owner, repo, apiBase, token string) (Fetcher, error) {
 	switch provider {
 	case "github":
 		return &GitHubFetcher{}, nil
 	case "gitea":
-		return NewGiteaFetcher("", "", apiBase, token), nil
+		return NewGiteaFetcher(owner, repo, apiBase, token), nil
 	default:
 		return nil, fmt.Errorf("unknown provider %q (must be github or gitea)", provider)
 	}
