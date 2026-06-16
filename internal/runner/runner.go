@@ -73,14 +73,6 @@ var templateFile = map[pipeline.Step]string{
 	pipeline.StepDocs:      "update-docs.md",
 }
 
-// checkpointPrefix maps agent steps to the commit prefix that must follow them.
-var checkpointPrefix = map[pipeline.Step]string{
-	pipeline.StepTestRed:  "test(",
-	pipeline.StepImplement: "feat(",
-	pipeline.StepRefactor:  "refactor(",
-	pipeline.StepFix:       "fix(",
-	pipeline.StepDocs:      "docs(",
-}
 
 // Run executes the full pipeline for the given configuration.
 func Run(ctx context.Context, cfg Config) (*Result, error) {
@@ -203,13 +195,10 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			return nil, fmt.Errorf("agent invocation at step %v: %w", step, err)
 		}
 
-		// Run checkpoint verification (skip for steps where it's not relevant).
-		if prefix, ok := checkpointPrefix[step]; ok && cfg.CheckpointFn != nil {
-			if step == pipeline.StepTestRed || step == pipeline.StepImplement {
-				if err := cfg.CheckpointFn(ctx, step, cfg.WorkDir); err != nil {
-					_ = err // non-fatal during test; in production this would block
-				}
-				_ = prefix
+		// Run checkpoint verification after each agent step.
+		if cfg.CheckpointFn != nil {
+			if err := cfg.CheckpointFn(ctx, step, cfg.WorkDir); err != nil {
+				return nil, fmt.Errorf("checkpoint failed after step %v: %w", step, err)
 			}
 		}
 
