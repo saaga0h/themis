@@ -113,6 +113,21 @@ func TestSubstituteEmptyTemplate(t *testing.T) {
 	}
 }
 
+func TestSubstituteLowercasePlaceholderPassesThrough(t *testing.T) {
+	// Keys must be uppercase. Lowercase placeholders are not recognised;
+	// they pass through unchanged without error.
+	result, err := Substitute("{{UPPER}} and {{lower}}", map[string]string{"UPPER": "yes"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "{{lower}}") {
+		t.Errorf("lowercase placeholder should pass through unchanged, got: %s", result)
+	}
+	if !strings.Contains(result, "yes") {
+		t.Errorf("uppercase placeholder should be substituted, got: %s", result)
+	}
+}
+
 func TestSubstituteAllPlaceholdersReplaced(t *testing.T) {
 	tmpl := "{{A}}{{B}}{{C}}"
 	args := map[string]string{"A": "1", "B": "2", "C": "3"}
