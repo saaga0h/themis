@@ -19,6 +19,7 @@ coordinate agent execution, enforce cycle limits, and manage pipeline state.
 | Commands | `commands/` | Slash command prompts that drive top-level user workflows |
 | Skills | `skills/` | Reusable skill prompts composed into agents and commands |
 | Go binary | `cmd/themis/` | v2.0 pipeline orchestrator (deterministic, compiled) |
+| Pipeline state machine | `internal/pipeline/` | Step definitions, state transitions, persistence |
 
 ### Agents (`agents/`)
 
@@ -77,6 +78,21 @@ Entry point for the v2.0 deterministic orchestration layer. Currently implements
 the `version` subcommand (reports `0.1.0`). Future subcommands — `issue` and
 `run` — will move pipeline coordination out of LLM prompt instructions and into
 compiled, testable Go code.
+
+### Pipeline State Machine (`internal/pipeline/`)
+
+Deterministic skeleton for pipeline orchestration. Defines the ten pipeline steps
+(`Fetch → Scan → Branch → TestRed → Implement → Refactor → Review → Fix → Docs → Ship`)
+and encodes all transition logic in Go:
+
+- `pipeline.go` — `Step` type, `PipelineState` struct, `Advance()` method, review-cycle
+  gate and round-3 logic. No I/O dependencies (stdlib: `errors`, `fmt`, `time` only).
+- `store.go` — `SaveState` and `LoadState` functions, JSON persistence to `.themis/state.json`.
+
+`Advance(StepResult) (Step, error)` is the single transition entry point. It handles
+the happy path, the Review→Fix→Review cycle (default max 2, extendable to 3 via a
+`Round3Trigger`), and test-fix attempt counting per acceptance criterion. State is
+persisted after each step so interrupted runs can resume.
 
 ## Go Module
 
