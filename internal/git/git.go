@@ -64,6 +64,24 @@ func LastCommitMessage(ctx context.Context, dir string) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 
+// CheckoutNewBranch creates and checks out a new branch from the current HEAD.
+func CheckoutNewBranch(ctx context.Context, dir, name string) error {
+	_, err := runGit(ctx, dir, "checkout", "-b", name)
+	if err != nil {
+		return fmt.Errorf("git checkout -b %s: %w", name, err)
+	}
+	return nil
+}
+
+// Fetch runs git fetch origin in the given directory.
+func Fetch(ctx context.Context, dir string) error {
+	_, err := runGit(ctx, dir, "fetch", "origin")
+	if err != nil {
+		return fmt.Errorf("git fetch: %w", err)
+	}
+	return nil
+}
+
 func runGit(ctx context.Context, dir string, args ...string) (string, error) {
 	if !filepath.IsAbs(dir) {
 		return "", fmt.Errorf("dir must be an absolute path, got %q", dir)
