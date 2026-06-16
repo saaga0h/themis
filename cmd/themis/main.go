@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"git.home.federation.fi/lavernea/themis/internal/checkpoint"
 	"git.home.federation.fi/lavernea/themis/internal/runner"
 	"git.home.federation.fi/lavernea/themis/internal/tracker"
 )
@@ -55,13 +56,9 @@ func runIssue(args []string) error {
 
 	issueWriter := newIssueWriter(parsed.provider, parsed.number)
 
-	cfg := runner.Config{
-		WorkDir:     repoRoot,
-		IssueNumber: parsed.number,
-		Fetcher:     fetcher,
-		Invoker:     &claudeInvoker{},
-		IssueWriter: issueWriter,
-		TemplateDir: templateDir,
+	cfg, err := newIssueConfig(context.Background(), parsed.number, repoRoot, templateDir, fetcher, issueWriter)
+	if err != nil {
+		return fmt.Errorf("creating issue config: %w", err)
 	}
 
 	result, err := runner.Run(context.Background(), cfg)
@@ -70,6 +67,24 @@ func runIssue(args []string) error {
 	}
 	fmt.Printf("PR created: %s\n", result.PRURL)
 	return nil
+}
+
+// newIssueConfig builds a runner.Config for a real issue run, wiring in the
+// production checkpoint function.
+func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir string, fetcher tracker.Fetcher, issueWriter runner.IssueWriter) (runner.Config, error) {
+	checkpointFn, err := checkpoint.NewStepCheckpoint(ctx, workDir)
+	if err != nil {
+		return runner.Config{}, fmt.Errorf("creating checkpoint: %w", err)
+	}
+	return runner.Config{
+		WorkDir:      workDir,
+		IssueNumber:  issueNumber,
+		Fetcher:      fetcher,
+		Invoker:      &claudeInvoker{},
+		IssueWriter:  issueWriter,
+		TemplateDir:  tmplDir,
+		CheckpointFn: checkpointFn,
+	}, nil
 }
 
 // findRepoRoot walks up from dir until it finds a .git directory.
