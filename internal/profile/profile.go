@@ -36,13 +36,15 @@ type ImplementConfig struct {
 }
 
 // RefactorConfig controls the refactor step.
+// Enabled uses *bool so nil (field absent) is distinguishable from explicit false.
 type RefactorConfig struct {
-	Enabled bool `yaml:"enabled"`
+	Enabled *bool `yaml:"enabled"`
 }
 
 // DocsConfig controls the docs step.
+// Enabled uses *bool so nil (field absent) is distinguishable from explicit false.
 type DocsConfig struct {
-	Enabled   bool  `yaml:"enabled"`
+	Enabled   *bool `yaml:"enabled"`
 	SkipTiers []int `yaml:"skip_tiers"`
 }
 
@@ -171,7 +173,15 @@ func applyDefaults(p *Profile) {
 	if p.Implement.Model == "" {
 		p.Implement.Model = d.Implement.Model
 	}
+	if p.Refactor.Enabled == nil {
+		p.Refactor.Enabled = d.Refactor.Enabled
+	}
+	if p.Docs.Enabled == nil {
+		p.Docs.Enabled = d.Docs.Enabled
+	}
 }
+
+func boolPtr(v bool) *bool { return &v }
 
 func defaults() *Profile {
 	return &Profile{
@@ -191,8 +201,8 @@ func defaults() *Profile {
 			Model:           "sonnet",
 			TestFixAttempts: 3,
 		},
-		Refactor: RefactorConfig{Enabled: true},
-		Docs:     DocsConfig{Enabled: true},
+		Refactor: RefactorConfig{Enabled: boolPtr(true)},
+		Docs:     DocsConfig{Enabled: boolPtr(true)},
 		Blocking: BlockingConfig{
 			Includes: []string{
 				"security",

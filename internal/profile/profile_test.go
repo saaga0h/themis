@@ -49,10 +49,10 @@ func TestLoadMissingFileReturnsDefaults(t *testing.T) {
 	}
 
 	// Default docs and refactor enabled
-	if !p.Docs.Enabled {
+	if p.Docs.Enabled == nil || !*p.Docs.Enabled {
 		t.Error("default docs.enabled should be true")
 	}
-	if !p.Refactor.Enabled {
+	if p.Refactor.Enabled == nil || !*p.Refactor.Enabled {
 		t.Error("default refactor.enabled should be true")
 	}
 }
@@ -114,7 +114,7 @@ blocking:
 	if p.Implement.TestFixAttempts != 2 {
 		t.Errorf("test_fix_attempts: got %d, want 2", p.Implement.TestFixAttempts)
 	}
-	if p.Refactor.Enabled {
+	if p.Refactor.Enabled == nil || *p.Refactor.Enabled {
 		t.Error("refactor.enabled: got true, want false")
 	}
 	if len(p.Blocking.Includes) != 2 {
@@ -201,6 +201,22 @@ func TestLoadInvalidRound3ValueReturnsError(t *testing.T) {
 	}
 }
 
+func TestLoadPartialProfileEnabledDefaultsToTrue(t *testing.T) {
+	// A profile that has a refactor/docs section but omits enabled should default to true.
+	dir := t.TempDir()
+	writeProfile(t, dir, "refactor: {}\ndocs: {}\n")
+	p, err := Load(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if p.Refactor.Enabled == nil || !*p.Refactor.Enabled {
+		t.Error("partial refactor section: expected enabled to default to true")
+	}
+	if p.Docs.Enabled == nil || !*p.Docs.Enabled {
+		t.Error("partial docs section: expected enabled to default to true")
+	}
+}
+
 func TestLoadUnknownFieldReturnsError(t *testing.T) {
 	dir := t.TempDir()
 	writeProfile(t, dir, "unknown_field: true\n")
@@ -269,8 +285,8 @@ blocking:
 	if p2.Implement.TestFixAttempts != p1.Implement.TestFixAttempts {
 		t.Errorf("round-trip test_fix_attempts: %d vs %d", p2.Implement.TestFixAttempts, p1.Implement.TestFixAttempts)
 	}
-	if p2.Refactor.Enabled != p1.Refactor.Enabled {
-		t.Errorf("round-trip refactor.enabled: %v vs %v", p2.Refactor.Enabled, p1.Refactor.Enabled)
+	if p1.Refactor.Enabled == nil || p2.Refactor.Enabled == nil || *p2.Refactor.Enabled != *p1.Refactor.Enabled {
+		t.Errorf("round-trip refactor.enabled mismatch")
 	}
 }
 
