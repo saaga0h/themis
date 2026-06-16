@@ -19,3 +19,6 @@
 - `docs/subsystems/templates/README.md` — prompt template system (issue #8)
 - `docs/subsystems/profile/README.md` — project profile schema (issue #9)
 - `docs/subsystems/invoker/README.md` — agent invocation layer (issue #10)
+- `docs/subsystems/tracker/README.md` — issue fetcher and AC parser (issue #11)
+- `docs/subsystems/checkpoint/README.md` — commit prefix and working-tree verification (issue #11)
+- `docs/subsystems/runner/README.md` — pipeline orchestration and state wiring (issue #11)

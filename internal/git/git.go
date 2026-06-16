@@ -55,6 +55,15 @@ func CurrentBranch(ctx context.Context, dir string) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 
+// LastCommitMessage returns the subject line of the most recent commit.
+func LastCommitMessage(ctx context.Context, dir string) (string, error) {
+	out, err := runGit(ctx, dir, "log", "-1", "--format=%s")
+	if err != nil {
+		return "", fmt.Errorf("git log: %w", err)
+	}
+	return strings.TrimSpace(out), nil
+}
+
 func runGit(ctx context.Context, dir string, args ...string) (string, error) {
 	if !filepath.IsAbs(dir) {
 		return "", fmt.Errorf("dir must be an absolute path, got %q", dir)
