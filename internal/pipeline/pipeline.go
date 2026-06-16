@@ -1,6 +1,13 @@
 package pipeline
 
-import "time"
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+)
 
 type Step int
 
@@ -45,14 +52,114 @@ type PipelineState struct {
 	StepHistory     []StepResult
 }
 
+// Advance computes the next pipeline step given the result of the current step.
+// It encodes review-cycle limits and round-3 gate logic deterministically.
 func (ps *PipelineState) Advance(result StepResult) (Step, error) {
-	panic("not implemented")
+	switch ps.CurrentStep {
+	case StepTestRed:
+		if !result.Success && result.TestACKey != "" {
+			if ps.TestFixAttempts[result.TestACKey] >= 3 {
+				return 0, fmt.Errorf("test-fix attempts for %q exceeded maximum of 3", result.TestACKey)
+			}
+		}
+		if result.TestACKey != "" && !result.Success {
+			ps.TestFixAttempts[result.TestACKey]++
+			return StepTestRed, nil
+		}
+		ps.recordStep(result)
+		ps.CurrentStep = StepImplement
+		return StepImplement, nil
+
+	case StepReview:
+		if result.BlockingFindings {
+			maxCycle := ps.MaxReviewCycles
+			if maxCycle == 0 {
+				maxCycle = 2
+			}
+			if ps.ReviewCycle >= 3 {
+				return 0, errors.New("review cycle 3 exhausted: blocking findings remain after maximum cycles")
+			}
+			if ps.ReviewCycle >= maxCycle {
+				if result.Round3Trigger == TriggerNone {
+					return 0, fmt.Errorf("review cycle limit %d reached with blocking findings and no round-3 trigger", maxCycle)
+				}
+				// round-3 granted
+			}
+			ps.ReviewCycle++
+			ps.recordStep(result)
+			ps.CurrentStep = StepFix
+			return StepFix, nil
+		}
+		ps.recordStep(result)
+		ps.CurrentStep = StepDocs
+		return StepDocs, nil
+
+	default:
+		next, err := linearNext(ps.CurrentStep)
+		if err != nil {
+			return 0, err
+		}
+		ps.recordStep(result)
+		ps.CurrentStep = next
+		return next, nil
+	}
 }
 
+func (ps *PipelineState) recordStep(result StepResult) {
+	ps.StepHistory = append(ps.StepHistory, result)
+}
+
+// linearNext returns the next step in the default linear sequence.
+func linearNext(s Step) (Step, error) {
+	switch s {
+	case StepFetch:
+		return StepScan, nil
+	case StepScan:
+		return StepBranch, nil
+	case StepBranch:
+		return StepTestRed, nil
+	case StepImplement:
+		return StepRefactor, nil
+	case StepRefactor:
+		return StepReview, nil
+	case StepFix:
+		return StepReview, nil
+	case StepDocs:
+		return StepShip, nil
+	default:
+		return 0, fmt.Errorf("no linear transition defined for step %v", s)
+	}
+}
+
+const stateFile = ".themis/state.json"
+
+// SaveState writes state to <dir>/.themis/state.json, creating directories as needed.
 func SaveState(dir string, state *PipelineState) error {
-	panic("not implemented")
+	statePath := filepath.Join(dir, stateFile)
+	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
+		return fmt.Errorf("creating state directory: %w", err)
+	}
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshalling state: %w", err)
+	}
+	return os.WriteFile(statePath, data, 0o644)
 }
 
+// LoadState reads state from <dir>/.themis/state.json.
+// Returns nil, nil when the file does not exist (start fresh).
 func LoadState(dir string) (*PipelineState, error) {
-	panic("not implemented")
+	statePath := filepath.Join(dir, stateFile)
+	data, err := os.ReadFile(statePath)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("reading state file: %w", err)
+	}
+	var state PipelineState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return nil, fmt.Errorf("parsing state file: %w", err)
+	}
+	return &state, nil
 }
