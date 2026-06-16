@@ -25,6 +25,9 @@ coordinate agent execution, enforce cycle limits, and manage pipeline state.
 | Project profile | `internal/profile/` | Per-project YAML configuration schema and loader |
 | Agent invoker | `internal/agent/` | `Invoker` interface and `ClaudeCodeInvoker` for spawning Claude Code |
 | Git helpers | `internal/git/` | Context-aware git subprocess helpers for commit snapshot and branch queries |
+| Issue tracker integration | `internal/tracker/` | Fetcher interface and implementations for GitHub (gh CLI) and Gitea (REST API); AC checkbox parser |
+| Checkpoint verification | `internal/checkpoint/` | Verifies commit message prefixes and working-tree cleanliness after each agent step |
+| Pipeline runner | `internal/runner/` | Orchestrates the full pipeline: loads profile, fetches issue, invokes agents per step, enforces limits, creates PR |
 
 ### Agents (`agents/`)
 
@@ -114,15 +117,34 @@ snapshotting `git log` before/after via `internal/git`. Tests use a
 Context-aware wrappers around git subprocess calls. All functions accept
 `context.Context` so callers can cancel in-flight git operations. Validates that
 `dir` is an absolute path before constructing subprocesses. Functions:
-`CommitsBefore`, `CommitsAfter`, `WorkingTreeClean`, `CurrentBranch`. Tested
+`CommitsBefore`, `CommitsAfter`, `WorkingTreeClean`, `CurrentBranch`, `LastCommitMessage`. Tested
 against real temporary git repositories (no mocking).
 
 ### Go Binary (`cmd/themis/`)
 
-Entry point for the v2.0 deterministic orchestration layer. Currently implements
-the `version` subcommand (reports `0.1.0`). Future subcommands — `issue` and
-`run` — will move pipeline coordination out of LLM prompt instructions and into
-compiled, testable Go code.
+Entry point for the v2.0 deterministic orchestration layer. Implements the
+`version` subcommand (reports `0.1.0`) and the `issue` subcommand, which runs
+the full pipeline for a given issue number. The `issue` subcommand resolves the
+repo root, selects a tracker fetcher based on provider (from args), and delegates
+to `runner.Run`. Gitea credentials are read from the `GITEA_OWNER`, `GITEA_REPO`,
+`GITEA_API_URL`, and `GITEA_TOKEN` environment variables.
+
+### Issue Tracker Integration (`internal/tracker/`)
+
+`Fetcher` interface with `Fetch(ctx context.Context, number int) (*IssueData, error)` as the seam between pipeline orchestration and the issue tracker. `GitHubFetcher` implements the interface using `gh issue view --json`; `GiteaFetcher` uses the Gitea REST API via `NewGiteaFetcher(owner, repo, apiBase, token string)`. `ParseCheckboxes(body string) []string` extracts both checked and unchecked `- [ ]`/`- [x]` items from markdown. `NewFetcher(provider, owner, repo, apiBase, token string) (Fetcher, error)` is the factory; `provider` must be `"github"` or `"gitea"`.
+
+### Checkpoint Verification (`internal/checkpoint/`)
+
+Two functions that the pipeline runner calls after each agent step:
+
+- `VerifyCommitPrefix(ctx context.Context, dir, prefix string) error` — confirms the last commit message starts with the expected conventional-commit prefix (e.g., `test(`, `feat(`). Delegates to `git.LastCommitMessage`.
+- `VerifyCleanWorkingTree(ctx context.Context, dir string) error` — confirms no uncommitted changes remain. Delegates to `git.WorkingTreeClean`.
+
+All git subprocess calls are delegated to `internal/git`.
+
+### Pipeline Runner (`internal/runner/`)
+
+`Run(ctx context.Context, cfg Config) (*Result, error)` is the main orchestration loop. `Config` accepts the work directory, issue number, a `tracker.Fetcher`, an `agent.Invoker`, an `IssueWriter` interface (`AddLabel`, `RemoveLabel`, `Comment`, `CreatePR`), a template directory, and an optional `CheckpointFn`. The runner loads or resumes `pipeline.PipelineState`, advances through infrastructure steps (Fetch/Scan/Branch) without agent invocation, invokes agents for creative steps (TestRed through Docs) using `internal/prompt` substitution of per-step templates, enforces cycle limits (blocking the issue and commenting when limits are hit), and calls `IssueWriter.CreatePR` to produce the final PR on success. Template placeholders are filtered to only those actually present in the template before substitution, preventing spurious errors.
 
 ### Pipeline State Machine (`internal/pipeline/`)
 
