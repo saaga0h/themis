@@ -20,6 +20,8 @@ coordinate agent execution, enforce cycle limits, and manage pipeline state.
 | Skills | `skills/` | Reusable skill prompts composed into agents and commands |
 | Go binary | `cmd/themis/` | v2.0 pipeline orchestrator (deterministic, compiled) |
 | Pipeline state machine | `internal/pipeline/` | Step definitions, state transitions, persistence |
+| Prompt templates | `templates/` | Per-step markdown prompt templates with `{{KEY}}` placeholders |
+| Prompt substitution | `internal/prompt/` | `{{KEY}}` placeholder substitution for template rendering |
 
 ### Agents (`agents/`)
 
@@ -71,6 +73,21 @@ Current skills: `deepening`, `deepen`, `design-it-twice`, `grill-me`,
 `hearth-sync`, `issue-writer`, `pr-review`, `renovate-merge-safe`,
 `renovate-plan-major`, `renovate-triage`, `review-walker`, `split-walker`,
 `ui-reader`.
+
+### Prompt Templates (`templates/`)
+
+Seven markdown files, one per pipeline step, containing the creative-work
+instructions that get rendered and passed to Claude Code as prompts. Templates
+use `{{KEY}}` placeholders (uppercase letters, digits, underscores) substituted
+at runtime by the pipeline orchestrator. Files: `test-red.md`, `implement.md`,
+`refactor.md`, `review.md`, `fix-findings.md`, `update-docs.md`, `ship.md`.
+
+### Prompt Substitution (`internal/prompt/`)
+
+`Substitute(template string, args map[string]string) (string, error)` renders a
+prompt template by replacing all `{{KEY}}` placeholders. Returns an error if any
+placeholder lacks a corresponding arg (prevents silent empty substitutions) or if
+any arg lacks a corresponding placeholder (catches caller-side typos).
 
 ### Go Binary (`cmd/themis/`)
 
