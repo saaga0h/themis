@@ -22,6 +22,7 @@ coordinate agent execution, enforce cycle limits, and manage pipeline state.
 | Pipeline state machine | `internal/pipeline/` | Step definitions, state transitions, persistence |
 | Prompt templates | `templates/` | Per-step markdown prompt templates with `{{KEY}}` placeholders |
 | Prompt substitution | `internal/prompt/` | `{{KEY}}` placeholder substitution for template rendering |
+| Project profile | `internal/profile/` | Per-project YAML configuration schema and loader |
 
 ### Agents (`agents/`)
 
@@ -88,6 +89,14 @@ at runtime by the pipeline orchestrator. Files: `test-red.md`, `implement.md`,
 prompt template by replacing all `{{KEY}}` placeholders. Returns an error if any
 placeholder lacks a corresponding arg (prevents silent empty substitutions) or if
 any arg lacks a corresponding placeholder (catches caller-side typos).
+### Project Profile (`internal/profile/`)
+
+Per-project YAML configuration at `.themis/profile.yaml`. Controls model
+assignments per review agent, round-3 gate behaviour, test-fix attempt limits,
+and whether docs and refactor steps are enabled. `Load(dir string) (*Profile, error)`
+returns sensible defaults (sonnet/haiku mix, round3=auto, 3 test-fix attempts,
+both steps enabled) when the file is absent. Uses `yaml.v3` with `KnownFields(true)`
+strict mode and validates model names and round3 values at load time.
 
 ### Go Binary (`cmd/themis/`)
 
