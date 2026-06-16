@@ -1,7 +1,7 @@
 IMAGE := themis:dev
 MAX_TURNS ?= 600
 PROVIDER ?= gitea
-BINARY     := butler
+BINARY     := themis
 CMD        := ./cmd/themis
 BUILD_DIR  := bin
 
