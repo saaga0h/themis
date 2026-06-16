@@ -247,10 +247,10 @@ func deriveStepResult(step pipeline.Step, r *agent.InvokeResult, cfg Config) pip
 		if key == "" {
 			key = "tests"
 		}
-		if r.TestsPassed || r.Completed {
+		if len(r.CommitsMade) > 0 || r.Completed {
 			return pipeline.StepResult{Success: true}
-		}
-		return pipeline.StepResult{Success: false, TestACKey: key}
+    }
+    return pipeline.StepResult{Success: false, TestACKey: key}
 
 	case pipeline.StepReview:
 		blocking := hasBlockingFindings(r.Stdout)

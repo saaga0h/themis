@@ -84,6 +84,7 @@ func (c *ClaudeCodeInvoker) Invoke(ctx context.Context, opts InvokeOptions) (*In
 func (c *ClaudeCodeInvoker) buildArgs(opts InvokeOptions) []string {
 	args := []string{
 		"--print",
+		"--verbose",
 		"--dangerously-skip-permissions",
 		"--max-turns", strconv.Itoa(opts.MaxTurns),
 		"--model", opts.Model,

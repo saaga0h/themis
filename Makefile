@@ -29,6 +29,16 @@ dry-run: ## Preview which issues would be processed
 run-issue: ## Run a single issue: make run-issue ISSUE=3
 	echo '/issue $(ISSUE) --provider $(PROVIDER)' | $(PODMAN_RUN)
 
+run-v2-issue: ## Run v2.0 binary against a single issue
+	podman run -i --userns=keep-id \
+		--entrypoint bash \
+		-v $(PWD):/home/agent/workspace \
+		--env-file .env \
+		-w /home/agent/workspace \
+		--memory=12g \
+		$(IMAGE) \
+		-c 'go build -o /tmp/themis ./cmd/themis/ && /tmp/themis issue $(ISSUE) --provider gitea'
+
 shell: ## Open an interactive shell inside the factory container
 	podman run -it --userns=keep-id --entrypoint /bin/bash \
 		-v $(PWD):/home/agent/workspace \
