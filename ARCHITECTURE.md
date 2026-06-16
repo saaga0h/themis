@@ -19,6 +19,7 @@ coordinate agent execution, enforce cycle limits, and manage pipeline state.
 | Commands | `commands/` | Slash command prompts that drive top-level user workflows |
 | Skills | `skills/` | Reusable skill prompts composed into agents and commands |
 | Go binary | `cmd/themis/` | v2.0 pipeline orchestrator (deterministic, compiled) |
+| Project profile | `internal/profile/` | Per-project YAML configuration schema and loader |
 
 ### Agents (`agents/`)
 
@@ -70,6 +71,15 @@ Current skills: `deepening`, `deepen`, `design-it-twice`, `grill-me`,
 `hearth-sync`, `issue-writer`, `pr-review`, `renovate-merge-safe`,
 `renovate-plan-major`, `renovate-triage`, `review-walker`, `split-walker`,
 `ui-reader`.
+
+### Project Profile (`internal/profile/`)
+
+Per-project YAML configuration at `.themis/profile.yaml`. Controls model
+assignments per review agent, round-3 gate behaviour, test-fix attempt limits,
+and whether docs and refactor steps are enabled. `Load(dir string) (*Profile, error)`
+returns sensible defaults (sonnet/haiku mix, round3=auto, 3 test-fix attempts,
+both steps enabled) when the file is absent. Uses `yaml.v3` with `KnownFields(true)`
+strict mode and validates model names and round3 values at load time.
 
 ### Go Binary (`cmd/themis/`)
 
