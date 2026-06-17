@@ -132,11 +132,15 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			continue
 		}
 
-		// Branch step: create and checkout issue branch.
+		// Branch step: create issue branch, or checkout if it already exists.
 		if step == pipeline.StepBranch {
 			branchName := fmt.Sprintf("issue/%d-%s", cfg.IssueNumber, slugify(issue.Title))
 			if err := git.CheckoutNewBranch(ctx, cfg.WorkDir, branchName); err != nil {
-				return nil, fmt.Errorf("creating branch %s: %w", branchName, err)
+				// Branch may exist from a previous run — try checking it out.
+				if checkoutErr := git.Checkout(ctx, cfg.WorkDir, branchName); checkoutErr != nil {
+					return nil, fmt.Errorf("branch %s: create failed (%v), checkout failed (%v)", branchName, err, checkoutErr)
+				}
+				fmt.Fprintf(os.Stderr, "note: branch %s already exists, checked out existing\n", branchName)
 			}
 			next, err := state.Advance(pipeline.StepResult{Success: true})
 			if err != nil {
