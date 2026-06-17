@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -140,6 +141,24 @@ func BranchCommitLog(ctx context.Context, dir string) string {
 		return ""
 	}
 	return strings.TrimSpace(out)
+}
+
+// CommitsAheadOfBase counts commits reachable from HEAD but not from the base branch.
+// It tries origin/<base> first, then <base> directly.
+// Returns an error if neither ref can be resolved.
+func CommitsAheadOfBase(ctx context.Context, dir, base string) (int, error) {
+	for _, ref := range []string{"origin/" + base, base} {
+		out, err := runGit(ctx, dir, "rev-list", "--count", ref+"..HEAD")
+		if err != nil {
+			continue
+		}
+		n, err := strconv.Atoi(strings.TrimSpace(out))
+		if err != nil {
+			continue
+		}
+		return n, nil
+	}
+	return 0, fmt.Errorf("could not count commits ahead of %s", base)
 }
 
 // PushBranch pushes the current branch to origin.
