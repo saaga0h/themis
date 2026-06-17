@@ -51,6 +51,8 @@ type Config struct {
 	GitPushFn func(ctx context.Context, workDir, branch string) error
 	// Logger receives all progress output. Defaults to os.Stderr when nil.
 	Logger io.Writer
+	// CodeVersion is the binary version string, embedded in fresh state and compared on resume.
+	CodeVersion string
 }
 
 // Result holds the outcome of a successful pipeline run.
@@ -88,8 +90,24 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		return nil, fmt.Errorf("loading state: %w", err)
 	}
 	if state != nil {
-		fmt.Fprintf(log, "resuming from step %s\n", state.CurrentStep.String())
-	} else {
+		if state.IssueNumber != cfg.IssueNumber {
+			fmt.Fprintf(log, "warning: state file is for issue #%d, not #%d — starting fresh\n", state.IssueNumber, cfg.IssueNumber)
+			state = nil
+		} else {
+			if cfg.CodeVersion != "" && state.CodeVersion != "" && state.CodeVersion != cfg.CodeVersion {
+				fmt.Fprintf(log, "warning: state was created by version %s, current version is %s\n", state.CodeVersion, cfg.CodeVersion)
+			}
+			if state.CurrentStep > pipeline.StepBranch {
+				if branch, brErr := git.CurrentBranch(ctx, cfg.WorkDir); brErr == nil {
+					if !strings.Contains(branch, strconv.Itoa(cfg.IssueNumber)) {
+						fmt.Fprintf(log, "warning: current branch %q does not contain issue number %d\n", branch, cfg.IssueNumber)
+					}
+				}
+			}
+			fmt.Fprintf(log, "resuming from step %s\n", state.CurrentStep.String())
+		}
+	}
+	if state == nil {
 		fmt.Fprintf(log, "fresh start\n")
 		state = &pipeline.PipelineState{
 			IssueNumber:     cfg.IssueNumber,
@@ -97,6 +115,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			MaxReviewCycles: 2,
 			TestFixAttempts: map[string]int{},
 			StartedAt:       time.Now(),
+			CodeVersion:     cfg.CodeVersion,
 		}
 	}
 

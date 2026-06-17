@@ -55,6 +55,7 @@ type PipelineState struct {
 	Commits         []string
 	StartedAt       time.Time
 	StepHistory     []StepResult
+	CodeVersion     string
 }
 
 // Advance computes the next pipeline step given the result of the current step.

@@ -84,6 +84,7 @@ func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir strin
 		IssueWriter:  issueWriter,
 		TemplateDir:  tmplDir,
 		CheckpointFn: checkpointFn,
+		CodeVersion:  version,
 		GitBranchFn: func(ctx context.Context, wd, branch string) error {
 			if err := git.CheckoutNewBranch(ctx, wd, branch); err != nil {
 				if checkoutErr := git.Checkout(ctx, wd, branch); checkoutErr != nil {
