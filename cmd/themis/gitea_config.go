@@ -31,7 +31,7 @@ func resolveGiteaConfig(ctx context.Context, dir string) (owner, repo, apiBase s
 
 	if owner == "" || repo == "" || apiBase == "" {
 		if inferErr != nil {
-			return "", "", "", fmt.Errorf("cannot determine Gitea config: remote inference failed (%v) and GITEA_OWNER/GITEA_REPO/GITEA_API_URL are not set", inferErr)
+			return "", "", "", fmt.Errorf("cannot determine Gitea config (remote: %w); set GITEA_OWNER, GITEA_REPO, and GITEA_API_URL", inferErr)
 		}
 		return "", "", "", fmt.Errorf("cannot determine Gitea config: set GITEA_OWNER, GITEA_REPO, and GITEA_API_URL")
 	}

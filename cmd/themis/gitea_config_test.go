@@ -8,29 +8,34 @@ import (
 	"testing"
 )
 
-// initGitRepoWithGiteaRemote creates a git repo in a temp directory,
-// makes an initial commit, and adds the given URL as the origin remote.
-func initGitRepoWithGiteaRemote(t *testing.T, remoteURL string) string {
+func gitCmd(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+func newTestGitRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	run := func(args ...string) {
-		t.Helper()
-		cmd := exec.Command("git", args...)
-		cmd.Dir = dir
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %v: %v\n%s", args, err, out)
-		}
-	}
-	run("init")
-	run("config", "user.email", "test@test.com")
-	run("config", "user.name", "Test")
+	gitCmd(t, dir, "init")
+	gitCmd(t, dir, "config", "user.email", "test@test.com")
+	gitCmd(t, dir, "config", "user.name", "Test")
+	return dir
+}
+
+func initGitRepoWithGiteaRemote(t *testing.T, remoteURL string) string {
+	t.Helper()
+	dir := newTestGitRepo(t)
 	f := filepath.Join(dir, "README.md")
 	if err := os.WriteFile(f, []byte("# test\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	run("add", "README.md")
-	run("commit", "-m", "chore: initial commit")
-	run("remote", "add", "origin", remoteURL)
+	gitCmd(t, dir, "add", "README.md")
+	gitCmd(t, dir, "commit", "-m", "chore: initial commit")
+	gitCmd(t, dir, "remote", "add", "origin", remoteURL)
 	return dir
 }
 
@@ -103,23 +108,7 @@ func TestResolveGiteaConfig_PartialEnvVarOverride(t *testing.T) {
 
 // AC6: no origin remote → falls back to env vars rather than returning an error
 func TestResolveGiteaConfig_FallsBackToEnvVarsWhenNoRemote(t *testing.T) {
-	dir := t.TempDir()
-	run := func(args ...string) {
-		t.Helper()
-		cmd := exec.Command("git", args...)
-		cmd.Dir = dir
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %v: %v\n%s", args, err, out)
-		}
-	}
-	run("init")
-	run("config", "user.email", "test@test.com")
-	run("config", "user.name", "Test")
-	f := filepath.Join(dir, "README.md")
-	os.WriteFile(f, []byte("# test\n"), 0o600)
-	run("add", "README.md")
-	run("commit", "-m", "chore: initial commit")
-	// no remote added
+	dir := newTestGitRepo(t)
 	t.Setenv("GITEA_OWNER", "fallback-owner")
 	t.Setenv("GITEA_REPO", "fallback-repo")
 	t.Setenv("GITEA_API_URL", "https://fallback.gitea.example.com")
@@ -163,18 +152,7 @@ func TestResolveGiteaConfig_FallsBackToEnvVarsForUnrecognizedRemote(t *testing.T
 
 // AC7: neither remote nor env vars → returns a clear error
 func TestResolveGiteaConfig_ReturnsErrorWhenNeitherSourceWorks(t *testing.T) {
-	dir := t.TempDir()
-	run := func(args ...string) {
-		t.Helper()
-		cmd := exec.Command("git", args...)
-		cmd.Dir = dir
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %v: %v\n%s", args, err, out)
-		}
-	}
-	run("init")
-	run("config", "user.email", "test@test.com")
-	run("config", "user.name", "Test")
+	dir := newTestGitRepo(t)
 	// no remote, no env vars
 	t.Setenv("GITEA_OWNER", "")
 	t.Setenv("GITEA_REPO", "")
