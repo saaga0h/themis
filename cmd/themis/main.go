@@ -92,9 +92,7 @@ func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir strin
 			}
 			return nil
 		},
-		GitPushFn: func(ctx context.Context, wd, branch string) error {
-			return git.PushBranch(ctx, wd, branch)
-		},
+		GitPushFn: git.PushBranch,
 	}, nil
 }
 
