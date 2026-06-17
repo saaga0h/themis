@@ -251,9 +251,9 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			branchName = "main"
 		}
 
-		masterArgs := buildTemplateArgs(ctx, cfg, issue, branchName, state.ReviewCycle, codingStandards, ubiquitousLanguage, lastBlockingFindings, reviewOutput)
+		allArgs := buildTemplateArgs(ctx, cfg, issue, branchName, state.ReviewCycle, codingStandards, ubiquitousLanguage, lastBlockingFindings, reviewOutput)
 
-		filteredArgs := filterArgs(string(tmplContent), masterArgs)
+		filteredArgs := filterArgs(string(tmplContent), allArgs)
 
 		substituted, err := prompt.Substitute(string(tmplContent), filteredArgs)
 		if err != nil {
