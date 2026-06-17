@@ -2,3 +2,5 @@
 .claude/
 .env
 bin/
+.themis/
+
