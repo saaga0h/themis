@@ -117,6 +117,41 @@ func ChangedFiles(ctx context.Context, dir string) string {
 	return ""
 }
 
+// branchMergeBase returns the merge-base SHA between HEAD and the nearest remote
+// tracking branch. Returns empty string if no remote exists or any git command fails.
+func branchMergeBase(ctx context.Context, dir string) string {
+	refs, err := runGit(ctx, dir, "for-each-ref", "--format=%(refname:short)", "refs/remotes/")
+	if err != nil || strings.TrimSpace(refs) == "" {
+		return ""
+	}
+	for _, ref := range parseLines(refs) {
+		if strings.Contains(ref, "/HEAD") {
+			continue
+		}
+		mergeBase, err := runGit(ctx, dir, "merge-base", "HEAD", ref)
+		if err != nil {
+			continue
+		}
+		return strings.TrimSpace(mergeBase)
+	}
+	return ""
+}
+
+// BranchCommitLog returns git log --oneline output for commits on the current
+// branch relative to the nearest remote tracking branch. Returns empty string
+// when no remote exists or any git command fails.
+func BranchCommitLog(ctx context.Context, dir string) string {
+	base := branchMergeBase(ctx, dir)
+	if base == "" {
+		return ""
+	}
+	out, err := runGit(ctx, dir, "log", "--oneline", base+"..HEAD")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
+
 // PushBranch pushes the current branch to origin.
 func PushBranch(ctx context.Context, dir, branch string) error {
 	_, err := runGit(ctx, dir, "push", "-u", "origin", branch)
