@@ -176,24 +176,9 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 
 			shipTmplPath := filepath.Join(cfg.TemplateDir, "ship.md")
 			if shipTmplContent, readErr := os.ReadFile(shipTmplPath); readErr == nil {
-				commitLog := git.BranchCommitLog(ctx, cfg.WorkDir)
-				shipArgs := map[string]string{
-					"ISSUE_NUMBER":        strconv.Itoa(cfg.IssueNumber),
-					"ISSUE_TITLE":         issue.Title,
-					"ACCEPTANCE_CRITERIA": formatACs(acs),
-					"CODING_STANDARDS":    codingStandards,
-					"UBIQUITOUS_LANGUAGE": ubiquitousLanguage,
-					"BRANCH_NAME":         branch,
-					"CHANGED_FILES":       git.ChangedFiles(ctx, cfg.WorkDir),
-					"REVIEW_CYCLE":        strconv.Itoa(state.ReviewCycle + 1),
-					"BLOCKING_FINDINGS":   lastBlockingFindings,
-					"REVIEW_OUTPUT":       reviewOutput,
-					"PIPELINE_SHAPE":      pipelineShape(commitLog),
-					"COMMIT_LOG":          commitLog,
-					"AC_STATUS":           formatACs(acs),
-				}
-				filteredShipArgs := filterArgs(string(shipTmplContent), shipArgs)
-				if substituted, subErr := prompt.Substitute(string(shipTmplContent), filteredShipArgs); subErr == nil {
+				shipArgs := buildTemplateArgs(ctx, cfg, issue, branch, state.ReviewCycle, codingStandards, ubiquitousLanguage, lastBlockingFindings, reviewOutput)
+				filteredArgs := filterArgs(string(shipTmplContent), shipArgs)
+				if substituted, subErr := prompt.Substitute(string(shipTmplContent), filteredArgs); subErr == nil {
 					invokeResult, invokeErr := cfg.Invoker.Invoke(ctx, agent.InvokeOptions{
 						Prompt:   substituted,
 						Model:    modelForStep(step, prof),
@@ -244,22 +229,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			branchName = "main"
 		}
 
-		acs := tracker.ParseCheckboxes(issue.Body)
-		commitLog := git.BranchCommitLog(ctx, cfg.WorkDir)
-		masterArgs := map[string]string{
-			"ISSUE_NUMBER":        strconv.Itoa(cfg.IssueNumber),
-			"ISSUE_TITLE":         issue.Title,
-			"ACCEPTANCE_CRITERIA": formatACs(acs),
-			"CODING_STANDARDS":    codingStandards,
-			"UBIQUITOUS_LANGUAGE": ubiquitousLanguage,
-			"BRANCH_NAME":         branchName,
-			"CHANGED_FILES":       git.ChangedFiles(ctx, cfg.WorkDir),
-			"REVIEW_CYCLE":        strconv.Itoa(state.ReviewCycle + 1),
-			"BLOCKING_FINDINGS":   lastBlockingFindings,
-			"REVIEW_OUTPUT":       reviewOutput,
-			"PIPELINE_SHAPE":      pipelineShape(commitLog),
-			"COMMIT_LOG":          commitLog,
-		}
+		masterArgs := buildTemplateArgs(ctx, cfg, issue, branchName, state.ReviewCycle, codingStandards, ubiquitousLanguage, lastBlockingFindings, reviewOutput)
 
 		filteredArgs := filterArgs(string(tmplContent), masterArgs)
 
@@ -421,6 +391,38 @@ func buildPRBody(number int, title string, acs []string) string {
 		fmt.Fprintf(&sb, "- %s\n", ac)
 	}
 	return sb.String()
+}
+
+// buildTemplateArgs constructs the substitution map used by all step templates.
+// Both ACCEPTANCE_CRITERIA and AC_STATUS render the same checkbox list;
+// agent-step templates use the former, ship.md uses the latter.
+func buildTemplateArgs(
+	ctx context.Context,
+	cfg Config,
+	issue *tracker.IssueData,
+	branchName string,
+	reviewCycle int,
+	codingStandards, ubiquitousLanguage string,
+	lastBlockingFindings, reviewOutput string,
+) map[string]string {
+	acs := tracker.ParseCheckboxes(issue.Body)
+	acList := formatACs(acs)
+	commitLog := git.BranchCommitLog(ctx, cfg.WorkDir)
+	return map[string]string{
+		"ISSUE_NUMBER":        strconv.Itoa(cfg.IssueNumber),
+		"ISSUE_TITLE":         issue.Title,
+		"ACCEPTANCE_CRITERIA": acList,
+		"AC_STATUS":           acList,
+		"CODING_STANDARDS":    codingStandards,
+		"UBIQUITOUS_LANGUAGE": ubiquitousLanguage,
+		"BRANCH_NAME":         branchName,
+		"CHANGED_FILES":       git.ChangedFiles(ctx, cfg.WorkDir),
+		"REVIEW_CYCLE":        strconv.Itoa(reviewCycle + 1),
+		"BLOCKING_FINDINGS":   lastBlockingFindings,
+		"REVIEW_OUTPUT":       reviewOutput,
+		"PIPELINE_SHAPE":      pipelineShape(commitLog),
+		"COMMIT_LOG":          commitLog,
+	}
 }
 
 func formatACs(acs []string) string {
