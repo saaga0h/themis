@@ -91,6 +91,32 @@ func Fetch(ctx context.Context, dir string) error {
 	return nil
 }
 
+// ChangedFiles returns newline-separated file paths changed on HEAD relative to
+// the nearest remote tracking branch, using git diff --name-only against the
+// merge-base. Returns empty string when no remote tracking branch exists or any
+// git command fails.
+func ChangedFiles(ctx context.Context, dir string) string {
+	refs, err := runGit(ctx, dir, "for-each-ref", "--format=%(refname:short)", "refs/remotes/")
+	if err != nil || strings.TrimSpace(refs) == "" {
+		return ""
+	}
+	for _, ref := range parseLines(refs) {
+		if strings.Contains(ref, "/HEAD") {
+			continue
+		}
+		mergeBase, err := runGit(ctx, dir, "merge-base", "HEAD", ref)
+		if err != nil {
+			continue
+		}
+		out, err := runGit(ctx, dir, "diff", "--name-only", strings.TrimSpace(mergeBase))
+		if err != nil {
+			continue
+		}
+		return strings.TrimSpace(out)
+	}
+	return ""
+}
+
 // PushBranch pushes the current branch to origin.
 func PushBranch(ctx context.Context, dir, branch string) error {
 	_, err := runGit(ctx, dir, "push", "-u", "origin", branch)
