@@ -155,7 +155,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			continue
 		}
 
-		// Ship step: push branch and create PR.
+		// Ship step: push branch, invoke agent for PR body, create PR.
 		if step == pipeline.StepShip {
 			branch, err := git.CurrentBranch(ctx, cfg.WorkDir)
 			if err != nil {
@@ -171,9 +171,46 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			if base == "" {
 				base = "main"
 			}
+
+			prBody := buildPRBody(cfg.IssueNumber, issue.Title, acs)
+
+			shipTmplPath := filepath.Join(cfg.TemplateDir, "ship.md")
+			if shipTmplContent, readErr := os.ReadFile(shipTmplPath); readErr == nil {
+				commitLog := git.BranchCommitLog(ctx, cfg.WorkDir)
+				shipArgs := map[string]string{
+					"ISSUE_NUMBER":        strconv.Itoa(cfg.IssueNumber),
+					"ISSUE_TITLE":         issue.Title,
+					"ACCEPTANCE_CRITERIA": formatACs(acs),
+					"CODING_STANDARDS":    codingStandards,
+					"UBIQUITOUS_LANGUAGE": ubiquitousLanguage,
+					"BRANCH_NAME":         branch,
+					"CHANGED_FILES":       git.ChangedFiles(ctx, cfg.WorkDir),
+					"REVIEW_CYCLE":        strconv.Itoa(state.ReviewCycle + 1),
+					"BLOCKING_FINDINGS":   lastBlockingFindings,
+					"REVIEW_OUTPUT":       reviewOutput,
+					"PIPELINE_SHAPE":      pipelineShape(commitLog),
+					"COMMIT_LOG":          commitLog,
+					"AC_STATUS":           formatACs(acs),
+				}
+				filteredShipArgs := filterArgs(string(shipTmplContent), shipArgs)
+				if substituted, subErr := prompt.Substitute(string(shipTmplContent), filteredShipArgs); subErr == nil {
+					invokeResult, invokeErr := cfg.Invoker.Invoke(ctx, agent.InvokeOptions{
+						Prompt:   substituted,
+						Model:    modelForStep(step, prof),
+						MaxTurns: 100,
+						WorkDir:  cfg.WorkDir,
+					})
+					if invokeErr != nil {
+						fmt.Fprintf(os.Stderr, "warning: ship agent invocation failed: %v; falling back to buildPRBody\n", invokeErr)
+					} else if invokeResult.Stdout != "" {
+						prBody = invokeResult.Stdout
+					}
+				}
+			}
+
 			prURL, err := cfg.IssueWriter.CreatePR(ctx, PROptions{
 				Title: fmt.Sprintf("Closes #%d — %s", cfg.IssueNumber, issue.Title),
-				Body:  buildPRBody(cfg.IssueNumber, issue.Title, acs),
+				Body:  prBody,
 				Base:  base,
 				Head:  branch,
 			})

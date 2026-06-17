@@ -12,24 +12,36 @@
 
 {{BRANCH_NAME}}
 
+## Context
+
+### AC Status
+
+{{AC_STATUS}}
+
+### Review Output
+
+{{REVIEW_OUTPUT}}
+
+### Pipeline Shape
+
+{{PIPELINE_SHAPE}}
+
+### Commit Log
+
+{{COMMIT_LOG}}
+
 ## Instructions
 
-Create a pull request for the completed work. The PR must:
+Use the `/pr-composition` skill to compose the PR description. Follow the pr-composition skill structure: status line, implementation narrative, pipeline shape, review findings, out-of-scope discoveries, and follow-ups (if any).
 
-1. Target the integration branch (never another feature branch)
-2. Include `Closes #{{ISSUE_NUMBER}}` in the first line of the body
-3. Summarise what was implemented
-4. Include an AC verification table mapping every AC to the test that proves it
-5. Include a **Review Notes** section listing every non-blocking finding
-   captured during the review cycle(s), for the human reviewer to decide on
-6. List any documentation changes made
+The PR body must:
 
-### AC verification table format
+1. Include `Closes #{{ISSUE_NUMBER}}` as the first line
+2. Follow the pr-composition structure:
+   - **Status line**: "All ACs passed" or "N of M ACs passed — see below"
+   - **Implementation narrative**: what happened that commits don't capture
+   - **Pipeline shape**: what the commit history reveals (use the pipeline shape above)
+   - **Review findings**: honest reporting of all findings from review output
+   - **Follow-ups**: explicitly deferred items (omit section if none)
 
-| AC | Test | Status |
-|----|------|--------|
-| <AC description> | `<test file>:<test name>` | ✓ |
-
-### After creating the PR
-
-Update the issue label: remove `ready-for-agent`, add `needs-review`.
+Output the complete PR body as your final response. Do not create the PR itself — the system will handle that.
