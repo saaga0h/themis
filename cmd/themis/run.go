@@ -192,22 +192,33 @@ func (q *GiteaQuerier) get(ctx context.Context, url string) (*http.Response, err
 	return q.client.Do(req)
 }
 
+const giteaPageSize = 50
+
 func (q *GiteaQuerier) ListReadyIssues(ctx context.Context) ([]*tracker.IssueData, error) {
-	url := fmt.Sprintf("%s/api/v1/repos/%s/%s/issues?state=open&type=issues&limit=50&labels=ready-for-agent",
-		q.apiBase, q.owner, q.repo)
-	resp, err := q.get(ctx, url)
-	if err != nil {
-		return nil, fmt.Errorf("listing issues: %w", err)
+	var all []issueItem
+	for page := 1; ; page++ {
+		pageURL := fmt.Sprintf("%s/api/v1/repos/%s/%s/issues?state=open&type=issues&limit=%d&page=%d&labels=ready-for-agent",
+			q.apiBase, q.owner, q.repo, giteaPageSize, page)
+		resp, err := q.get(ctx, pageURL)
+		if err != nil {
+			return nil, fmt.Errorf("listing issues page %d: %w", page, err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			return nil, fmt.Errorf("Gitea API returned %d", resp.StatusCode)
+		}
+		var items []issueItem
+		decodeErr := json.NewDecoder(resp.Body).Decode(&items)
+		resp.Body.Close()
+		if decodeErr != nil {
+			return nil, fmt.Errorf("decoding issues page %d: %w", page, decodeErr)
+		}
+		all = append(all, items...)
+		if len(items) < giteaPageSize {
+			break
+		}
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Gitea API returned %d", resp.StatusCode)
-	}
-	var items []issueItem
-	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
-		return nil, fmt.Errorf("decoding issues: %w", err)
-	}
-	return toIssueDataList(items), nil
+	return toIssueDataList(all), nil
 }
 
 func (q *GiteaQuerier) IsOpen(ctx context.Context, number int) (bool, error) {
@@ -237,6 +248,7 @@ func (q *GitHubQuerier) ListReadyIssues(ctx context.Context) ([]*tracker.IssueDa
 		"--label", "ready-for-agent",
 		"--state", "open",
 		"--json", "number,title,body,labels",
+		"--limit", "1000",
 	).Output()
 	if err != nil {
 		return nil, fmt.Errorf("gh issue list: %w", err)
