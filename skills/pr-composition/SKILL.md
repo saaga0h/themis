@@ -1,12 +1,12 @@
 # PR Composition
 
-A skill for composing pull request descriptions that serve as decision documents. The PR tells the reviewer what the implementation revealed, what the review found, and what needs attention — so they can make an informed merge decision without reading every line of code first.
+A skill for composing pull request descriptions that surface what the implementation and review found. The PR gives the reviewer enough information to make an informed merge decision without reading every line of code first.
 
 ## Philosophy
 
-A PR description is the implementation's report back to the human. Its job is to surface information that changes decisions — not to prove work was done. "All ACs passed" is one line. The rest of the PR is about risk, findings, and what comes next.
+A PR description is the implementation's report back to the human. Its job is to surface what was found — not to prove work was done, and not to prescribe what to do about it. The human connects findings to the broader context, decides priorities, and determines next steps.
 
-The review command is a nit-picker by design. That's a feature. The PR takes those findings and translates them into actionable intelligence: what's safe, what's concerning, what needs investigation, what's been deferred.
+The review command is a nit-picker by design. That's a feature. The PR translates those findings into readable, honest reporting: what's there, what was surprising, what was deferred. The human decides what matters.
 
 ## Structure
 
@@ -20,64 +20,67 @@ What happened during implementation that's worth knowing. Not a changelog (the c
 
 - Assumptions the issue didn't mention that the code revealed
 - Parts of the codebase that were harder than expected and why
-- Patterns discovered that affect other code (good or bad)
+- Patterns encountered in existing code that affected the implementation
 - Dependencies or interfaces that were surprising
 
-Keep this short. Two to four sentences for a clean implementation. Longer only if the implementation fought the codebase.
+Keep this short. Two to four sentences for a clean implementation. Longer only if the implementation fought the codebase — and then say what it fought and where.
 
 ### Pipeline shape
 
-The commit pipeline tells a story. Report it as a signal, not a list:
+The commit pipeline tells a story. Report it as a signal:
 
-- `test → feat → docs` — clean run, no review findings. Low-risk merge.
-- `test → feat → refactor → fix → fix → docs` — two review fix cycles. Read the findings below.
-- `test → feat → fix → fix → fix → BLOCKED` — three fix attempts failed. Something structural is wrong.
+- `test → feat → docs` — clean run, no review findings.
+- `test → feat → refactor → fix → fix → docs` — two review fix cycles.
+- `test → feat → fix → fix → fix → BLOCKED` — three fix attempts didn't resolve the problem.
 
-One sentence mapping the pipeline to a confidence level.
+One sentence mapping the pipeline shape to what it means.
 
 ### Review findings
 
-This is the core of the PR. The review battery produces findings classified as blocking or non-blocking. The PR translates these into decisions:
+This is the core of the PR. The review battery produces findings classified as blocking or non-blocking. The PR surfaces these honestly.
 
-**For each finding that matters, answer:**
+**For each finding, state:**
 1. What was found (one sentence)
-2. Why it matters beyond this PR — does this pattern exist elsewhere? Will the next issue that touches this code hit the same problem?
-3. What the recommended action is: merge as-is, merge and file follow-up, or investigate before merging
+2. Where it is (file and line, or package)
+3. How it was classified (blocking — fixed, or non-blocking — deferred)
 
-**Group by action, not by reviewer:**
-- "Merge — these are fine" (findings that were correctly non-blocking, no broader implications)
-- "Merge and track" (findings that are safe for this PR but indicate something to address — file as follow-up issues)
-- "Review before merging" (findings where the human should look at the specific code before deciding)
+**Group by what happened to them:**
+- "Fixed during review cycle" — findings that were blocking and resolved. State what the fix was.
+- "Deferred" — findings classified as non-blocking. State what they are and why they were deferred. Don't minimize them — the reviewer decides if the deferral is acceptable.
+- "Observations" — things the reviewers noted that aren't findings per se but are worth knowing.
 
-Do not list findings without connecting them to a decision. "Security reviewer found X" without "and here's what that means for you" is noise.
+**For clean reviews (no findings):** Say so in one line. Don't inflate the section.
 
-**For clean reviews (no findings):** Say so in one line. Don't inflate the section to look thorough.
+Do not hide findings. Do not editorialize about whether they matter — report them and let the reviewer judge. If a finding was deferred because it's out of scope, say that, but don't bury it.
 
 ### Out-of-scope discoveries
 
-Things found during implementation that aren't in the issue's ACs but matter:
+Things found during implementation that aren't in the issue's ACs but exist in the code:
 
-- Bugs in adjacent code that the new tests exposed
-- Missing test coverage in related modules
+- Bugs in adjacent code that new tests exposed
+- Missing test coverage noticed in related modules
 - Stale documentation that contradicts current code
-- Dependency issues (outdated versions, unused imports, version conflicts)
+- Dependency issues encountered
 
-For each: what it is, where it is, and whether it's urgent or can wait. Don't bury important caveats — if something is load-bearing for the next issue, say so at the top.
+For each: what it is and where it is. Don't assess urgency or prescribe fixes — the reviewer has context the agent doesn't. Surface the finding; the human triages.
 
 ### Follow-ups
 
-Concrete next actions with enough context to file an issue from. Not "consider refactoring X" but "X uses pattern Y which breaks when Z — file issue to migrate to W before the next change to this package."
+Things that were explicitly deferred during implementation or review. State what they are, where they are, and why they were deferred (out of scope, non-blocking classification, time constraint).
+
+Don't prescribe solutions — the agent sees this issue through a keyhole and can't reason about the broader codebase or roadmap. Surface what was found with enough context for the human to decide what to do with it.
 
 If there are no follow-ups, don't include this section.
 
 ## Avoid
 
-- **AC recitation** — don't reproduce AC text from the issue. "All passed" or "AC 3 failed because..." is sufficient. The issue has the full list.
-- **Review findings without decisions** — "non-blocking" is a classification, not an action. What should the reviewer DO with this information?
-- **Hiding problems in long lists** — if finding #3 out of 12 is the one that matters, lead with it. Don't bury it.
-- **False confidence** — "all checks pass" when the review battery flagged 6 non-blocking items means "all checks pass but here are 6 things to be aware of."
-- **Changelog format** — "added file X, modified file Y, deleted file Z" is what `git diff --stat` shows. Don't duplicate it.
-- **Apologetic hedging** — "this might not be ideal but..." — state what was done, what the trade-off was, and let the reviewer decide.
+- **AC recitation** — don't reproduce AC text from the issue. "All passed" or "AC 3 failed because..." is sufficient.
+- **Prescribing solutions** — the agent sees one issue's changes. Don't suggest fixes for broader codebase problems or predict implications. Surface the finding; the human decides the approach.
+- **Predicting broader implications** — "this will break when..." requires holistic context the agent doesn't have. State what was found. The human connects it to what they know.
+- **Minimizing deferred findings** — "non-blocking" is a classification from the review step. Report it as-is. Don't add "and this is fine" — the reviewer decides if it's fine.
+- **Hiding problems in long lists** — if one finding out of twelve looks concerning, put it where it's visible.
+- **False confidence** — "all checks pass" when the review flagged 6 non-blocking items. Report both facts.
+- **Changelog format** — "added file X, modified file Y" is what `git diff --stat` shows. Don't duplicate it.
 
 ## Input context
 
@@ -89,4 +92,4 @@ When composing a PR, you receive:
 - Changed files list
 - Any blocking findings that required fix cycles
 
-Use all of these to compose the PR. Don't ask for more context — work with what's available.
+Use all of these to compose the PR. Work with what's available — surface it clearly, honestly, and let the human decide what to do with it.
