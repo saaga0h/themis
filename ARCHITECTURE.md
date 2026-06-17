@@ -120,6 +120,9 @@ Context-aware wrappers around git subprocess calls. All functions accept
 `CommitsBefore`, `CommitsAfter`, `WorkingTreeClean`, `CurrentBranch`, `LastCommitMessage`,
 `CheckoutNewBranch`, `Checkout`, `Fetch`, `PushBranch`, `ChangedFiles`, `BranchCommitLog`,
 `CommitsAheadOfBase`.
+`InferGiteaConfig(ctx, dir)` parses the `origin` remote URL (https:// or ssh:// formats)
+and returns a `GiteaConfig` with `Owner`, `Repo`, and `APIBase` fields inferred from the URL.
+SCP-style SSH remotes (`git@host:path`) are not supported.
 `ChangedFiles` returns newline-separated file paths changed on HEAD relative to the nearest
 remote tracking branch (using merge-base diff); returns empty string when no remote tracking
 branch exists. `BranchCommitLog` returns `git log --oneline` output for commits on the current
@@ -134,9 +137,11 @@ Entry point for the v2.0 deterministic orchestration layer. Implements the
 the full pipeline for a given issue number. The `issue` subcommand resolves the
 repo root, selects a tracker fetcher based on provider (from args), wires the
 production `Config` via `newIssueConfig` (which calls `checkpoint.NewStepCheckpoint`
-and sets it as `CheckpointFn`), and delegates to `runner.Run`. Gitea credentials
-are read from the `GITEA_OWNER`, `GITEA_REPO`, `GITEA_API_URL`, and `GITEA_TOKEN`
-environment variables.
+and sets it as `CheckpointFn`), and delegates to `runner.Run`. Gitea connection
+details (`owner`, `repo`, `apiBase`) are inferred from the `origin` git remote via
+`resolveGiteaConfig` (which calls `git.InferGiteaConfig`); `GITEA_OWNER`, `GITEA_REPO`,
+and `GITEA_API_URL` environment variables override individual fields when set. `GITEA_TOKEN`
+is always read from the environment and is required for Gitea.
 
 ### Issue Tracker Integration (`internal/tracker/`)
 

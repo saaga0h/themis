@@ -34,7 +34,7 @@ Unknown subcommands print `unknown command: <name>` to stderr and exit 1. Invoca
 Fetches issue `<number>` from the configured tracker, loads (or resumes) pipeline state, and runs the pipeline to completion. Creates a PR on success; adds the `blocked` label and comments on the issue when a cycle limit is reached.
 
 - `--provider github` (default): fetches via `gh issue view --json`
-- `--provider gitea`: fetches from Gitea REST API (`GITEA_OWNER`, `GITEA_REPO`, `GITEA_API_URL`, `GITEA_TOKEN` env vars)
+- `--provider gitea`: fetches from Gitea REST API; `owner`, `repo`, and `apiBase` are inferred from the `origin` git remote (`GITEA_OWNER`, `GITEA_REPO`, `GITEA_API_URL` override individual fields); `GITEA_TOKEN` is required
 
 ## Build, Test, and Lint
 
@@ -54,6 +54,7 @@ Module: `git.home.federation.fi/lavernea/themis`, Go 1.22.
 | `cmd/themis/issue.go` | `parseIssueArgs` — parses `<number>` and `--provider` |
 | `cmd/themis/invoker.go` | `claudeInvoker` — bridges `agent.Invoker` for the binary |
 | `cmd/themis/issue_writer.go` | `ghIssueWriter` and `giteaIssueWriter` — label, comment, PR creation |
+| `cmd/themis/gitea_config.go` | `resolveGiteaConfig` — infers Gitea owner/repo/apiBase from git remote, overridable via env vars |
 
 ## Dependencies
 

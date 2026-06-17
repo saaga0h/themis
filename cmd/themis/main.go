@@ -49,9 +49,16 @@ func runIssue(args []string) error {
 	repoRoot := findRepoRoot(workDir)
 	templateDir := filepath.Join(repoRoot, "templates")
 
+	var giteaOwner, giteaRepo, giteaAPIBase string
+	if parsed.provider == "gitea" {
+		giteaOwner, giteaRepo, giteaAPIBase, err = resolveGiteaConfig(context.Background(), repoRoot)
+		if err != nil {
+			return fmt.Errorf("resolving Gitea config: %w", err)
+		}
+	}
+
 	fetcher, err := tracker.NewFetcher(parsed.provider,
-		os.Getenv("GITEA_OWNER"), os.Getenv("GITEA_REPO"),
-		os.Getenv("GITEA_API_URL"), os.Getenv("GITEA_TOKEN"))
+		giteaOwner, giteaRepo, giteaAPIBase, os.Getenv("GITEA_TOKEN"))
 	if err != nil {
 		return fmt.Errorf("creating fetcher: %w", err)
 	}
