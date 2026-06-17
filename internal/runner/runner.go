@@ -327,6 +327,19 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 
 		next, advErr := state.Advance(stepResult)
 		if advErr != nil {
+			// Review cycle limit reached — ship with findings documented, not blocked.
+			// The code works (tests pass), the review has opinions the agent couldn't resolve.
+			// Let the human decide via the PR.
+			if strings.Contains(advErr.Error(), "review cycle") {
+				fmt.Fprintf(log, "%s: %v — continuing to ship with unresolved findings\n", step, advErr)
+				state.CurrentStep = pipeline.StepDocs
+				if err := pipeline.SaveState(cfg.WorkDir, state); err != nil {
+					return nil, fmt.Errorf("saving state after cycle limit: %w", err)
+				}
+				fmt.Fprintf(log, "%s: done (%dms)\n", step, time.Since(stepStart).Milliseconds())
+				continue
+			}
+			// Other errors (test-fix limit) still block — the code doesn't work.
 			blockErr := blockIssue(ctx, cfg, advErr)
 			if blockErr != nil {
 				return nil, fmt.Errorf("blocking issue after %v: %w", advErr, blockErr)
@@ -522,11 +535,9 @@ func stripCodeFences(s string) string {
 	if !strings.HasPrefix(s, "```") {
 		return s
 	}
-	// Remove opening fence (with optional language tag like ```markdown)
 	if idx := strings.Index(s, "\n"); idx != -1 {
 		s = s[idx+1:]
 	}
-	// Remove closing fence
 	s = strings.TrimSpace(s)
 	s = strings.TrimSuffix(s, "```")
 	return strings.TrimSpace(s)
