@@ -197,11 +197,6 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			if branchErr != nil {
 				branch = "main"
 			}
-			if cfg.GitPushFn != nil {
-				if err := cfg.GitPushFn(ctx, cfg.WorkDir, branch); err != nil {
-					return nil, fmt.Errorf("pushing branch %s: %w", branch, err)
-				}
-			}
 			acs := tracker.ParseCheckboxes(issue.Body)
 			base := issue.Ref
 			if base == "" {
@@ -214,6 +209,12 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 				}
 				if n, countErr := git.CommitsAheadOfBase(ctx, cfg.WorkDir, base); countErr == nil && n == 0 {
 					return nil, fmt.Errorf("no commits on branch %s — nothing to ship", branch)
+				}
+			}
+
+			if cfg.GitPushFn != nil {
+				if err := cfg.GitPushFn(ctx, cfg.WorkDir, branch); err != nil {
+					return nil, fmt.Errorf("pushing branch %s: %w", branch, err)
 				}
 			}
 
