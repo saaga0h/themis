@@ -18,6 +18,7 @@ type IssueData struct {
 	Body   string
 	Labels []string
 	URL    string
+	Ref    string
 }
 
 // Fetcher retrieves a single issue from an issue tracker.
@@ -48,6 +49,7 @@ type ghIssue struct {
 	Body   string `json:"body"`
 	State  string `json:"state"`
 	URL    string `json:"url"`
+	Ref    string `json:"ref"`
 	Labels []struct {
 		Name string `json:"name"`
 	} `json:"labels"`
@@ -69,6 +71,7 @@ func ParseGitHubJSON(data []byte) (*IssueData, error) {
 		Body:   gh.Body,
 		Labels: labels,
 		URL:    gh.URL,
+		Ref:    gh.Ref,
 	}, nil
 }
 
@@ -113,6 +116,7 @@ type giteaIssue struct {
 	Title   string `json:"title"`
 	Body    string `json:"body"`
 	HTMLURL string `json:"html_url"`
+	Ref     string `json:"ref"`
 	Labels  []struct {
 		Name string `json:"name"`
 	} `json:"labels"`
@@ -155,6 +159,7 @@ func (g *GiteaFetcher) Fetch(ctx context.Context, number int) (*IssueData, error
 		Body:   gi.Body,
 		Labels: labels,
 		URL:    gi.HTMLURL,
+		Ref:    gi.Ref,
 	}, nil
 }
 

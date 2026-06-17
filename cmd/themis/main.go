@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"git.home.federation.fi/lavernea/themis/internal/checkpoint"
+	"git.home.federation.fi/lavernea/themis/internal/git"
 	"git.home.federation.fi/lavernea/themis/internal/runner"
 	"git.home.federation.fi/lavernea/themis/internal/tracker"
 )
@@ -82,6 +83,18 @@ func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir strin
 		IssueWriter:  issueWriter,
 		TemplateDir:  tmplDir,
 		CheckpointFn: checkpointFn,
+		GitBranchFn: func(ctx context.Context, wd, branch string) error {
+			if err := git.CheckoutNewBranch(ctx, wd, branch); err != nil {
+				if checkoutErr := git.Checkout(ctx, wd, branch); checkoutErr != nil {
+					return fmt.Errorf("create failed (%v), checkout failed (%v)", err, checkoutErr)
+				}
+				fmt.Fprintf(os.Stderr, "note: branch %s already exists, checked out existing\n", branch)
+			}
+			return nil
+		},
+		GitPushFn: func(ctx context.Context, wd, branch string) error {
+			return git.PushBranch(ctx, wd, branch)
+		},
 	}, nil
 }
 

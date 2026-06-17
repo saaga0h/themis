@@ -44,6 +44,10 @@ type Config struct {
 	TemplateDir  string
 	CheckpointFn func(ctx context.Context, step pipeline.Step, workDir string) error
 	TestACKey    string
+	// GitBranchFn creates or checks out the issue branch. When nil, the Branch step is skipped.
+	GitBranchFn func(ctx context.Context, workDir, branch string) error
+	// GitPushFn pushes the current branch to origin. When nil, the push is skipped.
+	GitPushFn func(ctx context.Context, workDir, branch string) error
 }
 
 // Result holds the outcome of a successful pipeline run.
@@ -135,12 +139,10 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		// Branch step: create issue branch, or checkout if it already exists.
 		if step == pipeline.StepBranch {
 			branchName := fmt.Sprintf("issue/%d-%s", cfg.IssueNumber, slugify(issue.Title))
-			if err := git.CheckoutNewBranch(ctx, cfg.WorkDir, branchName); err != nil {
-				// Branch may exist from a previous run — try checking it out.
-				if checkoutErr := git.Checkout(ctx, cfg.WorkDir, branchName); checkoutErr != nil {
-					return nil, fmt.Errorf("branch %s: create failed (%v), checkout failed (%v)", branchName, err, checkoutErr)
+			if cfg.GitBranchFn != nil {
+				if err := cfg.GitBranchFn(ctx, cfg.WorkDir, branchName); err != nil {
+					return nil, fmt.Errorf("branch %s: %w", branchName, err)
 				}
-				fmt.Fprintf(os.Stderr, "note: branch %s already exists, checked out existing\n", branchName)
 			}
 			next, err := state.Advance(pipeline.StepResult{Success: true})
 			if err != nil {
@@ -156,14 +158,20 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		// Ship step: push branch and create PR.
 		if step == pipeline.StepShip {
 			branch := currentBranchName(cfg.WorkDir)
-			if err := git.PushBranch(ctx, cfg.WorkDir, branch); err != nil {
-				return nil, fmt.Errorf("pushing branch %s: %w", branch, err)
+			if cfg.GitPushFn != nil {
+				if err := cfg.GitPushFn(ctx, cfg.WorkDir, branch); err != nil {
+					return nil, fmt.Errorf("pushing branch %s: %w", branch, err)
+				}
 			}
 			acs := tracker.ParseCheckboxes(issue.Body)
+			base := issue.Ref
+			if base == "" {
+				base = "main"
+			}
 			prURL, err := cfg.IssueWriter.CreatePR(ctx, PROptions{
 				Title: fmt.Sprintf("Closes #%d — %s", cfg.IssueNumber, issue.Title),
 				Body:  buildPRBody(cfg.IssueNumber, issue.Title, acs),
-				Base:  "themis-2.0",
+				Base:  base,
 				Head:  branch,
 			})
 			if err != nil {
