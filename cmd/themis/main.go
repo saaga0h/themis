@@ -29,6 +29,11 @@ func main() {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
 		}
+	case "run":
+		if err := runRun(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
 		os.Exit(1)
@@ -63,7 +68,7 @@ func runIssue(args []string) error {
 		return fmt.Errorf("creating fetcher: %w", err)
 	}
 
-	issueWriter := newIssueWriter(parsed.provider, parsed.number)
+	issueWriter := newIssueWriter(parsed.provider, giteaOwner, giteaRepo, giteaAPIBase)
 
 	cfg, err := newIssueConfig(context.Background(), parsed.number, repoRoot, templateDir, fetcher, issueWriter)
 	if err != nil {
@@ -103,6 +108,68 @@ func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir strin
 		},
 		GitPushFn: git.PushBranch,
 	}, nil
+}
+
+func runRun(args []string) error {
+	parsed, err := parseRunArgs(args)
+	if err != nil {
+		return fmt.Errorf("parsing run args: %w", err)
+	}
+
+	workDir, err := filepath.Abs(".")
+	if err != nil {
+		return fmt.Errorf("resolving work dir: %w", err)
+	}
+
+	repoRoot := findRepoRoot(workDir)
+	templateDir := filepath.Join(repoRoot, "templates")
+
+	var querier IssueQuerier
+	var giteaOwner, giteaRepo, giteaAPIBase string
+
+	switch parsed.provider {
+	case "gitea":
+		giteaOwner, giteaRepo, giteaAPIBase, err = resolveGiteaConfig(context.Background(), repoRoot)
+		if err != nil {
+			return fmt.Errorf("resolving Gitea config: %w", err)
+		}
+		querier = newGiteaQuerier(giteaOwner, giteaRepo, giteaAPIBase, os.Getenv("GITEA_TOKEN"))
+	case "github":
+		querier = &GitHubQuerier{}
+	}
+
+	var fetcher tracker.Fetcher
+	switch parsed.provider {
+	case "gitea":
+		fetcher = tracker.NewGiteaFetcher(giteaOwner, giteaRepo, giteaAPIBase, os.Getenv("GITEA_TOKEN"))
+	default:
+		fetcher = &tracker.GitHubFetcher{}
+	}
+
+	cfg := loopConfig{
+		Querier: querier,
+		RunFn: func(ctx context.Context, issue *tracker.IssueData) error {
+			if err := git.Checkout(ctx, repoRoot, "main"); err != nil {
+				return fmt.Errorf("checkout main before issue #%d: %w", issue.Number, err)
+			}
+			issueWriter := newIssueWriter(parsed.provider, giteaOwner, giteaRepo, giteaAPIBase)
+			issueCfg, err := newIssueConfig(ctx, issue.Number, repoRoot, templateDir, fetcher, issueWriter)
+			if err != nil {
+				return fmt.Errorf("creating config for issue #%d: %w", issue.Number, err)
+			}
+			result, err := runner.Run(ctx, issueCfg)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("PR created for issue #%d: %s\n", issue.Number, result.PRURL)
+			return nil
+		},
+		DryRun: parsed.dryRun,
+		Turns:  &envTurns{},
+		Logger: os.Stderr,
+	}
+
+	return runLoop(context.Background(), cfg)
 }
 
 // findRepoRoot walks up from dir until it finds a .git directory.

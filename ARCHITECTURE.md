@@ -132,16 +132,28 @@ repositories (no mocking).
 
 ### Go Binary (`cmd/themis/`)
 
-Entry point for the v2.0 deterministic orchestration layer. Implements the
-`version` subcommand (reports `0.1.0`) and the `issue` subcommand, which runs
-the full pipeline for a given issue number. The `issue` subcommand resolves the
-repo root, selects a tracker fetcher based on provider (from args), wires the
-production `Config` via `newIssueConfig` (which calls `checkpoint.NewStepCheckpoint`
-and sets it as `CheckpointFn`), and delegates to `runner.Run`. Gitea connection
-details (`owner`, `repo`, `apiBase`) are inferred from the `origin` git remote via
-`resolveGiteaConfig` (which calls `git.InferGiteaConfig`); `GITEA_OWNER`, `GITEA_REPO`,
-and `GITEA_API_URL` environment variables override individual fields when set. `GITEA_TOKEN`
-is always read from the environment and is required for Gitea.
+Entry point for the v2.0 deterministic orchestration layer. Implements three
+subcommands: `version` (reports `0.1.0`), `issue`, and `run`.
+
+The `issue` subcommand runs the full pipeline for a single issue number. It
+resolves the repo root, selects a tracker fetcher based on provider (from args),
+wires the production `Config` via `newIssueConfig` (which calls
+`checkpoint.NewStepCheckpoint` and sets it as `CheckpointFn`), and delegates to
+`runner.Run`. Gitea connection details (`owner`, `repo`, `apiBase`) are inferred
+from the `origin` git remote via `resolveGiteaConfig` (which calls
+`git.InferGiteaConfig`); `GITEA_OWNER`, `GITEA_REPO`, and `GITEA_API_URL`
+environment variables override individual fields when set. `GITEA_TOKEN` is always
+read from the environment and is required for Gitea.
+
+The `run` subcommand processes all open `ready-for-agent` issues sequentially.
+It lists issues via `IssueQuerier` (`GiteaQuerier` or `GitHubQuerier` depending
+on provider), sorts them by number, and runs the `issue` pipeline for each one
+in order. Before each issue it checks out `main`. A failure on one issue is
+logged and the loop continues. The loop stops early if `TurnTracker.RemainingFraction()`
+drops below 0.10; `TurnTracker` reads `THEMIS_TURNS_REMAINING_FRACTION` from the
+environment (defaults to 1.0 when unset). Issues with a `depends on #N` body
+pattern are skipped when issue N is still open. `--dry-run` prints the plan
+without executing.
 
 ### Issue Tracker Integration (`internal/tracker/`)
 

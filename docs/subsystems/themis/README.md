@@ -27,7 +27,7 @@ Unknown subcommands print `unknown command: <name>` to stderr and exit 1. Invoca
 |------------|--------|----------|
 | `version` | Implemented | Prints `0.1.0` to stdout, exits 0 |
 | `issue` | Implemented (issue #11) | Fetches issue from GitHub/Gitea, runs full pipeline, creates PR |
-| `run` | Planned | <!-- TODO: document when implemented --> |
+| `run` | Implemented (issue #37) | Lists all `ready-for-agent` issues and processes them sequentially |
 
 ### `themis issue <number> [--provider github\|gitea]`
 
@@ -35,6 +35,34 @@ Fetches issue `<number>` from the configured tracker, loads (or resumes) pipelin
 
 - `--provider github` (default): fetches via `gh issue view --json`
 - `--provider gitea`: fetches from Gitea REST API; `owner`, `repo`, and `apiBase` are inferred from the `origin` git remote (`GITEA_OWNER`, `GITEA_REPO`, `GITEA_API_URL` override individual fields); `GITEA_TOKEN` is required
+
+### `themis run [--provider github|gitea] [--dry-run]`
+
+Lists all open issues labelled `ready-for-agent`, sorts them by issue number (ascending), and runs the full `issue` pipeline for each one in sequence.
+
+**Flags**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--provider github\|gitea` | `github` | Issue tracker backend |
+| `--dry-run` | off | Print which issues would be processed; skip actual execution |
+
+**Loop behaviour**
+
+- Issues are processed lowest-number-first.
+- If fewer than 10 % of agentic turns remain (`THEMIS_TURNS_REMAINING_FRACTION < 0.10`), the loop stops early and prints `insufficient turns remaining` to stderr. When `THEMIS_TURNS_REMAINING_FRACTION` is unset the loop runs unrestricted.
+- If an issue body contains `depends on #N` and issue `N` is still open, that issue is skipped for this run.
+- A failure on one issue (non-zero exit from the pipeline) is logged to stderr and the loop continues with the next issue.
+- Before each issue the runner checks out `main` to avoid branch-state contamination between issues.
+
+**Provider wiring**
+
+| Provider | Issue listing | Dependency check |
+|----------|--------------|-----------------|
+| `github` | `gh issue list --label ready-for-agent` (via `GitHubQuerier`) | `gh issue view N --json state` |
+| `gitea` | Gitea REST API paginated at 50 issues/page (via `GiteaQuerier`) | Gitea REST `GET /api/v1/repos/{owner}/{repo}/issues/{N}` |
+
+Gitea connection details are resolved via `resolveGiteaConfig` (same as `themis issue`) and can be overridden with `GITEA_OWNER`, `GITEA_REPO`, `GITEA_API_URL`, and `GITEA_TOKEN`.
 
 ## Build, Test, and Lint
 
