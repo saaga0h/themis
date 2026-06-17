@@ -73,6 +73,15 @@ func CheckoutNewBranch(ctx context.Context, dir, name string) error {
 	return nil
 }
 
+// Checkout switches to an existing branch.
+func Checkout(ctx context.Context, dir, name string) error {
+	_, err := runGit(ctx, dir, "checkout", name)
+	if err != nil {
+		return fmt.Errorf("git checkout %s: %w", name, err)
+	}
+	return nil
+}
+
 // Fetch runs git fetch origin in the given directory.
 func Fetch(ctx context.Context, dir string) error {
 	_, err := runGit(ctx, dir, "fetch", "origin")
