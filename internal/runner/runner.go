@@ -45,14 +45,10 @@ type Config struct {
 	TemplateDir  string
 	CheckpointFn func(ctx context.Context, step pipeline.Step, workDir string) error
 	TestACKey    string
-	// GitBranchFn creates or checks out the issue branch. When nil, the Branch step is skipped.
-	GitBranchFn func(ctx context.Context, workDir, branch string) error
-	// GitPushFn pushes the current branch to origin. When nil, the push is skipped.
-	GitPushFn func(ctx context.Context, workDir, branch string) error
-	// Logger receives all progress output. Defaults to os.Stderr when nil.
-	Logger io.Writer
-	// CodeVersion is the binary version string, embedded in fresh state and compared on resume.
-	CodeVersion string
+	GitBranchFn  func(ctx context.Context, workDir, branch string) error
+	GitPushFn    func(ctx context.Context, workDir, branch string) error
+	Logger       io.Writer
+	CodeVersion  string
 }
 
 // Result holds the outcome of a successful pipeline run.
@@ -236,7 +232,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 					if invokeErr != nil {
 						fmt.Fprintf(log, "warning: ship agent invocation failed: %v; falling back to buildPRBody\n", invokeErr)
 					} else if invokeResult.Stdout != "" {
-						prBody = invokeResult.Stdout
+						prBody = stripCodeFences(invokeResult.Stdout)
 					}
 				}
 			}
@@ -471,9 +467,6 @@ func buildPRBody(number int, title string, acs []string) string {
 	return sb.String()
 }
 
-// buildTemplateArgs constructs the substitution map used by all step templates.
-// Both ACCEPTANCE_CRITERIA and AC_STATUS render the same checkbox list;
-// agent-step templates use the former, ship.md uses the latter.
 func buildTemplateArgs(
 	ctx context.Context,
 	cfg Config,
@@ -520,6 +513,23 @@ func readFileOrEmpty(path string) string {
 		return ""
 	}
 	return string(data)
+}
+
+// stripCodeFences removes leading/trailing code fence markers from agent output.
+// Claude Code's --print mode sometimes wraps markdown responses in ```...``` blocks.
+func stripCodeFences(s string) string {
+	s = strings.TrimSpace(s)
+	if !strings.HasPrefix(s, "```") {
+		return s
+	}
+	// Remove opening fence (with optional language tag like ```markdown)
+	if idx := strings.Index(s, "\n"); idx != -1 {
+		s = s[idx+1:]
+	}
+	// Remove closing fence
+	s = strings.TrimSpace(s)
+	s = strings.TrimSuffix(s, "```")
+	return strings.TrimSpace(s)
 }
 
 func slugify(s string) string {
