@@ -102,6 +102,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 	ubiquitousLanguage := readFileOrEmpty(filepath.Join(cfg.WorkDir, "UBIQUITOUS_LANGUAGE.md"))
 
 	var lastBlockingFindings string
+	var reviewOutput string
 
 	for {
 		step := state.CurrentStep
@@ -207,6 +208,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		}
 
 		acs := tracker.ParseCheckboxes(issue.Body)
+		commitLog := git.BranchCommitLog(ctx, cfg.WorkDir)
 		masterArgs := map[string]string{
 			"ISSUE_NUMBER":        strconv.Itoa(cfg.IssueNumber),
 			"ISSUE_TITLE":         issue.Title,
@@ -217,6 +219,9 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			"CHANGED_FILES":       git.ChangedFiles(ctx, cfg.WorkDir),
 			"REVIEW_CYCLE":        strconv.Itoa(state.ReviewCycle + 1),
 			"BLOCKING_FINDINGS":   lastBlockingFindings,
+			"REVIEW_OUTPUT":       reviewOutput,
+			"PIPELINE_SHAPE":      pipelineShape(commitLog),
+			"COMMIT_LOG":          commitLog,
 		}
 
 		filteredArgs := filterArgs(string(tmplContent), masterArgs)
@@ -245,8 +250,11 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		}
 
 		stepResult := deriveStepResult(step, invokeResult, cfg)
-		if step == pipeline.StepReview && stepResult.BlockingFindings {
-			lastBlockingFindings = extractBlockingFindings(invokeResult.Stdout)
+		if step == pipeline.StepReview {
+			reviewOutput = invokeResult.Stdout
+			if stepResult.BlockingFindings {
+				lastBlockingFindings = extractBlockingFindings(invokeResult.Stdout)
+			}
 		}
 
 		next, advErr := state.Advance(stepResult)
@@ -326,6 +334,26 @@ func extractBlockingFindings(output string) string {
 }
 
 var placeholderRE = regexp.MustCompile(`\{\{([A-Z0-9_]+)\}\}`)
+
+var conventionalPrefixRE = regexp.MustCompile(`^[0-9a-f]+\s+([a-z]+)[\(:]`)
+
+func pipelineShape(commitLog string) string {
+	if commitLog == "" {
+		return ""
+	}
+	seen := make(map[string]bool)
+	var prefixes []string
+	for _, line := range strings.Split(commitLog, "\n") {
+		if m := conventionalPrefixRE.FindStringSubmatch(line); m != nil {
+			p := m[1]
+			if !seen[p] {
+				seen[p] = true
+				prefixes = append(prefixes, p)
+			}
+		}
+	}
+	return strings.Join(prefixes, ", ")
+}
 
 func filterArgs(tmpl string, all map[string]string) map[string]string {
 	out := make(map[string]string)
