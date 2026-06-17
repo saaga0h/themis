@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -48,6 +49,8 @@ type Config struct {
 	GitBranchFn func(ctx context.Context, workDir, branch string) error
 	// GitPushFn pushes the current branch to origin. When nil, the push is skipped.
 	GitPushFn func(ctx context.Context, workDir, branch string) error
+	// Logger receives all progress output. Defaults to os.Stderr when nil.
+	Logger io.Writer
 }
 
 // Result holds the outcome of a successful pipeline run.
@@ -75,17 +78,26 @@ var templateFile = map[pipeline.Step]string{
 
 // Run executes the full pipeline for the given configuration.
 func Run(ctx context.Context, cfg Config) (*Result, error) {
-	// Clear previous run's state — each run starts fresh.
-	// The state file from the completed run remains on disk for post-mortem
-	// until the next run clears it here.
-	_ = os.Remove(filepath.Join(cfg.WorkDir, ".themis", "state.json"))
+	log := cfg.Logger
+	if log == nil {
+		log = os.Stderr
+	}
 
-	state := &pipeline.PipelineState{
-		IssueNumber:     cfg.IssueNumber,
-		CurrentStep:     pipeline.StepFetch,
-		MaxReviewCycles: 2,
-		TestFixAttempts: map[string]int{},
-		StartedAt:       time.Now(),
+	state, err := pipeline.LoadState(cfg.WorkDir)
+	if err != nil {
+		return nil, fmt.Errorf("loading state: %w", err)
+	}
+	if state != nil {
+		fmt.Fprintf(log, "resuming from step %s\n", state.CurrentStep.String())
+	} else {
+		fmt.Fprintf(log, "fresh start\n")
+		state = &pipeline.PipelineState{
+			IssueNumber:     cfg.IssueNumber,
+			CurrentStep:     pipeline.StepFetch,
+			MaxReviewCycles: 2,
+			TestFixAttempts: map[string]int{},
+			StartedAt:       time.Now(),
+		}
 	}
 
 	issue, err := cfg.Fetcher.Fetch(ctx, cfg.IssueNumber)
@@ -106,11 +118,13 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 
 	for {
 		step := state.CurrentStep
+		stepStart := time.Now()
+		fmt.Fprintf(log, "%s: start\n", step)
 
 		// Fetch step: git fetch origin.
 		if step == pipeline.StepFetch {
 			if err := git.Fetch(ctx, cfg.WorkDir); err != nil {
-				fmt.Fprintf(os.Stderr, "warning: git fetch failed: %v\n", err)
+				fmt.Fprintf(log, "warning: git fetch failed: %v\n", err)
 			}
 			next, err := state.Advance(pipeline.StepResult{Success: true})
 			if err != nil {
@@ -120,6 +134,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 				return nil, fmt.Errorf("saving state at step %v: %w", step, err)
 			}
 			state.CurrentStep = next
+			fmt.Fprintf(log, "%s: done (%dms)\n", step, time.Since(stepStart).Milliseconds())
 			continue
 		}
 
@@ -133,6 +148,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 				return nil, fmt.Errorf("saving state at step %v: %w", step, err)
 			}
 			state.CurrentStep = next
+			fmt.Fprintf(log, "%s: done (%dms)\n", step, time.Since(stepStart).Milliseconds())
 			continue
 		}
 
@@ -152,6 +168,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 				return nil, fmt.Errorf("saving state at step %v: %w", step, err)
 			}
 			state.CurrentStep = next
+			fmt.Fprintf(log, "%s: done (%dms)\n", step, time.Since(stepStart).Milliseconds())
 			continue
 		}
 
@@ -179,14 +196,16 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 				shipArgs := buildTemplateArgs(ctx, cfg, issue, branch, state.ReviewCycle, codingStandards, ubiquitousLanguage, lastBlockingFindings, reviewOutput)
 				filteredArgs := filterArgs(string(shipTmplContent), shipArgs)
 				if substituted, subErr := prompt.Substitute(string(shipTmplContent), filteredArgs); subErr == nil {
+					model := modelForStep(step, prof)
+					fmt.Fprintf(log, "%s: invoking agent model=%s maxTurns=%d\n", step, model, 100)
 					invokeResult, invokeErr := cfg.Invoker.Invoke(ctx, agent.InvokeOptions{
 						Prompt:   substituted,
-						Model:    modelForStep(step, prof),
+						Model:    model,
 						MaxTurns: 100,
 						WorkDir:  cfg.WorkDir,
 					})
 					if invokeErr != nil {
-						fmt.Fprintf(os.Stderr, "warning: ship agent invocation failed: %v; falling back to buildPRBody\n", invokeErr)
+						fmt.Fprintf(log, "warning: ship agent invocation failed: %v; falling back to buildPRBody\n", invokeErr)
 					} else if invokeResult.Stdout != "" {
 						prBody = invokeResult.Stdout
 					}
@@ -202,9 +221,11 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			if err != nil {
 				return nil, fmt.Errorf("creating PR: %w", err)
 			}
+			fmt.Fprintf(log, "%s: PR URL %s\n", step, prURL)
 			if err := pipeline.SaveState(cfg.WorkDir, state); err != nil {
 				return nil, fmt.Errorf("saving final state: %w", err)
 			}
+			fmt.Fprintf(log, "%s: done (%dms)\n", step, time.Since(stepStart).Milliseconds())
 			return &Result{PRURL: prURL}, nil
 		}
 
@@ -215,6 +236,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 				return nil, fmt.Errorf("advancing unknown step %v: %w", step, err)
 			}
 			state.CurrentStep = next
+			fmt.Fprintf(log, "%s: done (%dms)\n", step, time.Since(stepStart).Milliseconds())
 			continue
 		}
 
@@ -229,9 +251,9 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			branchName = "main"
 		}
 
-		masterArgs := buildTemplateArgs(ctx, cfg, issue, branchName, state.ReviewCycle, codingStandards, ubiquitousLanguage, lastBlockingFindings, reviewOutput)
+		allArgs := buildTemplateArgs(ctx, cfg, issue, branchName, state.ReviewCycle, codingStandards, ubiquitousLanguage, lastBlockingFindings, reviewOutput)
 
-		filteredArgs := filterArgs(string(tmplContent), masterArgs)
+		filteredArgs := filterArgs(string(tmplContent), allArgs)
 
 		substituted, err := prompt.Substitute(string(tmplContent), filteredArgs)
 		if err != nil {
@@ -239,6 +261,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		}
 
 		model := modelForStep(step, prof)
+		fmt.Fprintf(log, "%s: invoking agent model=%s maxTurns=%d\n", step, model, 100)
 
 		invokeResult, err := cfg.Invoker.Invoke(ctx, agent.InvokeOptions{
 			Prompt:   substituted,
@@ -250,10 +273,23 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			return nil, fmt.Errorf("agent invocation at step %v: %w", step, err)
 		}
 
+		completionStatus := "completed"
+		if !invokeResult.Completed {
+			completionStatus = "not completed"
+		}
+		fmt.Fprintf(log, "%s: agent result: %d commits, %s\n", step, len(invokeResult.CommitsMade), completionStatus)
+
 		if cfg.CheckpointFn != nil {
-			if err := cfg.CheckpointFn(ctx, step, cfg.WorkDir); err != nil {
-				return nil, fmt.Errorf("checkpoint failed after step %v: %w", step, err)
+			if chkErr := cfg.CheckpointFn(ctx, step, cfg.WorkDir); chkErr != nil {
+				fmt.Fprintf(log, "%s: checkpoint failed: %v\n", step, chkErr)
+				return nil, fmt.Errorf("checkpoint failed after step %v: %w", step, chkErr)
 			}
+			fmt.Fprintf(log, "%s: checkpoint pass\n", step)
+		}
+
+		if step == pipeline.StepReview {
+			blocking, nonBlocking := countReviewFindings(invokeResult.Stdout)
+			fmt.Fprintf(log, "%s: review findings: %d blocking, %d non-blocking\n", step, blocking, nonBlocking)
 		}
 
 		stepResult := deriveStepResult(step, invokeResult, cfg)
@@ -278,6 +314,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		}
 
 		state.CurrentStep = next
+		fmt.Fprintf(log, "%s: done (%dms)\n", step, time.Since(stepStart).Milliseconds())
 	}
 }
 
@@ -338,6 +375,18 @@ func extractBlockingFindings(output string) string {
 		return output
 	}
 	return strings.Join(lines, "\n")
+}
+
+func countReviewFindings(output string) (blocking, nonBlocking int) {
+	for _, line := range strings.Split(output, "\n") {
+		upper := strings.ToUpper(strings.TrimSpace(line))
+		if strings.HasPrefix(upper, "BLOCKING:") {
+			blocking++
+		} else if strings.HasPrefix(upper, "NON-BLOCKING:") {
+			nonBlocking++
+		}
+	}
+	return
 }
 
 var placeholderRE = regexp.MustCompile(`\{\{([A-Z0-9_]+)\}\}`)
