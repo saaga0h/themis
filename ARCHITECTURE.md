@@ -117,7 +117,10 @@ snapshotting `git log` before/after via `internal/git`. Tests use a
 Context-aware wrappers around git subprocess calls. All functions accept
 `context.Context` so callers can cancel in-flight git operations. Validates that
 `dir` is an absolute path before constructing subprocesses. Functions:
-`CommitsBefore`, `CommitsAfter`, `WorkingTreeClean`, `CurrentBranch`, `LastCommitMessage`. Tested
+`CommitsBefore`, `CommitsAfter`, `WorkingTreeClean`, `CurrentBranch`, `LastCommitMessage`,
+`CheckoutNewBranch`, `Checkout`, `Fetch`, `PushBranch`, `ChangedFiles`. `ChangedFiles` returns
+newline-separated file paths changed on HEAD relative to the nearest remote tracking branch
+(using merge-base diff); returns empty string when no remote tracking branch exists. Tested
 against real temporary git repositories (no mocking).
 
 ### Go Binary (`cmd/themis/`)
