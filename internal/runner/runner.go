@@ -376,7 +376,7 @@ func currentBranchName(workDir string) string {
 		return "main"
 	}
 	ref := strings.TrimSpace(string(data))
-	if after, ok := strings.CutPrefix(ref, "refs/heads/"); ok {
+	if after, ok := strings.CutPrefix(ref, "ref: refs/heads/"); ok {
 		return after
 	}
 	return "main"
