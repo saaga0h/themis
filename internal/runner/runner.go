@@ -193,8 +193,8 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 
 		// Ship step: push branch, invoke agent for PR body, create PR.
 		if step == pipeline.StepShip {
-			branch, err := git.CurrentBranch(ctx, cfg.WorkDir)
-			if err != nil {
+			branch, branchErr := git.CurrentBranch(ctx, cfg.WorkDir)
+			if branchErr != nil {
 				branch = "main"
 			}
 			if cfg.GitPushFn != nil {
@@ -206,6 +206,15 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			base := issue.Ref
 			if base == "" {
 				base = "main"
+			}
+
+			if branchErr == nil {
+				if branch == base {
+					return nil, fmt.Errorf("current branch is the base branch — no issue branch was created")
+				}
+				if n, countErr := git.CommitsAheadOfBase(ctx, cfg.WorkDir, base); countErr == nil && n == 0 {
+					return nil, fmt.Errorf("no commits on branch %s — nothing to ship", branch)
+				}
 			}
 
 			prBody := buildPRBody(cfg.IssueNumber, issue.Title, acs)
