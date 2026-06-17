@@ -155,7 +155,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			continue
 		}
 
-		// Ship step: push branch and create PR.
+		// Ship step: push branch, invoke agent for PR body, create PR.
 		if step == pipeline.StepShip {
 			branch, err := git.CurrentBranch(ctx, cfg.WorkDir)
 			if err != nil {
@@ -171,9 +171,31 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			if base == "" {
 				base = "main"
 			}
+
+			prBody := buildPRBody(cfg.IssueNumber, issue.Title, acs)
+
+			shipTmplPath := filepath.Join(cfg.TemplateDir, "ship.md")
+			if shipTmplContent, readErr := os.ReadFile(shipTmplPath); readErr == nil {
+				shipArgs := buildTemplateArgs(ctx, cfg, issue, branch, state.ReviewCycle, codingStandards, ubiquitousLanguage, lastBlockingFindings, reviewOutput)
+				filteredArgs := filterArgs(string(shipTmplContent), shipArgs)
+				if substituted, subErr := prompt.Substitute(string(shipTmplContent), filteredArgs); subErr == nil {
+					invokeResult, invokeErr := cfg.Invoker.Invoke(ctx, agent.InvokeOptions{
+						Prompt:   substituted,
+						Model:    modelForStep(step, prof),
+						MaxTurns: 100,
+						WorkDir:  cfg.WorkDir,
+					})
+					if invokeErr != nil {
+						fmt.Fprintf(os.Stderr, "warning: ship agent invocation failed: %v; falling back to buildPRBody\n", invokeErr)
+					} else if invokeResult.Stdout != "" {
+						prBody = invokeResult.Stdout
+					}
+				}
+			}
+
 			prURL, err := cfg.IssueWriter.CreatePR(ctx, PROptions{
 				Title: fmt.Sprintf("Closes #%d — %s", cfg.IssueNumber, issue.Title),
-				Body:  buildPRBody(cfg.IssueNumber, issue.Title, acs),
+				Body:  prBody,
 				Base:  base,
 				Head:  branch,
 			})
@@ -207,22 +229,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			branchName = "main"
 		}
 
-		acs := tracker.ParseCheckboxes(issue.Body)
-		commitLog := git.BranchCommitLog(ctx, cfg.WorkDir)
-		masterArgs := map[string]string{
-			"ISSUE_NUMBER":        strconv.Itoa(cfg.IssueNumber),
-			"ISSUE_TITLE":         issue.Title,
-			"ACCEPTANCE_CRITERIA": formatACs(acs),
-			"CODING_STANDARDS":    codingStandards,
-			"UBIQUITOUS_LANGUAGE": ubiquitousLanguage,
-			"BRANCH_NAME":         branchName,
-			"CHANGED_FILES":       git.ChangedFiles(ctx, cfg.WorkDir),
-			"REVIEW_CYCLE":        strconv.Itoa(state.ReviewCycle + 1),
-			"BLOCKING_FINDINGS":   lastBlockingFindings,
-			"REVIEW_OUTPUT":       reviewOutput,
-			"PIPELINE_SHAPE":      pipelineShape(commitLog),
-			"COMMIT_LOG":          commitLog,
-		}
+		masterArgs := buildTemplateArgs(ctx, cfg, issue, branchName, state.ReviewCycle, codingStandards, ubiquitousLanguage, lastBlockingFindings, reviewOutput)
 
 		filteredArgs := filterArgs(string(tmplContent), masterArgs)
 
@@ -384,6 +391,38 @@ func buildPRBody(number int, title string, acs []string) string {
 		fmt.Fprintf(&sb, "- %s\n", ac)
 	}
 	return sb.String()
+}
+
+// buildTemplateArgs constructs the substitution map used by all step templates.
+// Both ACCEPTANCE_CRITERIA and AC_STATUS render the same checkbox list;
+// agent-step templates use the former, ship.md uses the latter.
+func buildTemplateArgs(
+	ctx context.Context,
+	cfg Config,
+	issue *tracker.IssueData,
+	branchName string,
+	reviewCycle int,
+	codingStandards, ubiquitousLanguage string,
+	lastBlockingFindings, reviewOutput string,
+) map[string]string {
+	acs := tracker.ParseCheckboxes(issue.Body)
+	acList := formatACs(acs)
+	commitLog := git.BranchCommitLog(ctx, cfg.WorkDir)
+	return map[string]string{
+		"ISSUE_NUMBER":        strconv.Itoa(cfg.IssueNumber),
+		"ISSUE_TITLE":         issue.Title,
+		"ACCEPTANCE_CRITERIA": acList,
+		"AC_STATUS":           acList,
+		"CODING_STANDARDS":    codingStandards,
+		"UBIQUITOUS_LANGUAGE": ubiquitousLanguage,
+		"BRANCH_NAME":         branchName,
+		"CHANGED_FILES":       git.ChangedFiles(ctx, cfg.WorkDir),
+		"REVIEW_CYCLE":        strconv.Itoa(reviewCycle + 1),
+		"BLOCKING_FINDINGS":   lastBlockingFindings,
+		"REVIEW_OUTPUT":       reviewOutput,
+		"PIPELINE_SHAPE":      pipelineShape(commitLog),
+		"COMMIT_LOG":          commitLog,
+	}
 }
 
 func formatACs(acs []string) string {
