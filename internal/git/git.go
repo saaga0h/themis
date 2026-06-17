@@ -96,25 +96,15 @@ func Fetch(ctx context.Context, dir string) error {
 // merge-base. Returns empty string when no remote tracking branch exists or any
 // git command fails.
 func ChangedFiles(ctx context.Context, dir string) string {
-	refs, err := runGit(ctx, dir, "for-each-ref", "--format=%(refname:short)", "refs/remotes/")
-	if err != nil || strings.TrimSpace(refs) == "" {
+	base := branchMergeBase(ctx, dir)
+	if base == "" {
 		return ""
 	}
-	for _, ref := range parseLines(refs) {
-		if strings.Contains(ref, "/HEAD") {
-			continue
-		}
-		mergeBase, err := runGit(ctx, dir, "merge-base", "HEAD", ref)
-		if err != nil {
-			continue
-		}
-		out, err := runGit(ctx, dir, "diff", "--name-only", strings.TrimSpace(mergeBase))
-		if err != nil {
-			continue
-		}
-		return strings.TrimSpace(out)
+	out, err := runGit(ctx, dir, "diff", "--name-only", base)
+	if err != nil {
+		return ""
 	}
-	return ""
+	return strings.TrimSpace(out)
 }
 
 // branchMergeBase returns the merge-base SHA between HEAD and the nearest remote
