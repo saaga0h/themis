@@ -75,18 +75,17 @@ var templateFile = map[pipeline.Step]string{
 
 // Run executes the full pipeline for the given configuration.
 func Run(ctx context.Context, cfg Config) (*Result, error) {
-	state, err := pipeline.LoadState(cfg.WorkDir)
-	if err != nil {
-		return nil, fmt.Errorf("loading state: %w", err)
-	}
-	if state == nil {
-		state = &pipeline.PipelineState{
-			IssueNumber:     cfg.IssueNumber,
-			CurrentStep:     pipeline.StepFetch,
-			MaxReviewCycles: 2,
-			TestFixAttempts: map[string]int{},
-			StartedAt:       time.Now(),
-		}
+	// Clear previous run's state — each run starts fresh.
+	// The state file from the completed run remains on disk for post-mortem
+	// until the next run clears it here.
+	_ = os.Remove(filepath.Join(cfg.WorkDir, ".themis", "state.json"))
+
+	state := &pipeline.PipelineState{
+		IssueNumber:     cfg.IssueNumber,
+		CurrentStep:     pipeline.StepFetch,
+		MaxReviewCycles: 2,
+		TestFixAttempts: map[string]int{},
+		StartedAt:       time.Now(),
 	}
 
 	issue, err := cfg.Fetcher.Fetch(ctx, cfg.IssueNumber)
