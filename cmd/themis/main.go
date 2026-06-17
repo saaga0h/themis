@@ -68,7 +68,7 @@ func runIssue(args []string) error {
 		return fmt.Errorf("creating fetcher: %w", err)
 	}
 
-	issueWriter := newIssueWriter(parsed.provider, parsed.number)
+	issueWriter := newIssueWriter(parsed.provider, giteaOwner, giteaRepo, giteaAPIBase)
 
 	cfg, err := newIssueConfig(context.Background(), parsed.number, repoRoot, templateDir, fetcher, issueWriter)
 	if err != nil {
@@ -149,8 +149,11 @@ func runRun(args []string) error {
 	cfg := loopConfig{
 		Querier: querier,
 		RunFn: func(ctx context.Context, issue *tracker.IssueData) error {
-			issueWriter := newIssueWriter(parsed.provider, issue.Number)
-			issueCfg, err := newIssueConfig(ctx, issue.Number, workDir, templateDir, fetcher, issueWriter)
+			if err := git.Checkout(ctx, repoRoot, "main"); err != nil {
+				return fmt.Errorf("checkout main before issue #%d: %w", issue.Number, err)
+			}
+			issueWriter := newIssueWriter(parsed.provider, giteaOwner, giteaRepo, giteaAPIBase)
+			issueCfg, err := newIssueConfig(ctx, issue.Number, repoRoot, templateDir, fetcher, issueWriter)
 			if err != nil {
 				return fmt.Errorf("creating config for issue #%d: %w", issue.Number, err)
 			}
@@ -162,7 +165,7 @@ func runRun(args []string) error {
 			return nil
 		},
 		DryRun: parsed.dryRun,
-		Turns:  &unlimitedTurns{},
+		Turns:  &envTurns{},
 		Logger: os.Stderr,
 	}
 

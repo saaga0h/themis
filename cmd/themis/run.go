@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
 	"regexp"
 	"sort"
@@ -142,9 +143,24 @@ func runLoop(ctx context.Context, cfg loopConfig) error {
 	return nil
 }
 
-type unlimitedTurns struct{}
+// envTurns reads the remaining turn fraction from THEMIS_TURNS_REMAINING_FRACTION.
+// When unset, it returns 1.0 so the loop runs unrestricted.
+type envTurns struct{}
 
-func (u *unlimitedTurns) RemainingFraction() float64 { return 1.0 }
+func (e *envTurns) RemainingFraction() float64 {
+	s := os.Getenv("THEMIS_TURNS_REMAINING_FRACTION")
+	if s == "" {
+		return 1.0
+	}
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil || f < 0 {
+		return 1.0
+	}
+	if f > 1.0 {
+		return 1.0
+	}
+	return f
+}
 
 // GiteaQuerier implements IssueQuerier against the Gitea REST API.
 type GiteaQuerier struct {

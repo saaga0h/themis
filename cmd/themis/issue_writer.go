@@ -176,13 +176,14 @@ func (g *giteaIssueWriter) do(ctx context.Context, method, path string, body []b
 }
 
 // newIssueWriter returns an IssueWriter for the given provider.
-func newIssueWriter(provider string, _ int) runner.IssueWriter {
+// owner, repo, and apiBase are only used for the gitea provider.
+func newIssueWriter(provider, owner, repo, apiBase string) runner.IssueWriter {
 	switch provider {
 	case "gitea":
 		return &giteaIssueWriter{
-			owner:   giteaOwner(),
-			repo:    giteaRepo(),
-			apiBase: os.Getenv("GITEA_API_URL"),
+			owner:   owner,
+			repo:    repo,
+			apiBase: apiBase,
 			token:   os.Getenv("GITEA_TOKEN"),
 			client:  &http.Client{},
 		}
@@ -190,6 +191,3 @@ func newIssueWriter(provider string, _ int) runner.IssueWriter {
 		return &ghIssueWriter{}
 	}
 }
-
-func giteaOwner() string { return os.Getenv("GITEA_OWNER") }
-func giteaRepo() string  { return os.Getenv("GITEA_REPO") }
