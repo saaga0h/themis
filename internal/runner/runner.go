@@ -202,8 +202,8 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			return nil, fmt.Errorf("reading template %s: %w", tmplPath, err)
 		}
 
-		branchName, _ := git.CurrentBranch(ctx, cfg.WorkDir)
-		if branchName == "" {
+		branchName, err := git.CurrentBranch(ctx, cfg.WorkDir)
+		if err != nil {
 			branchName = "main"
 		}
 
