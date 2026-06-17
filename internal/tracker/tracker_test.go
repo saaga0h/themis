@@ -155,3 +155,110 @@ func TestNewFetcher_InvalidProvider(t *testing.T) {
 		t.Error("NewFetcher(invalid) should return error")
 	}
 }
+
+// AC: tracker.IssueData includes a Ref field populated from the issue's ref/branch metadata
+
+func TestIssueData_HasRefField(t *testing.T) {
+	issue := &tracker.IssueData{
+		Number: 21,
+		Title:  "Test",
+		Ref:    "feature-branch",
+	}
+	if issue.Ref != "feature-branch" {
+		t.Errorf("IssueData.Ref: got %q, want %q", issue.Ref, "feature-branch")
+	}
+}
+
+// AC: GiteaFetcher populates Ref from the Gitea API response
+
+func TestGiteaFetcher_PopulatesRefFromAPIResponse(t *testing.T) {
+	issue := map[string]interface{}{
+		"number":   21,
+		"title":    "Read PR target from ref",
+		"body":     "- [ ] AC",
+		"labels":   []map[string]interface{}{},
+		"html_url": "https://gitea.example.com/owner/repo/issues/21",
+		"ref":      "feature-branch",
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(issue); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
+	}))
+	defer srv.Close()
+
+	f := tracker.NewGiteaFetcher("owner", "repo", srv.URL, "token")
+	got, err := f.Fetch(context.Background(), 21)
+	if err != nil {
+		t.Fatalf("GiteaFetcher.Fetch error: %v", err)
+	}
+	if got.Ref != "feature-branch" {
+		t.Errorf("GiteaFetcher.Fetch Ref: got %q, want %q", got.Ref, "feature-branch")
+	}
+}
+
+func TestGiteaFetcher_RefIsEmptyWhenAbsentFromAPI(t *testing.T) {
+	issue := map[string]interface{}{
+		"number":   22,
+		"title":    "Issue without ref",
+		"body":     "",
+		"labels":   []map[string]interface{}{},
+		"html_url": "https://gitea.example.com/owner/repo/issues/22",
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(issue); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
+	}))
+	defer srv.Close()
+
+	f := tracker.NewGiteaFetcher("owner", "repo", srv.URL, "token")
+	got, err := f.Fetch(context.Background(), 22)
+	if err != nil {
+		t.Fatalf("GiteaFetcher.Fetch error: %v", err)
+	}
+	if got.Ref != "" {
+		t.Errorf("GiteaFetcher.Fetch Ref: got %q, want empty when absent", got.Ref)
+	}
+}
+
+// AC: GitHubFetcher populates Ref from gh CLI output (or defaults to "main" if not set)
+
+func TestParseGitHubJSON_PopulatesRefWhenPresent(t *testing.T) {
+	input := `{
+		"number": 21,
+		"title": "Read PR target from ref",
+		"body": "- [ ] AC",
+		"labels": [],
+		"state": "open",
+		"url": "https://github.com/owner/repo/issues/21",
+		"ref": "feature-branch"
+	}`
+	got, err := tracker.ParseGitHubJSON([]byte(input))
+	if err != nil {
+		t.Fatalf("ParseGitHubJSON error: %v", err)
+	}
+	if got.Ref != "feature-branch" {
+		t.Errorf("ParseGitHubJSON Ref: got %q, want %q", got.Ref, "feature-branch")
+	}
+}
+
+func TestParseGitHubJSON_RefIsEmptyWhenAbsent(t *testing.T) {
+	input := `{
+		"number": 22,
+		"title": "Issue without ref",
+		"body": "",
+		"labels": [],
+		"state": "open",
+		"url": "https://github.com/owner/repo/issues/22"
+	}`
+	got, err := tracker.ParseGitHubJSON([]byte(input))
+	if err != nil {
+		t.Fatalf("ParseGitHubJSON error: %v", err)
+	}
+	if got.Ref != "" {
+		t.Errorf("ParseGitHubJSON Ref: got %q, want empty when absent", got.Ref)
+	}
+}

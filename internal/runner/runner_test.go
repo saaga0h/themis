@@ -59,6 +59,7 @@ type stubIssueWriter struct {
 	labelsRemoved []string
 	comments      []string
 	prBodySeen    string
+	prBaseSeen    string
 	prURL         string
 }
 
@@ -79,6 +80,7 @@ func (s *stubIssueWriter) Comment(_ context.Context, _ int, body string) error {
 
 func (s *stubIssueWriter) CreatePR(_ context.Context, opts runner.PROptions) (string, error) {
 	s.prBodySeen = opts.Body
+	s.prBaseSeen = opts.Base
 	if s.prURL != "" {
 		return s.prURL, nil
 	}
@@ -409,6 +411,42 @@ func TestRunner_PRBodyIncludesACReference(t *testing.T) {
 	body := strings.ToLower(w.prBodySeen)
 	if !strings.Contains(body, "acceptance criteria") && !strings.Contains(body, "first ac") && !strings.Contains(body, "second ac") {
 		t.Errorf("PR body must reference acceptance criteria:\n%s", w.prBodySeen)
+	}
+}
+
+// AC: The runner's Ship step uses issue.Ref as the PR base branch instead of hardcoded "main"
+// AC: Test confirms PR base branch matches the issue's ref when set
+
+func TestRunner_PRBaseMatchesIssueRef(t *testing.T) {
+	issue := sampleIssue()
+	issue.Ref = "feature-branch"
+
+	w := &stubIssueWriter{prURL: "https://example.com/pr/20"}
+	cfg := baseConfig(t, w, &stubFetcher{issue: issue}, &stubInvoker{})
+
+	if _, err := runner.Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+	if w.prBaseSeen != "feature-branch" {
+		t.Errorf("PR base: got %q, want %q", w.prBaseSeen, "feature-branch")
+	}
+}
+
+// AC: When issue.Ref is empty, the runner falls back to "main"
+// AC: Test confirms fallback to "main" when ref is empty
+
+func TestRunner_PRBaseFallsBackToMainWhenRefEmpty(t *testing.T) {
+	issue := sampleIssue()
+	issue.Ref = ""
+
+	w := &stubIssueWriter{prURL: "https://example.com/pr/21"}
+	cfg := baseConfig(t, w, &stubFetcher{issue: issue}, &stubInvoker{})
+
+	if _, err := runner.Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+	if w.prBaseSeen != "main" {
+		t.Errorf("PR base with empty ref: got %q, want %q", w.prBaseSeen, "main")
 	}
 }
 
