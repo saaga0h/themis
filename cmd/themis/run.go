@@ -70,6 +70,32 @@ type loopConfig struct {
 
 var dependsOnRE = regexp.MustCompile(`(?i)depends on #(\d+)`)
 
+type issueItem struct {
+	Number int    `json:"number"`
+	Title  string `json:"title"`
+	Body   string `json:"body"`
+	Labels []struct {
+		Name string `json:"name"`
+	} `json:"labels"`
+}
+
+func toIssueDataList(items []issueItem) []*tracker.IssueData {
+	result := make([]*tracker.IssueData, 0, len(items))
+	for _, item := range items {
+		labels := make([]string, 0, len(item.Labels))
+		for _, l := range item.Labels {
+			labels = append(labels, l.Name)
+		}
+		result = append(result, &tracker.IssueData{
+			Number: item.Number,
+			Title:  item.Title,
+			Body:   item.Body,
+			Labels: labels,
+		})
+	}
+	return result
+}
+
 func runLoop(ctx context.Context, cfg loopConfig) error {
 	out := cfg.Logger
 	if out == nil {
@@ -116,7 +142,6 @@ func runLoop(ctx context.Context, cfg loopConfig) error {
 	return nil
 }
 
-// unlimitedTurns is used in production where turn-budget tracking is not available.
 type unlimitedTurns struct{}
 
 func (u *unlimitedTurns) RemainingFraction() float64 { return 1.0 }
@@ -162,31 +187,11 @@ func (q *GiteaQuerier) ListReadyIssues(ctx context.Context) ([]*tracker.IssueDat
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("Gitea API returned %d", resp.StatusCode)
 	}
-	var items []struct {
-		Number int    `json:"number"`
-		Title  string `json:"title"`
-		Body   string `json:"body"`
-		Labels []struct {
-			Name string `json:"name"`
-		} `json:"labels"`
-	}
+	var items []issueItem
 	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
 		return nil, fmt.Errorf("decoding issues: %w", err)
 	}
-	issues := make([]*tracker.IssueData, 0, len(items))
-	for _, item := range items {
-		labels := make([]string, 0, len(item.Labels))
-		for _, l := range item.Labels {
-			labels = append(labels, l.Name)
-		}
-		issues = append(issues, &tracker.IssueData{
-			Number: item.Number,
-			Title:  item.Title,
-			Body:   item.Body,
-			Labels: labels,
-		})
-	}
-	return issues, nil
+	return toIssueDataList(items), nil
 }
 
 func (q *GiteaQuerier) IsOpen(ctx context.Context, number int) (bool, error) {
@@ -220,31 +225,11 @@ func (q *GitHubQuerier) ListReadyIssues(ctx context.Context) ([]*tracker.IssueDa
 	if err != nil {
 		return nil, fmt.Errorf("gh issue list: %w", err)
 	}
-	var items []struct {
-		Number int    `json:"number"`
-		Title  string `json:"title"`
-		Body   string `json:"body"`
-		Labels []struct {
-			Name string `json:"name"`
-		} `json:"labels"`
-	}
+	var items []issueItem
 	if err := json.Unmarshal(out, &items); err != nil {
 		return nil, fmt.Errorf("parsing gh output: %w", err)
 	}
-	issues := make([]*tracker.IssueData, 0, len(items))
-	for _, item := range items {
-		labels := make([]string, 0, len(item.Labels))
-		for _, l := range item.Labels {
-			labels = append(labels, l.Name)
-		}
-		issues = append(issues, &tracker.IssueData{
-			Number: item.Number,
-			Title:  item.Title,
-			Body:   item.Body,
-			Labels: labels,
-		})
-	}
-	return issues, nil
+	return toIssueDataList(items), nil
 }
 
 func (q *GitHubQuerier) IsOpen(ctx context.Context, number int) (bool, error) {

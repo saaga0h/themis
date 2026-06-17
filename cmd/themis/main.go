@@ -138,16 +138,17 @@ func runRun(args []string) error {
 		querier = &GitHubQuerier{}
 	}
 
+	var fetcher tracker.Fetcher
+	switch parsed.provider {
+	case "gitea":
+		fetcher = tracker.NewGiteaFetcher(giteaOwner, giteaRepo, giteaAPIBase, os.Getenv("GITEA_TOKEN"))
+	default:
+		fetcher = &tracker.GitHubFetcher{}
+	}
+
 	cfg := loopConfig{
 		Querier: querier,
 		RunFn: func(ctx context.Context, issue *tracker.IssueData) error {
-			var fetcher tracker.Fetcher
-			switch parsed.provider {
-			case "gitea":
-				fetcher = tracker.NewGiteaFetcher(giteaOwner, giteaRepo, giteaAPIBase, os.Getenv("GITEA_TOKEN"))
-			default:
-				fetcher = &tracker.GitHubFetcher{}
-			}
 			issueWriter := newIssueWriter(parsed.provider, issue.Number)
 			issueCfg, err := newIssueConfig(ctx, issue.Number, workDir, templateDir, fetcher, issueWriter)
 			if err != nil {
