@@ -157,7 +157,10 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 
 		// Ship step: push branch and create PR.
 		if step == pipeline.StepShip {
-			branch := currentBranchName(cfg.WorkDir)
+			branch, err := git.CurrentBranch(ctx, cfg.WorkDir)
+			if err != nil {
+				branch = "main"
+			}
 			if cfg.GitPushFn != nil {
 				if err := cfg.GitPushFn(ctx, cfg.WorkDir, branch); err != nil {
 					return nil, fmt.Errorf("pushing branch %s: %w", branch, err)
@@ -199,6 +202,11 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			return nil, fmt.Errorf("reading template %s: %w", tmplPath, err)
 		}
 
+		branchName, err := git.CurrentBranch(ctx, cfg.WorkDir)
+		if err != nil {
+			branchName = "main"
+		}
+
 		acs := tracker.ParseCheckboxes(issue.Body)
 		masterArgs := map[string]string{
 			"ISSUE_NUMBER":        strconv.Itoa(cfg.IssueNumber),
@@ -206,8 +214,8 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			"ACCEPTANCE_CRITERIA": formatACs(acs),
 			"CODING_STANDARDS":    codingStandards,
 			"UBIQUITOUS_LANGUAGE": ubiquitousLanguage,
-			"BRANCH_NAME":         currentBranchName(cfg.WorkDir),
-			"CHANGED_FILES":       changedFiles(cfg.WorkDir),
+			"BRANCH_NAME":         branchName,
+			"CHANGED_FILES":       git.ChangedFiles(ctx, cfg.WorkDir),
 			"REVIEW_CYCLE":        strconv.Itoa(state.ReviewCycle + 1),
 			"BLOCKING_FINDINGS":   lastBlockingFindings,
 		}
@@ -368,22 +376,6 @@ func readFileOrEmpty(path string) string {
 		return ""
 	}
 	return string(data)
-}
-
-func currentBranchName(workDir string) string {
-	data, err := os.ReadFile(filepath.Join(workDir, ".git", "HEAD"))
-	if err != nil {
-		return "main"
-	}
-	ref := strings.TrimSpace(string(data))
-	if after, ok := strings.CutPrefix(ref, "ref: refs/heads/"); ok {
-		return after
-	}
-	return "main"
-}
-
-func changedFiles(workDir string) string {
-	return ""
 }
 
 func slugify(s string) string {

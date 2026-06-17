@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"git.home.federation.fi/lavernea/themis/internal/agent"
 	"git.home.federation.fi/lavernea/themis/internal/checkpoint"
 	"git.home.federation.fi/lavernea/themis/internal/git"
 	"git.home.federation.fi/lavernea/themis/internal/runner"
@@ -79,7 +80,7 @@ func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir strin
 		WorkDir:      workDir,
 		IssueNumber:  issueNumber,
 		Fetcher:      fetcher,
-		Invoker:      &claudeInvoker{},
+		Invoker:      &agent.ClaudeCodeInvoker{},
 		IssueWriter:  issueWriter,
 		TemplateDir:  tmplDir,
 		CheckpointFn: checkpointFn,
