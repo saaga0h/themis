@@ -165,62 +165,26 @@ func TestResolveGiteaConfig_ReturnsErrorWhenNeitherSourceWorks(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// git init portability (AC1 target 6)
-// ---------------------------------------------------------------------------
-
-// TestNewTestGitRepo_DefaultBranchIsMain verifies that the newTestGitRepo
-// helper creates repositories on "main", not on whatever the global
-// init.defaultBranch config says.  This test will FAIL until newTestGitRepo
-// passes --initial-branch=main to git init (AC1 target 6).
-func TestNewTestGitRepo_DefaultBranchIsMain(t *testing.T) {
-	dir := newTestGitRepo(t)
-	// Add a commit so HEAD resolves to a branch (git init leaves HEAD unborn
-	// until the first commit, but we only need the symbolic ref).
-	f := filepath.Join(dir, "README.md")
-	if err := os.WriteFile(f, []byte("# test\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	gitCmd(t, dir, "add", "README.md")
-	gitCmd(t, dir, "commit", "-m", "chore: initial commit")
-
-	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+func assertBranchIsMain(t *testing.T, dir string) {
+	t.Helper()
+	cmd := exec.Command("git", "symbolic-ref", "--short", "HEAD")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("git rev-parse: %v\n%s", err, out)
+		t.Fatalf("git symbolic-ref: %v\n%s", err, out)
 	}
-	branch := strings.TrimSpace(string(out))
-	if branch != "main" {
-		t.Errorf("newTestGitRepo must create branch 'main', got %q (add --initial-branch=main to git init)", branch)
+	if got := strings.TrimSpace(string(out)); got != "main" {
+		t.Errorf("expected branch 'main', got %q", got)
 	}
 }
 
-// TestNewTestGitRepo_PortableUnderDefaultBranchMaster verifies that
-// newTestGitRepo still creates a "main" branch even when git's global
-// init.defaultBranch is "master" (AC4 — regression guard for older git
-// configs).
+func TestNewTestGitRepo_DefaultBranchIsMain(t *testing.T) {
+	assertBranchIsMain(t, newTestGitRepo(t))
+}
+
 func TestNewTestGitRepo_PortableUnderDefaultBranchMaster(t *testing.T) {
 	t.Setenv("GIT_CONFIG_COUNT", "1")
 	t.Setenv("GIT_CONFIG_KEY_0", "init.defaultBranch")
 	t.Setenv("GIT_CONFIG_VALUE_0", "master")
-
-	dir := newTestGitRepo(t)
-	f := filepath.Join(dir, "README.md")
-	if err := os.WriteFile(f, []byte("# test\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	gitCmd(t, dir, "add", "README.md")
-	gitCmd(t, dir, "commit", "-m", "chore: initial commit")
-
-	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("git rev-parse: %v\n%s", err, out)
-	}
-	branch := strings.TrimSpace(string(out))
-	if branch != "main" {
-		t.Errorf("newTestGitRepo must produce branch 'main' regardless of init.defaultBranch=master, got %q (add --initial-branch=main to git init)", branch)
-	}
+	assertBranchIsMain(t, newTestGitRepo(t))
 }

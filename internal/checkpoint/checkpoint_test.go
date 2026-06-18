@@ -128,45 +128,26 @@ func TestVerifyCleanWorkingTree_Dirty(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// git init portability (AC1 target 4)
-// ---------------------------------------------------------------------------
-
-// TestInitGitRepo_DefaultBranchIsMain verifies that the initGitRepo helper
-// creates repositories on "main", not on whatever the global init.defaultBranch
-// config says.  This test will FAIL until initGitRepo passes
-// --initial-branch=main to git init (AC1 target 4).
-func TestInitGitRepo_DefaultBranchIsMain(t *testing.T) {
-	dir := initGitRepo(t)
-	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+func assertBranchIsMain(t *testing.T, dir string) {
+	t.Helper()
+	cmd := exec.Command("git", "symbolic-ref", "--short", "HEAD")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("git rev-parse: %v\n%s", err, out)
+		t.Fatalf("git symbolic-ref: %v\n%s", err, out)
 	}
-	branch := strings.TrimSpace(string(out))
-	if branch != "main" {
-		t.Errorf("initGitRepo must create branch 'main', got %q (add --initial-branch=main to git init)", branch)
+	if got := strings.TrimSpace(string(out)); got != "main" {
+		t.Errorf("expected branch 'main', got %q", got)
 	}
 }
 
-// TestInitGitRepo_PortableUnderDefaultBranchMaster verifies that initGitRepo
-// still creates a "main" branch even when git's global init.defaultBranch is
-// "master" (AC4 — regression guard for older git configs).
+func TestInitGitRepo_DefaultBranchIsMain(t *testing.T) {
+	assertBranchIsMain(t, initGitRepo(t))
+}
+
 func TestInitGitRepo_PortableUnderDefaultBranchMaster(t *testing.T) {
 	t.Setenv("GIT_CONFIG_COUNT", "1")
 	t.Setenv("GIT_CONFIG_KEY_0", "init.defaultBranch")
 	t.Setenv("GIT_CONFIG_VALUE_0", "master")
-
-	dir := initGitRepo(t)
-	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("git rev-parse: %v\n%s", err, out)
-	}
-	branch := strings.TrimSpace(string(out))
-	if branch != "main" {
-		t.Errorf("initGitRepo must produce branch 'main' regardless of init.defaultBranch=master, got %q (add --initial-branch=main to git init)", branch)
-	}
+	assertBranchIsMain(t, initGitRepo(t))
 }

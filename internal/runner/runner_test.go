@@ -1029,65 +1029,33 @@ func TestRunner_NilLoggerDefaultsToStderrWithoutPanic(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// git init portability (AC1 target 2, AC3, AC4)
-// ---------------------------------------------------------------------------
-
-// TestInitLocalRepo_DefaultBranchIsMain verifies that the initLocalRepo helper
-// creates repositories on "main", not on whatever the global init.defaultBranch
-// config says.  This test will FAIL until initLocalRepo passes
-// --initial-branch=main to git init (AC1 target 2).
-func TestInitLocalRepo_DefaultBranchIsMain(t *testing.T) {
-	dir := initLocalRepo(t)
-	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+func assertBranchIsMain(t *testing.T, dir string) {
+	t.Helper()
+	cmd := exec.Command("git", "symbolic-ref", "--short", "HEAD")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("git rev-parse: %v\n%s", err, out)
+		t.Fatalf("git symbolic-ref: %v\n%s", err, out)
 	}
-	branch := strings.TrimSpace(string(out))
-	if branch != "main" {
-		t.Errorf("initLocalRepo must create branch 'main', got %q (add --initial-branch=main to git init)", branch)
+	if got := strings.TrimSpace(string(out)); got != "main" {
+		t.Errorf("expected branch 'main', got %q", got)
 	}
 }
 
-// TestInitLocalRepo_PortableUnderDefaultBranchMain verifies that initLocalRepo
-// works correctly when git's global init.defaultBranch is "main" (AC3).
+func TestInitLocalRepo_DefaultBranchIsMain(t *testing.T) {
+	assertBranchIsMain(t, initLocalRepo(t))
+}
+
 func TestInitLocalRepo_PortableUnderDefaultBranchMain(t *testing.T) {
 	t.Setenv("GIT_CONFIG_COUNT", "1")
 	t.Setenv("GIT_CONFIG_KEY_0", "init.defaultBranch")
 	t.Setenv("GIT_CONFIG_VALUE_0", "main")
-
-	dir := initLocalRepo(t)
-	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("git rev-parse: %v\n%s", err, out)
-	}
-	branch := strings.TrimSpace(string(out))
-	if branch != "main" {
-		t.Errorf("initLocalRepo must produce branch 'main' with init.defaultBranch=main, got %q", branch)
-	}
+	assertBranchIsMain(t, initLocalRepo(t))
 }
 
-// TestInitLocalRepo_PortableUnderDefaultBranchMaster verifies that initLocalRepo
-// still creates a "main" branch even when git's global init.defaultBranch is
-// "master" (AC4 — regression guard for older git configs).
 func TestInitLocalRepo_PortableUnderDefaultBranchMaster(t *testing.T) {
 	t.Setenv("GIT_CONFIG_COUNT", "1")
 	t.Setenv("GIT_CONFIG_KEY_0", "init.defaultBranch")
 	t.Setenv("GIT_CONFIG_VALUE_0", "master")
-
-	dir := initLocalRepo(t)
-	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("git rev-parse: %v\n%s", err, out)
-	}
-	branch := strings.TrimSpace(string(out))
-	if branch != "main" {
-		t.Errorf("initLocalRepo must produce branch 'main' regardless of init.defaultBranch=master, got %q (add --initial-branch=main to git init)", branch)
-	}
+	assertBranchIsMain(t, initLocalRepo(t))
 }
