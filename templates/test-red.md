@@ -10,31 +10,40 @@
 
 ## Instructions
 
-**This step writes ONLY test files. Do NOT create or modify any implementation files.**
-**Do NOT think about the implementation yet. Focus only on what the ACs require.**
+Follow the **test-red** skill (`skills/test-red/SKILL.md`). The skill defines
+the three-phase methodology: target enumeration → test implementation →
+verification.
 
-Each Acceptance Criteria item becomes one or more tests. For each AC:
-- Determine the appropriate test type (unit, integration — refer to the coding standards)
-- Write a test that asserts the exact behaviour the AC describes — not a proxy for it
-- If the test needs minimal type stubs to compile, create the absolute minimum
-  (empty struct, interface with no methods) — not the real implementation
+**Phase 1 — Target Enumeration:**
+Delegate to **test-architect** via Task. Pass the Acceptance Criteria above
+and issue number {{ISSUE_NUMBER}}.
 
-## Verification — do not skip
+Running in autonomous mode. Include this instruction in the delegation:
+> Running in autonomous mode. Skip human confirmation gates and proceed directly.
+> Do not wait for review — produce the AC-to-targets mapping and return it.
 
-After writing all test files, verify no implementation files were created:
+The test-architect must return an AC-to-targets mapping with explicit counts.
+For exhaustive ACs ("all", "every", "each"), it must grep the codebase and list
+every matching instance. Verify the mapping is complete before proceeding.
 
-```bash
-git diff --name-only | grep -v _test.go | grep -v .claude/ | grep -v doc.go
-```
+**Phase 2 — Test Implementation:**
+Delegate to **test-writer** via Task. Pass the AC-to-targets mapping from
+Phase 1, the issue number, and the coding standards.
 
-If this command produces ANY output, you have created implementation files.
-**Delete them now.** Only `*_test.go` files and minimal stubs (empty types in
-existing files) are permitted at this point.
+Include this instruction in the delegation:
+> Running in autonomous mode. Skip human confirmation gates and proceed directly.
+> Write tests for every target in the mapping below. Do not skip any.
 
-Run the tests — they MUST fail or fail to compile.
-If any test passes without real implementation, the test is wrong — fix it.
+**Phase 3 — Verification (do not delegate):**
+1. Count test functions written vs targets enumerated — if mismatch, send
+   test-writer back with the missing targets
+2. Verify no implementation files: `git diff --name-only | grep -v _test.go | grep -v .claude/ | grep -v doc.go`
+3. Run tests — they MUST fail or fail to compile
+4. If any test passes without implementation, the test is wrong — fix it
 
 ## Commit
+
+Only after all verifications pass:
 
 ```
 test(<scope>): add failing tests for issue #{{ISSUE_NUMBER}}
