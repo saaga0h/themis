@@ -1,5 +1,5 @@
 ---
-description: Run code review using specialized review agents. Supports full review, scoped review, or individual perspectives (--security, --architecture, --complexity, --conventions, --coverage, --numerical, --quick).
+description: Run code review using specialized review agents. Supports full review, scoped review, or individual perspectives (--security, --architecture, --complexity, --conventions, --coverage, --numerical, --quick). In autonomous mode (--autonomous), writes structured findings to .themis/review-results.json for pipeline consumption.
 argument-hint: [scope] [--flags]
 allowed-tools: Read, Glob, Grep, Bash, Task
 ---
@@ -12,6 +12,7 @@ You orchestrate code reviews by delegating to specialized review agents. Each ag
 
 Parse `$ARGUMENTS` for:
 - **Scope**: a directory path, package name, or `--last-plan` (reviews files from most recently completed plan)
+- **Mode**: `--autonomous` (write JSON results for pipeline, skip human interaction)
 - **Perspective flags**: which reviewers to run
 
 | Flag | Agent | Model |
@@ -28,6 +29,8 @@ Parse `$ARGUMENTS` for:
 If `--last-plan` is specified, find the most recently modified `.md` file in `.claude/plans/` and pass it as scope context to each agent.
 
 ## Step 1: Confirm with user
+
+**If `--autonomous` is set: skip this step entirely.**
 
 Show what you're about to do:
 
@@ -75,55 +78,88 @@ automatically add numerical-reviewer even if `--numerical` was not passed:
 
 Collect each agent's output.
 
-## Step 4: Synthesize
+## Step 4: Synthesize and classify findings
 
-Combine all agent outputs into a unified review report:
+Combine all agent outputs. For each finding, assign a severity:
 
+- **CRITICAL** — security vulnerability exploitable in the project's threat model,
+  data loss or corruption, compile failure
+- **HIGH** — AC not covered (specified behaviour has no test and no implementation),
+  abstraction boundary violated (directly contradicts CODING_STANDARDS.md rules)
+- **MEDIUM** — untested error path, swallowed error, unthreaded context, hardcoded
+  infrastructure value, missing HTTP timeout, cross-internal dependency not listed
+  in CODING_STANDARDS.md
+- **LOW** — style preferences, "consider" or "could be improved" suggestions,
+  performance concerns without benchmark, redundant code that doesn't affect
+  correctness, pre-existing patterns not introduced by this change
+
+**Classification rules:**
+- Default to MEDIUM when uncertain. Err on the side of catching issues, not deferring them.
+- A finding that matches a specific CODING_STANDARDS.md rule is at least MEDIUM.
+- A finding that matches a CODING_STANDARDS.md "blocking review finding" rule is HIGH.
+- Pre-existing issues not introduced by this change are LOW unless they are security-relevant.
+
+## Step 5: Write results
+
+**If `--autonomous` is set:**
+
+Write findings to `.themis/review-results.json`:
+
+```json
+{
+  "findings": [
+    {
+      "severity": "critical",
+      "description": "Three git init helpers missing --initial-branch=main",
+      "file": "internal/runner/runner_checkpoint_test.go",
+      "line": 32,
+      "reviewer": "coverage-reviewer"
+    },
+    {
+      "severity": "medium",
+      "description": "BranchCommitLog fails in repos without a remote",
+      "file": "internal/git/git.go",
+      "line": 134,
+      "reviewer": "architecture-reviewer"
+    },
+    {
+      "severity": "low",
+      "description": "Pre-existing test naming convention inconsistency",
+      "file": "internal/git/git_test.go",
+      "reviewer": "convention-reviewer"
+    }
+  ]
+}
 ```
-## Code Review Report
 
-**Scope**: <what was reviewed>
-**Date**: <today>
-**Reviewers**: <which agents ran>
+Each finding must have: `severity` (critical|high|medium|low), `description`,
+`file`. The `line` field is optional but preferred. The `reviewer` field names
+which agent produced the finding.
 
----
+Write the file using Bash:
 
-### Overall Verdict: <READY | NEEDS WORK | SIGNIFICANT ISSUES>
-
-### Critical Findings
-<anything from any reviewer marked Critical or High severity — these block shipping>
-
-### Architecture
-<summary from architecture-reviewer, or "Not reviewed">
-
-### Security
-<summary from security-reviewer, or "Not reviewed">
-
-### Complexity
-<summary from complexity-reviewer, or "Not reviewed">
-
-### Conventions
-<summary from convention-reviewer, or "Not reviewed">
-
-### Test Coverage
-<summary from coverage-reviewer, or "Not reviewed">
-
-### Numerical Correctness
-<summary from numerical-reviewer, or "Not reviewed">
-
-### Action Items
-<numbered list of things to fix, ordered by severity>
-1. [CRITICAL] ...
-2. [HIGH] ...
-3. [MEDIUM] ...
-4. [LOW] ...
+```bash
+cat > .themis/review-results.json << 'REVIEW_EOF'
+<json content>
+REVIEW_EOF
 ```
 
-## Step 5: Save report
+Verify the file was written:
 
-Save the review report to `.claude/reviews/<scope-or-date>.md` so it's available for reference when running `/ship` or future reviews.
+```bash
+cat .themis/review-results.json | python3 -c "import json,sys; d=json.load(sys.stdin); print(f'{len(d[\"findings\"])} findings written')"
+```
+
+Do not write to `.claude/reviews/` in autonomous mode.
+
+**If `--autonomous` is NOT set:**
+
+Save the review report to `.claude/reviews/<scope-or-date>.md` as markdown
+(existing behaviour). Do not write `.themis/review-results.json`.
 
 ## Step 6: Recommendation
+
+**If `--autonomous` is set: skip this step entirely.**
 
 Based on findings, tell the user:
 
@@ -139,6 +175,8 @@ Based on findings, tell the user:
 - If scoped to `--last-plan`, make sure the plan exists and has completed tasks
 - Keep the synthesized report concise — details are in individual agent outputs
 - Don't fix anything. Review only. Fixing is `/implement`'s job.
+- In autonomous mode: no human interaction. No confirmation, no recommendation.
+  Write the JSON and return.
 
 ---
 
