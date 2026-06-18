@@ -15,6 +15,10 @@ import (
 
 const version = "0.1.0"
 
+// defaultMaxTurns is the CLI default for --max-turns, sourced from the runner
+// so the runner remains the single source of truth for the value.
+const defaultMaxTurns = runner.DefaultMaxTurns
+
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Fprintf(os.Stderr, "usage: themis <command>\n")
@@ -70,7 +74,7 @@ func runIssue(args []string) error {
 
 	issueWriter := newIssueWriter(parsed.provider, giteaOwner, giteaRepo, giteaAPIBase)
 
-	cfg, err := newIssueConfig(context.Background(), parsed.number, repoRoot, templateDir, fetcher, issueWriter)
+	cfg, err := newIssueConfig(context.Background(), parsed.number, repoRoot, templateDir, fetcher, issueWriter, parsed.maxTurns)
 	if err != nil {
 		return fmt.Errorf("creating issue config: %w", err)
 	}
@@ -83,7 +87,7 @@ func runIssue(args []string) error {
 	return nil
 }
 
-func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir string, fetcher tracker.Fetcher, issueWriter runner.IssueWriter) (runner.Config, error) {
+func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir string, fetcher tracker.Fetcher, issueWriter runner.IssueWriter, maxTurns int) (runner.Config, error) {
 	checkpointFn, err := checkpoint.NewStepCheckpoint(ctx, workDir)
 	if err != nil {
 		return runner.Config{}, fmt.Errorf("creating checkpoint: %w", err)
@@ -97,6 +101,7 @@ func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir strin
 		TemplateDir:  tmplDir,
 		CheckpointFn: checkpointFn,
 		CodeVersion:  version,
+		MaxTurns:     maxTurns,
 		GitBranchFn: func(ctx context.Context, wd, branch string) error {
 			if err := git.CheckoutNewBranch(ctx, wd, branch); err != nil {
 				if checkoutErr := git.Checkout(ctx, wd, branch); checkoutErr != nil {
@@ -153,7 +158,7 @@ func runRun(args []string) error {
 				return fmt.Errorf("checkout main before issue #%d: %w", issue.Number, err)
 			}
 			issueWriter := newIssueWriter(parsed.provider, giteaOwner, giteaRepo, giteaAPIBase)
-			issueCfg, err := newIssueConfig(ctx, issue.Number, repoRoot, templateDir, fetcher, issueWriter)
+			issueCfg, err := newIssueConfig(ctx, issue.Number, repoRoot, templateDir, fetcher, issueWriter, parsed.maxTurns)
 			if err != nil {
 				return fmt.Errorf("creating config for issue #%d: %w", issue.Number, err)
 			}

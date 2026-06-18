@@ -67,7 +67,7 @@ func TestInvokeOptionsFields(t *testing.T) {
 	opts := InvokeOptions{
 		Prompt:       "hello",
 		Model:        "opus",
-		MaxTurns:     100,
+		MaxTurns:     42,
 		WorkDir:      "/tmp/work",
 		AllowedTools: []string{"Read", "Write", "Edit"},
 	}
@@ -77,7 +77,7 @@ func TestInvokeOptionsFields(t *testing.T) {
 	if opts.Model != "opus" {
 		t.Error("Model not stored")
 	}
-	if opts.MaxTurns != 100 {
+	if opts.MaxTurns != 42 {
 		t.Error("MaxTurns not stored")
 	}
 	if opts.WorkDir != "/tmp/work" {

@@ -22,6 +22,10 @@ import (
 
 const blockingThreshold = "medium"
 
+// DefaultMaxTurns is the default per-agent turn limit used when no --max-turns
+// value is supplied on the CLI. It is the single source of truth for the default.
+const DefaultMaxTurns = 250
+
 // ReviewFinding is a single finding produced by the review step.
 type ReviewFinding struct {
 	Severity    string `json:"severity"`
@@ -118,6 +122,7 @@ type Config struct {
 	GitPushFn    func(ctx context.Context, workDir, branch string) error
 	Logger       io.Writer
 	CodeVersion  string
+	MaxTurns     int
 }
 
 // Result holds the outcome of a successful pipeline run.
@@ -302,11 +307,11 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 				filteredArgs := filterArgs(string(shipTmplContent), shipArgs)
 				if substituted, subErr := prompt.Substitute(string(shipTmplContent), filteredArgs); subErr == nil {
 					model := modelForStep(step, prof)
-					fmt.Fprintf(log, "%s: invoking agent model=%s maxTurns=%d\n", step, model, 100)
+					fmt.Fprintf(log, "%s: invoking agent model=%s maxTurns=%d\n", step, model, cfg.MaxTurns)
 					invokeResult, invokeErr := cfg.Invoker.Invoke(ctx, agent.InvokeOptions{
 						Prompt:       substituted,
 						Model:        model,
-						MaxTurns:     100,
+						MaxTurns:     cfg.MaxTurns,
 						WorkDir:      cfg.WorkDir,
 						IssueNumber:  cfg.IssueNumber,
 						PipelineStep: pipeline.StepShip.String(),
@@ -369,12 +374,12 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		}
 
 		model := modelForStep(step, prof)
-		fmt.Fprintf(log, "%s: invoking agent model=%s maxTurns=%d\n", step, model, 100)
+		fmt.Fprintf(log, "%s: invoking agent model=%s maxTurns=%d\n", step, model, cfg.MaxTurns)
 
 		invokeResult, err := cfg.Invoker.Invoke(ctx, agent.InvokeOptions{
 			Prompt:       substituted,
 			Model:        model,
-			MaxTurns:     100,
+			MaxTurns:     cfg.MaxTurns,
 			WorkDir:      cfg.WorkDir,
 			IssueNumber:  cfg.IssueNumber,
 			PipelineStep: step.String(),
