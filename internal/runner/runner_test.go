@@ -1077,3 +1077,124 @@ func TestInitRepoWithRemote_PortableUnderDefaultBranchMaster(t *testing.T) {
 	t.Setenv("GIT_CONFIG_VALUE_0", "master")
 	assertBranchIsMain(t, initRepoWithRemote(t))
 }
+
+// ---------------------------------------------------------------------------
+// Issue #40: Runner passes IssueNumber and PipelineStep to Invoke (Targets 7, 8)
+// ---------------------------------------------------------------------------
+
+// TestRunnerAgentStepPassesIssueNumberToInvoker verifies that agent steps pass
+// cfg.IssueNumber in InvokeOptions (Target 7 / AC1+2).
+func TestRunnerAgentStepPassesIssueNumberToInvoker(t *testing.T) {
+	workDir := t.TempDir()
+	// Start at TestRed so we get exactly one agent-step invocation before the test ends.
+	saveStateAt(t, workDir, pipeline.StepTestRed)
+
+	inv := &recordingInvoker{
+		results: []*agent.InvokeResult{
+			{ExitCode: 0, Completed: true},
+		},
+	}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/otel"}
+	cfg := Config{
+		WorkDir:      workDir,
+		IssueNumber:  42,
+		Fetcher:      &stubFetcher{issue: sampleIssue()},
+		Invoker:      inv,
+		IssueWriter:  w,
+		TemplateDir:  templateDir(t),
+		CheckpointFn: noopCheckpoint,
+	}
+
+	if _, err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+
+	if len(inv.opts) == 0 {
+		t.Fatal("expected at least one agent invocation")
+	}
+	// The first agent-step invocation must carry the configured issue number.
+	if inv.opts[0].IssueNumber != cfg.IssueNumber {
+		t.Errorf("agent-step InvokeOptions.IssueNumber = %d, want %d", inv.opts[0].IssueNumber, cfg.IssueNumber)
+	}
+}
+
+// TestRunnerAgentStepPassesPipelineStepToInvoker verifies that agent steps pass
+// step.String() as PipelineStep in InvokeOptions (Target 7 / AC1+3).
+func TestRunnerAgentStepPassesPipelineStepToInvoker(t *testing.T) {
+	workDir := t.TempDir()
+	// Start at TestRed so the first invocation corresponds to that step.
+	saveStateAt(t, workDir, pipeline.StepTestRed)
+
+	inv := &recordingInvoker{
+		results: []*agent.InvokeResult{
+			{ExitCode: 0, Completed: true},
+		},
+	}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/otel"}
+	cfg := Config{
+		WorkDir:      workDir,
+		IssueNumber:  42,
+		Fetcher:      &stubFetcher{issue: sampleIssue()},
+		Invoker:      inv,
+		IssueWriter:  w,
+		TemplateDir:  templateDir(t),
+		CheckpointFn: noopCheckpoint,
+	}
+
+	if _, err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+
+	if len(inv.opts) == 0 {
+		t.Fatal("expected at least one agent invocation")
+	}
+	// The first agent-step invocation must carry the step name "TestRed".
+	if inv.opts[0].PipelineStep != pipeline.StepTestRed.String() {
+		t.Errorf("agent-step InvokeOptions.PipelineStep = %q, want %q",
+			inv.opts[0].PipelineStep, pipeline.StepTestRed.String())
+	}
+}
+
+// TestRunnerShipStepPassesIssueNumberToInvoker verifies that the Ship step passes
+// cfg.IssueNumber in InvokeOptions (Target 8 / AC1+2).
+func TestRunnerShipStepPassesIssueNumberToInvoker(t *testing.T) {
+	inv := &recordingInvoker{}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/ship-otel"}
+	cfg := baseConfig(t, w, &stubFetcher{issue: sampleIssue()}, inv)
+
+	if _, err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+
+	// The ship step is the last invocation (index pipelineAgentCallCount).
+	want := pipelineAgentCallCount + 1
+	if len(inv.opts) < want {
+		t.Fatalf("expected at least %d invocations (pipeline + ship), got %d", want, len(inv.opts))
+	}
+	shipOpts := inv.opts[pipelineAgentCallCount]
+	if shipOpts.IssueNumber != cfg.IssueNumber {
+		t.Errorf("ship-step InvokeOptions.IssueNumber = %d, want %d", shipOpts.IssueNumber, cfg.IssueNumber)
+	}
+}
+
+// TestRunnerShipStepPassesPipelineStepToInvoker verifies that the Ship step passes
+// "Ship" as PipelineStep in InvokeOptions (Target 8 / AC1+3).
+func TestRunnerShipStepPassesPipelineStepToInvoker(t *testing.T) {
+	inv := &recordingInvoker{}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/ship-otel"}
+	cfg := baseConfig(t, w, &stubFetcher{issue: sampleIssue()}, inv)
+
+	if _, err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+
+	want := pipelineAgentCallCount + 1
+	if len(inv.opts) < want {
+		t.Fatalf("expected at least %d invocations (pipeline + ship), got %d", want, len(inv.opts))
+	}
+	shipOpts := inv.opts[pipelineAgentCallCount]
+	if shipOpts.PipelineStep != pipeline.StepShip.String() {
+		t.Errorf("ship-step InvokeOptions.PipelineStep = %q, want %q",
+			shipOpts.PipelineStep, pipeline.StepShip.String())
+	}
+}
