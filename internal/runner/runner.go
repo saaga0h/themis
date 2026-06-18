@@ -48,18 +48,24 @@ func readReviewResults(workDir string) ([]ReviewFinding, bool) {
 	return rr.Findings, true
 }
 
-func determineBlockingStatus(findings []ReviewFinding) bool {
+func countFindingsBySeverity(findings []ReviewFinding) (blocking, nonBlocking int) {
 	for _, f := range findings {
 		switch f.Severity {
 		case "critical", "high", blockingThreshold:
-			return true
+			blocking++
+		default:
+			nonBlocking++
 		}
 	}
-	return false
+	return
 }
 
-// formatBlockingFindings returns a human-readable list of blocking findings
-// ordered by severity (critical → high → medium), omitting low-severity findings.
+func determineBlockingStatus(findings []ReviewFinding) bool {
+	blocking, _ := countFindingsBySeverity(findings)
+	return blocking > 0
+}
+
+// formatBlockingFindings produces a human-readable list ordered critical → high → medium, omitting low.
 func formatBlockingFindings(findings []ReviewFinding) string {
 	order := []string{"critical", "high", blockingThreshold}
 	var sb strings.Builder
@@ -390,16 +396,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 					lastBlockingFindings = extractBlockingFindingsFromStdout(invokeResult.Stdout)
 				}
 			} else {
-				blocking := 0
-				nonBlocking := 0
-				for _, f := range findings {
-					switch f.Severity {
-					case "critical", "high", blockingThreshold:
-						blocking++
-					default:
-						nonBlocking++
-					}
-				}
+				blocking, nonBlocking := countFindingsBySeverity(findings)
 				fmt.Fprintf(log, "%s: review findings: %d blocking, %d non-blocking\n", step, blocking, nonBlocking)
 				if stepResult.BlockingFindings {
 					lastBlockingFindings = formatBlockingFindings(findings)
