@@ -106,11 +106,16 @@ strict mode and validates model names and round3 values at load time.
 
 `Invoker` interface with `Invoke(ctx, InvokeOptions) (*InvokeResult, error)` as
 the seam between deterministic pipeline control and LLM creative work.
-`ClaudeCodeInvoker` implements the interface by spawning `claude --print
---dangerously-skip-permissions --max-turns N --model MODEL`, feeding the prompt
-via stdin, and capturing stdout. Detects commits made during invocation by
-snapshotting `git log` before/after via `internal/git`. Tests use a
-`fakeInvoker` — no real `claude` process required for unit tests.
+`InvokeOptions` carries `Prompt`, `Model`, `MaxTurns`, `WorkDir`, `AllowedTools`,
+`IssueNumber int`, and `PipelineStep string`. `ClaudeCodeInvoker` implements the
+interface by spawning `claude --print --dangerously-skip-permissions --max-turns N
+--model MODEL`, feeding the prompt via stdin, and capturing stdout. Before spawning,
+it injects `OTEL_RESOURCE_ATTRIBUTES=issue.number=N,pipeline.step=S` into the
+subprocess environment (prepended to any existing `OTEL_RESOURCE_ATTRIBUTES` value),
+so every Claude Code invocation is tagged with the current issue and pipeline step in
+observability telemetry. Detects commits made during invocation by snapshotting
+`git log` before/after via `internal/git`. Tests use a `fakeInvoker` — no real
+`claude` process required for unit tests.
 
 ### Git Helpers (`internal/git/`)
 

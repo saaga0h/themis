@@ -203,12 +203,101 @@ func TestInvokeContextCancellation(t *testing.T) {
 
 	invoker := &ClaudeCodeInvoker{}
 	_, err := invoker.Invoke(ctx, InvokeOptions{
-		Prompt:  "test",
-		Model:   "sonnet",
+		Prompt:   "test",
+		Model:    "sonnet",
 		MaxTurns: 1,
-		WorkDir: t.TempDir(),
+		WorkDir:  t.TempDir(),
 	})
 	if err == nil {
 		t.Error("expected error from cancelled context")
+	}
+}
+
+// --- OTEL: InvokeOptions new fields ---
+
+func TestInvokeOptionsHasIssueNumber(t *testing.T) {
+	opts := InvokeOptions{IssueNumber: 42}
+	if opts.IssueNumber != 42 {
+		t.Errorf("IssueNumber: got %d, want 42", opts.IssueNumber)
+	}
+}
+
+func TestInvokeOptionsHasPipelineStep(t *testing.T) {
+	opts := InvokeOptions{PipelineStep: "TestRed"}
+	if opts.PipelineStep != "TestRed" {
+		t.Errorf("PipelineStep: got %q, want %q", opts.PipelineStep, "TestRed")
+	}
+}
+
+// --- OTEL: buildOTELResourceAttributes ---
+
+func TestBuildOTELResourceAttributes_NoParentEnv(t *testing.T) {
+	result := buildOTELResourceAttributes(99, "Implement", nil)
+	want := "issue.number=99,pipeline.step=Implement"
+	if result != want {
+		t.Errorf("buildOTELResourceAttributes(99, \"Implement\", nil) = %q, want %q", result, want)
+	}
+}
+
+func TestBuildOTELResourceAttributes_ContainsIssueNumber(t *testing.T) {
+	result := buildOTELResourceAttributes(42, "TestRed", nil)
+	if !strings.Contains(result, "issue.number=42") {
+		t.Errorf("buildOTELResourceAttributes(42, \"TestRed\", nil) = %q; want it to contain \"issue.number=42\"", result)
+	}
+}
+
+func TestBuildOTELResourceAttributes_ContainsPipelineStep(t *testing.T) {
+	result := buildOTELResourceAttributes(42, "TestRed", nil)
+	if !strings.Contains(result, "pipeline.step=TestRed") {
+		t.Errorf("buildOTELResourceAttributes(42, \"TestRed\", nil) = %q; want it to contain \"pipeline.step=TestRed\"", result)
+	}
+}
+
+func TestBuildOTELResourceAttributes_PreservesExistingAttrs(t *testing.T) {
+	parent := []string{"OTEL_RESOURCE_ATTRIBUTES=existing.key=oldval", "HOME=/root"}
+	result := buildOTELResourceAttributes(42, "Review", parent)
+	if !strings.Contains(result, "existing.key=oldval") {
+		t.Errorf("result %q must contain existing parent attr \"existing.key=oldval\"", result)
+	}
+	if !strings.Contains(result, "issue.number=42") {
+		t.Errorf("result %q must contain \"issue.number=42\"", result)
+	}
+	if !strings.Contains(result, "pipeline.step=Review") {
+		t.Errorf("result %q must contain \"pipeline.step=Review\"", result)
+	}
+}
+
+// --- OTEL: buildCmdEnv ---
+
+func TestBuildCmdEnv_SetsOTELResourceAttributes(t *testing.T) {
+	result := buildCmdEnv([]string{"PATH=/usr/bin"}, 7, "Fix")
+
+	var otelVal string
+	for _, entry := range result {
+		if strings.HasPrefix(entry, "OTEL_RESOURCE_ATTRIBUTES=") {
+			otelVal = strings.TrimPrefix(entry, "OTEL_RESOURCE_ATTRIBUTES=")
+			break
+		}
+	}
+	if otelVal == "" {
+		t.Fatalf("OTEL_RESOURCE_ATTRIBUTES not found in buildCmdEnv result: %v", result)
+	}
+	if !strings.Contains(otelVal, "issue.number=7") {
+		t.Errorf("OTEL_RESOURCE_ATTRIBUTES value %q must contain \"issue.number=7\"", otelVal)
+	}
+	if !strings.Contains(otelVal, "pipeline.step=Fix") {
+		t.Errorf("OTEL_RESOURCE_ATTRIBUTES value %q must contain \"pipeline.step=Fix\"", otelVal)
+	}
+}
+
+func TestBuildCmdEnv_DoesNotSetExporter(t *testing.T) {
+	result := buildCmdEnv([]string{"PATH=/usr/bin"}, 7, "Fix")
+	for _, entry := range result {
+		if strings.HasPrefix(entry, "OTEL_EXPORTER_") {
+			t.Errorf("buildCmdEnv must not set OTEL_EXPORTER_* vars; found %q", entry)
+		}
+		if strings.HasPrefix(entry, "OTEL_TRACES_EXPORTER") {
+			t.Errorf("buildCmdEnv must not set OTEL_TRACES_EXPORTER; found %q", entry)
+		}
 	}
 }
