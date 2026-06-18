@@ -3,4 +3,4 @@
 .env
 bin/
 .themis/
-
+/themis
