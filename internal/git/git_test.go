@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -171,5 +172,66 @@ func TestCurrentBranch(t *testing.T) {
 	}
 	if branch == "" {
 		t.Error("expected non-empty branch name")
+	}
+}
+
+// --- git init portability (AC1, AC3, AC4) ---
+
+// TestInitTestRepo_DefaultBranchIsMain verifies that the initTestRepo helper
+// initialises repositories on "main", not on whatever the global
+// init.defaultBranch config says.  This test will FAIL until initTestRepo
+// passes --initial-branch=main to git init (AC1 target 1).
+func TestInitTestRepo_DefaultBranchIsMain(t *testing.T) {
+	dir := initTestRepo(t)
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git rev-parse: %v\n%s", err, out)
+	}
+	branch := strings.TrimSpace(string(out))
+	if branch != "main" {
+		t.Errorf("initTestRepo must create branch 'main', got %q (add --initial-branch=main to git init)", branch)
+	}
+}
+
+// TestInitTestRepo_PortableUnderDefaultBranchMain verifies that initTestRepo
+// works correctly when git's global init.defaultBranch is "main" (AC3).
+func TestInitTestRepo_PortableUnderDefaultBranchMain(t *testing.T) {
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "init.defaultBranch")
+	t.Setenv("GIT_CONFIG_VALUE_0", "main")
+
+	dir := initTestRepo(t)
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git rev-parse: %v\n%s", err, out)
+	}
+	branch := strings.TrimSpace(string(out))
+	if branch != "main" {
+		t.Errorf("initTestRepo must produce branch 'main' with init.defaultBranch=main, got %q", branch)
+	}
+}
+
+// TestInitTestRepo_PortableUnderDefaultBranchMaster verifies that initTestRepo
+// still creates a "main" branch even when git's global init.defaultBranch is
+// "master" (AC4 — regression guard for older git configs).
+func TestInitTestRepo_PortableUnderDefaultBranchMaster(t *testing.T) {
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "init.defaultBranch")
+	t.Setenv("GIT_CONFIG_VALUE_0", "master")
+
+	dir := initTestRepo(t)
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git rev-parse: %v\n%s", err, out)
+	}
+	branch := strings.TrimSpace(string(out))
+	if branch != "main" {
+		t.Errorf("initTestRepo must produce branch 'main' regardless of init.defaultBranch=master, got %q (add --initial-branch=main to git init)", branch)
 	}
 }

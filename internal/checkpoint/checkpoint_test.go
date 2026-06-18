@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"git.home.federation.fi/lavernea/themis/internal/checkpoint"
@@ -124,5 +125,48 @@ func TestVerifyCleanWorkingTree_Dirty(t *testing.T) {
 	err := checkpoint.VerifyCleanWorkingTree(ctx, dir)
 	if err == nil {
 		t.Error("VerifyCleanWorkingTree on dirty repo should return error")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// git init portability (AC1 target 4)
+// ---------------------------------------------------------------------------
+
+// TestInitGitRepo_DefaultBranchIsMain verifies that the initGitRepo helper
+// creates repositories on "main", not on whatever the global init.defaultBranch
+// config says.  This test will FAIL until initGitRepo passes
+// --initial-branch=main to git init (AC1 target 4).
+func TestInitGitRepo_DefaultBranchIsMain(t *testing.T) {
+	dir := initGitRepo(t)
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git rev-parse: %v\n%s", err, out)
+	}
+	branch := strings.TrimSpace(string(out))
+	if branch != "main" {
+		t.Errorf("initGitRepo must create branch 'main', got %q (add --initial-branch=main to git init)", branch)
+	}
+}
+
+// TestInitGitRepo_PortableUnderDefaultBranchMaster verifies that initGitRepo
+// still creates a "main" branch even when git's global init.defaultBranch is
+// "master" (AC4 — regression guard for older git configs).
+func TestInitGitRepo_PortableUnderDefaultBranchMaster(t *testing.T) {
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "init.defaultBranch")
+	t.Setenv("GIT_CONFIG_VALUE_0", "master")
+
+	dir := initGitRepo(t)
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git rev-parse: %v\n%s", err, out)
+	}
+	branch := strings.TrimSpace(string(out))
+	if branch != "main" {
+		t.Errorf("initGitRepo must produce branch 'main' regardless of init.defaultBranch=master, got %q (add --initial-branch=main to git init)", branch)
 	}
 }

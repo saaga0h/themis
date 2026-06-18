@@ -121,3 +121,46 @@ func TestRunner_StepCheckpoint_NoCommit_StopsPipeline(t *testing.T) {
 		t.Errorf("error should mention checkpoint failure, got: %v", err)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// git init portability (AC1 target 3)
+// ---------------------------------------------------------------------------
+
+// TestInitGitRepoForRunner_DefaultBranchIsMain verifies that the
+// initGitRepoForRunner helper creates repositories on "main", not on whatever
+// the global init.defaultBranch config says.  This test will FAIL until
+// initGitRepoForRunner passes --initial-branch=main to git init (AC1 target 3).
+func TestInitGitRepoForRunner_DefaultBranchIsMain(t *testing.T) {
+	dir := initGitRepoForRunner(t)
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git rev-parse: %v\n%s", err, out)
+	}
+	branch := strings.TrimSpace(string(out))
+	if branch != "main" {
+		t.Errorf("initGitRepoForRunner must create branch 'main', got %q (add --initial-branch=main to git init)", branch)
+	}
+}
+
+// TestInitGitRepoForRunner_PortableUnderDefaultBranchMaster verifies that
+// initGitRepoForRunner still creates a "main" branch even when git's global
+// init.defaultBranch is "master" (AC4 — regression guard for older git configs).
+func TestInitGitRepoForRunner_PortableUnderDefaultBranchMaster(t *testing.T) {
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "init.defaultBranch")
+	t.Setenv("GIT_CONFIG_VALUE_0", "master")
+
+	dir := initGitRepoForRunner(t)
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git rev-parse: %v\n%s", err, out)
+	}
+	branch := strings.TrimSpace(string(out))
+	if branch != "main" {
+		t.Errorf("initGitRepoForRunner must produce branch 'main' regardless of init.defaultBranch=master, got %q (add --initial-branch=main to git init)", branch)
+	}
+}

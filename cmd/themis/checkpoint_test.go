@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"git.home.federation.fi/lavernea/themis/internal/runner"
@@ -61,5 +62,50 @@ func TestNewIssueConfig_SetsCheckpointFn(t *testing.T) {
 	}
 	if cfg.CheckpointFn == nil {
 		t.Error("production runner.Config must have CheckpointFn set")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// git init portability (AC1 target 5)
+// ---------------------------------------------------------------------------
+
+// TestInitGitRepoCheckpointTest_DefaultBranchIsMain verifies that the
+// initGitRepoCheckpointTest helper creates repositories on "main", not on
+// whatever the global init.defaultBranch config says.  This test will FAIL
+// until initGitRepoCheckpointTest passes --initial-branch=main to git init
+// (AC1 target 5).
+func TestInitGitRepoCheckpointTest_DefaultBranchIsMain(t *testing.T) {
+	dir := initGitRepoCheckpointTest(t)
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git rev-parse: %v\n%s", err, out)
+	}
+	branch := strings.TrimSpace(string(out))
+	if branch != "main" {
+		t.Errorf("initGitRepoCheckpointTest must create branch 'main', got %q (add --initial-branch=main to git init)", branch)
+	}
+}
+
+// TestInitGitRepoCheckpointTest_PortableUnderDefaultBranchMaster verifies that
+// initGitRepoCheckpointTest still creates a "main" branch even when git's
+// global init.defaultBranch is "master" (AC4 — regression guard for older git
+// configs).
+func TestInitGitRepoCheckpointTest_PortableUnderDefaultBranchMaster(t *testing.T) {
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "init.defaultBranch")
+	t.Setenv("GIT_CONFIG_VALUE_0", "master")
+
+	dir := initGitRepoCheckpointTest(t)
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git rev-parse: %v\n%s", err, out)
+	}
+	branch := strings.TrimSpace(string(out))
+	if branch != "main" {
+		t.Errorf("initGitRepoCheckpointTest must produce branch 'main' regardless of init.defaultBranch=master, got %q (add --initial-branch=main to git init)", branch)
 	}
 }
