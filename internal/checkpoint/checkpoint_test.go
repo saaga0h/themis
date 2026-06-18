@@ -34,7 +34,7 @@ func initGitRepo(t *testing.T) string {
 		}
 	}
 
-	run(bareDir, "git", "init", "--bare")
+	run(bareDir, "git", "init", "--bare", "--initial-branch=main")
 
 	run(dir, "git", "init", "--initial-branch=main")
 	run(dir, "git", "config", "user.email", "test@test.com")
