@@ -1,13 +1,17 @@
 package runner
 
-// AC1-AC10 tests for issue #48: replace stdout-based review detection with
-// .themis/review-results.json parsing. Tests live in package runner (white-box)
-// so they can reference unexported constants and functions.
+// Review-step behaviour: parsing .themis/review-results.json, blocking-severity
+// detection, the fix-cycle trigger and cycle limit, review-output accumulation,
+// findings-summary logging, and the review-results.json lifecycle (fresh-start
+// deletion, issue-mismatch deletion, resume preservation).
+//
+// Shared stubs and helpers (stubInvoker, recordingInvoker, stubIssueWriter,
+// sampleIssue, templateDir, makeTemplateDir, saveStateAt, writeReviewResults)
+// are defined in runner_test.go.
 
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,162 +19,29 @@ import (
 
 	"git.home.federation.fi/lavernea/themis/internal/agent"
 	"git.home.federation.fi/lavernea/themis/internal/pipeline"
-	"git.home.federation.fi/lavernea/themis/internal/tracker"
 )
 
-// ---------------------------------------------------------------------------
-// Helpers (white-box package — no access to runner_test stubs)
-// ---------------------------------------------------------------------------
-
-// issue48StubFetcher returns a fixed IssueData.
-type issue48StubFetcher struct {
-	issue *tracker.IssueData
+// fileCheckInvoker checks whether jsonPath exists before the first invocation
+// and records the result, then delegates to inner.
+type fileCheckInvoker struct {
+	inner          *recordingInvoker
+	jsonPath       string
+	fileExistedPtr *bool
+	called         bool
 }
 
-func (s *issue48StubFetcher) Fetch(_ context.Context, _ int) (*tracker.IssueData, error) {
-	return s.issue, nil
-}
-
-// issue48StubIssueWriter records issue tracker operations.
-type issue48StubIssueWriter struct {
-	labelsAdded []string
-	comments    []string
-	prURL       string
-}
-
-func (s *issue48StubIssueWriter) AddLabel(_ context.Context, _ int, label string) error {
-	s.labelsAdded = append(s.labelsAdded, label)
-	return nil
-}
-
-func (s *issue48StubIssueWriter) RemoveLabel(_ context.Context, _ int, label string) error {
-	return nil
-}
-
-func (s *issue48StubIssueWriter) Comment(_ context.Context, _ int, body string) error {
-	s.comments = append(s.comments, body)
-	return nil
-}
-
-func (s *issue48StubIssueWriter) CreatePR(_ context.Context, opts PROptions) (string, error) {
-	if s.prURL != "" {
-		return s.prURL, nil
-	}
-	return "https://git.example.com/pr/99", nil
-}
-
-// issue48RecordingInvoker captures Invoke options and returns results in order.
-type issue48RecordingInvoker struct {
-	opts    []agent.InvokeOptions
-	results []*agent.InvokeResult
-	idx     int
-}
-
-func (r *issue48RecordingInvoker) Invoke(_ context.Context, opts agent.InvokeOptions) (*agent.InvokeResult, error) {
-	r.opts = append(r.opts, opts)
-	if r.idx < len(r.results) {
-		res := r.results[r.idx]
-		r.idx++
-		return res, nil
-	}
-	r.idx++
-	return &agent.InvokeResult{ExitCode: 0, Completed: true}, nil
-}
-
-// issue48StubInvoker returns results from a fixed list, then a default.
-type issue48StubInvoker struct {
-	results []*agent.InvokeResult
-	calls   int
-}
-
-func (s *issue48StubInvoker) Invoke(_ context.Context, _ agent.InvokeOptions) (*agent.InvokeResult, error) {
-	if s.calls < len(s.results) {
-		r := s.results[s.calls]
-		s.calls++
-		return r, nil
-	}
-	s.calls++
-	return &agent.InvokeResult{ExitCode: 0, Completed: true}, nil
-}
-
-func issue48SampleIssue() *tracker.IssueData {
-	return &tracker.IssueData{
-		Number: 42,
-		Title:  "Test Issue",
-		Body:   "## AC\n- [ ] First AC\n- [ ] Second AC",
-		Labels: []string{"ready-for-agent"},
-		URL:    "https://git.example.com/issues/42",
-	}
-}
-
-func issue48NoopCheckpoint(_ context.Context, _ pipeline.Step, _ string) error {
-	return nil
-}
-
-// issue48TemplateDir locates the real templates directory by walking up from cwd.
-func issue48TemplateDir(t *testing.T) string {
-	t.Helper()
-	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for {
-		candidate := filepath.Join(dir, "templates")
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			t.Fatal("templates/ not found")
-		}
-		dir = parent
-	}
-}
-
-// issue48MakeTemplateDir creates a temp dir populated with named template files.
-func issue48MakeTemplateDir(t *testing.T, files map[string]string) string {
-	t.Helper()
-	dir := t.TempDir()
-	for name, content := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
-			t.Fatalf("write template %s: %v", name, err)
+func (f *fileCheckInvoker) Invoke(ctx context.Context, opts agent.InvokeOptions) (*agent.InvokeResult, error) {
+	if !f.called {
+		f.called = true
+		if _, err := os.Stat(f.jsonPath); err == nil {
+			*f.fileExistedPtr = true
 		}
 	}
-	return dir
-}
-
-// issue48SaveStateAt persists a PipelineState at step for issue #42.
-func issue48SaveStateAt(t *testing.T, workDir string, step pipeline.Step) {
-	t.Helper()
-	s := &pipeline.PipelineState{
-		IssueNumber:     42,
-		CurrentStep:     step,
-		MaxReviewCycles: 2,
-		TestFixAttempts: map[string]int{},
-	}
-	if err := pipeline.SaveState(workDir, s); err != nil {
-		t.Fatalf("SaveState: %v", err)
-	}
-}
-
-// writeReviewResults marshals findings to .themis/review-results.json in workDir.
-func writeReviewResults(t *testing.T, workDir string, findings []ReviewFinding) {
-	t.Helper()
-	themisDir := filepath.Join(workDir, ".themis")
-	if err := os.MkdirAll(themisDir, 0o755); err != nil {
-		t.Fatalf("mkdir .themis: %v", err)
-	}
-	data, err := json.Marshal(ReviewResults{Findings: findings})
-	if err != nil {
-		t.Fatalf("marshal review results: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(themisDir, "review-results.json"), data, 0o644); err != nil {
-		t.Fatalf("write review-results.json: %v", err)
-	}
+	return f.inner.Invoke(ctx, opts)
 }
 
 // ---------------------------------------------------------------------------
-// AC1: blockingThreshold constant defined with value "medium"
+// Blocking detection: severity thresholds and JSON-not-stdout signal
 // ---------------------------------------------------------------------------
 
 // TestBlockingThreshold_ValueIsMedium asserts the package-level constant
@@ -181,10 +52,6 @@ func TestBlockingThreshold_ValueIsMedium(t *testing.T) {
 		t.Errorf("blockingThreshold = %q, want %q", blockingThreshold, want)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// AC2: Runner reads .themis/review-results.json, not stdout
-// ---------------------------------------------------------------------------
 
 // TestDeriveStepResult_ReviewStep_ReadsJSONNotStdout verifies that when
 // .themis/review-results.json contains a critical finding and stdout is empty,
@@ -213,13 +80,9 @@ func TestDeriveStepResult_ReviewStep_ReadsJSONNotStdout(t *testing.T) {
 
 // TestDeriveStepResult_ReviewStep_StdoutAloneDoesNotTriggerBlocking verifies
 // that stdout containing the old "BLOCKING_FINDINGS: YES" marker does not
-// trigger blocking when .themis/review-results.json does not exist.
-// Per AC5, missing file is treated as blocking — but the test documents that
-// stdout alone is no longer the signal.
+// trigger blocking when .themis/review-results.json has no blocking findings.
 func TestDeriveStepResult_ReviewStep_StdoutAloneDoesNotTriggerBlocking(t *testing.T) {
 	workDir := t.TempDir()
-	// No .themis/review-results.json written — file absent.
-	// Per AC5 the missing file path is blocking but must NOT be triggered by stdout.
 
 	result := &agent.InvokeResult{
 		ExitCode:  0,
@@ -231,12 +94,8 @@ func TestDeriveStepResult_ReviewStep_StdoutAloneDoesNotTriggerBlocking(t *testin
 		WorkDir: workDir,
 	}
 
-	// The new implementation reads JSON; missing file → blocking per AC5.
-	// What we assert here is that if the JSON is absent, the reason must be
-	// the missing-file path (AC5) — not the stdout content path.
-	// We cannot distinguish these outcomes from the returned StepResult alone,
-	// so we also assert that writing an EMPTY findings JSON (no critical entries)
-	// alongside the same stdout makes blocking FALSE — proving stdout is not read.
+	// Writing an EMPTY findings JSON (no critical entries) alongside the same
+	// stdout makes blocking FALSE — proving stdout is not read.
 	writeReviewResults(t, workDir, []ReviewFinding{})
 
 	srWithEmptyJSON := deriveStepResult(pipeline.StepReview, result, cfg)
@@ -244,10 +103,6 @@ func TestDeriveStepResult_ReviewStep_StdoutAloneDoesNotTriggerBlocking(t *testin
 		t.Error("BlockingFindings must be false when review-results.json has no findings, even when stdout contains old BLOCKING_FINDINGS marker")
 	}
 }
-
-// ---------------------------------------------------------------------------
-// AC3 + AC4: Severity table — critical/high/medium block; low does not
-// ---------------------------------------------------------------------------
 
 // TestDetermineBlockingStatus_SeverityTable verifies severity thresholds.
 // critical, high, medium → blocking=true; low → blocking=false.
@@ -277,28 +132,28 @@ func TestDetermineBlockingStatus_SeverityTable(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// AC5: Missing .themis/review-results.json treats review as blocking + warning
+// Missing JSON is the fail-safe (blocking + warning + fix cycle)
 // ---------------------------------------------------------------------------
 
 // TestRunner_ReviewStep_MissingJSONIsBlocking verifies that when the review
 // step completes but .themis/review-results.json does not exist, the runner
-// treats the result as blocking and logs a warning containing "review-results.json"
-// or "warning".
+// treats the result as blocking, logs a warning, and drives a fix cycle (or
+// blocks at the cycle limit).
 func TestRunner_ReviewStep_MissingJSONIsBlocking(t *testing.T) {
 	workDir := t.TempDir()
-	issue48SaveStateAt(t, workDir, pipeline.StepReview)
+	saveStateAt(t, workDir, pipeline.StepReview)
 	// No review-results.json written.
 
 	var logBuf bytes.Buffer
 
-	tDir := issue48MakeTemplateDir(t, map[string]string{
+	tDir := makeTemplateDir(t, map[string]string{
 		"review.md":       "Review {{ISSUE_NUMBER}}\n{{ACCEPTANCE_CRITERIA}}",
 		"fix-findings.md": "Fix {{ISSUE_NUMBER}}\n{{BLOCKING_FINDINGS}}",
 		"update-docs.md":  "Docs {{ISSUE_NUMBER}}",
 	})
 
 	// Review returns no stdout, no JSON file — runner must treat as blocking.
-	inv := &issue48StubInvoker{
+	inv := &stubInvoker{
 		results: []*agent.InvokeResult{
 			// review step: no blocking marker in stdout; no JSON file
 			{ExitCode: 0, Completed: true, Stdout: ""},
@@ -306,21 +161,18 @@ func TestRunner_ReviewStep_MissingJSONIsBlocking(t *testing.T) {
 			{ExitCode: 0, Completed: true},
 		},
 	}
-	w := &issue48StubIssueWriter{prURL: "https://example.com/pr/48-ac5"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/48-ac5"}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
-		Fetcher:      &issue48StubFetcher{issue: issue48SampleIssue()},
+		Fetcher:      &stubFetcher{issue: sampleIssue()},
 		Invoker:      inv,
 		IssueWriter:  w,
 		TemplateDir:  tDir,
-		CheckpointFn: issue48NoopCheckpoint,
+		CheckpointFn: noopCheckpoint,
 		Logger:       &logBuf,
 	}
 
-	// Run — the review cycle limit must eventually be hit (or pipeline advances to fix).
-	// We only need to observe that at the review step, blocking=true was detected.
-	// The runner will either enter a fix cycle or hit the cycle limit.
 	_, runErr := Run(context.Background(), cfg)
 
 	logOutput := logBuf.String()
@@ -343,7 +195,7 @@ func TestRunner_ReviewStep_MissingJSONIsBlocking(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// AC6: {{BLOCKING_FINDINGS}} receives formatted list ordered by severity
+// {{BLOCKING_FINDINGS}} formatting
 // ---------------------------------------------------------------------------
 
 // TestExtractBlockingFindings_FormatsOrderedBySeverity verifies that given a
@@ -399,7 +251,7 @@ func TestExtractBlockingFindings_FormatsOrderedBySeverity(t *testing.T) {
 // descriptions, not raw JSON or stdout lines.
 func TestRunner_FixTemplate_BlockingFindingsPlaceholderIsFormattedList(t *testing.T) {
 	workDir := t.TempDir()
-	issue48SaveStateAt(t, workDir, pipeline.StepReview)
+	saveStateAt(t, workDir, pipeline.StepReview)
 
 	// Write two blocking findings to review-results.json.
 	writeReviewResults(t, workDir, []ReviewFinding{
@@ -407,13 +259,13 @@ func TestRunner_FixTemplate_BlockingFindingsPlaceholderIsFormattedList(t *testin
 		{Severity: "high", Description: "Missing input validation", File: "api.go", Line: 120},
 	})
 
-	tDir := issue48MakeTemplateDir(t, map[string]string{
+	tDir := makeTemplateDir(t, map[string]string{
 		"review.md":       "Review {{ISSUE_NUMBER}}\n{{ACCEPTANCE_CRITERIA}}",
 		"fix-findings.md": "Fix issue {{ISSUE_NUMBER}}\nFindings:\n{{BLOCKING_FINDINGS}}",
 		"update-docs.md":  "Docs {{ISSUE_NUMBER}}",
 	})
 
-	inv := &issue48RecordingInvoker{
+	inv := &recordingInvoker{
 		results: []*agent.InvokeResult{
 			// review step: completed, no stdout (blocking from JSON)
 			{ExitCode: 0, Completed: true, Stdout: ""},
@@ -423,15 +275,15 @@ func TestRunner_FixTemplate_BlockingFindingsPlaceholderIsFormattedList(t *testin
 			{ExitCode: 0, Completed: true},
 		},
 	}
-	w := &issue48StubIssueWriter{prURL: "https://example.com/pr/48-ac6"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/48-ac6"}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
-		Fetcher:      &issue48StubFetcher{issue: issue48SampleIssue()},
+		Fetcher:      &stubFetcher{issue: sampleIssue()},
 		Invoker:      inv,
 		IssueWriter:  w,
 		TemplateDir:  tDir,
-		CheckpointFn: issue48NoopCheckpoint,
+		CheckpointFn: noopCheckpoint,
 	}
 
 	_, _ = Run(context.Background(), cfg)
@@ -461,7 +313,7 @@ func TestRunner_FixTemplate_BlockingFindingsPlaceholderIsFormattedList(t *testin
 }
 
 // ---------------------------------------------------------------------------
-// AC7: Fresh start deletes .themis/review-results.json if present
+// review-results.json lifecycle: fresh-start delete, mismatch delete, resume keep
 // ---------------------------------------------------------------------------
 
 // TestRunner_FreshStart_DeletesReviewResultsJSON verifies that when the runner
@@ -482,17 +334,15 @@ func TestRunner_FreshStart_DeletesReviewResultsJSON(t *testing.T) {
 		t.Fatal("precondition: review-results.json must exist before run")
 	}
 
-	// Use a blocking invoker that stops after the first step (TestRed fails)
-	// so the test doesn't need to drive the full pipeline.
-	w := &issue48StubIssueWriter{prURL: "https://example.com/pr/48-ac7-fresh"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/48-ac7-fresh"}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
-		Fetcher:      &issue48StubFetcher{issue: issue48SampleIssue()},
-		Invoker:      &issue48StubInvoker{},
+		Fetcher:      &stubFetcher{issue: sampleIssue()},
+		Invoker:      &stubInvoker{},
 		IssueWriter:  w,
-		TemplateDir:  issue48TemplateDir(t),
-		CheckpointFn: issue48NoopCheckpoint,
+		TemplateDir:  templateDir(t),
+		CheckpointFn: noopCheckpoint,
 	}
 
 	// Run to completion (or error — we don't care about the pipeline result).
@@ -527,15 +377,15 @@ func TestRunner_IssueMismatch_DeletesReviewResultsJSON(t *testing.T) {
 	})
 	jsonPath := filepath.Join(workDir, ".themis", "review-results.json")
 
-	w := &issue48StubIssueWriter{prURL: "https://example.com/pr/48-ac7-mismatch"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/48-ac7-mismatch"}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42, // different from state
-		Fetcher:      &issue48StubFetcher{issue: issue48SampleIssue()},
-		Invoker:      &issue48StubInvoker{},
+		Fetcher:      &stubFetcher{issue: sampleIssue()},
+		Invoker:      &stubInvoker{},
 		IssueWriter:  w,
-		TemplateDir:  issue48TemplateDir(t),
-		CheckpointFn: issue48NoopCheckpoint,
+		TemplateDir:  templateDir(t),
+		CheckpointFn: noopCheckpoint,
 	}
 
 	_, _ = Run(context.Background(), cfg)
@@ -546,17 +396,13 @@ func TestRunner_IssueMismatch_DeletesReviewResultsJSON(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// AC8: Resume with matching issue number preserves .themis/review-results.json
-// ---------------------------------------------------------------------------
-
 // TestRunner_Resume_PreservesReviewResultsJSON verifies that when resuming
 // a valid state for the same issue, review-results.json is not deleted.
-// The issue48FileCheckInvoker checks the file exists at the moment the fix step runs.
+// The fileCheckInvoker checks the file exists at the moment the fix step runs.
 func TestRunner_Resume_PreservesReviewResultsJSON(t *testing.T) {
 	workDir := t.TempDir()
 	// Resume at StepFix — same issue #42 as cfg.IssueNumber.
-	issue48SaveStateAt(t, workDir, pipeline.StepFix)
+	saveStateAt(t, workDir, pipeline.StepFix)
 
 	// Write review-results.json that should be preserved.
 	writeReviewResults(t, workDir, []ReviewFinding{
@@ -566,7 +412,7 @@ func TestRunner_Resume_PreservesReviewResultsJSON(t *testing.T) {
 
 	fileExistedAtFixInvocation := false
 
-	inner := &issue48RecordingInvoker{
+	inner := &recordingInvoker{
 		results: []*agent.InvokeResult{
 			// fix step
 			{ExitCode: 0, Completed: true},
@@ -575,27 +421,27 @@ func TestRunner_Resume_PreservesReviewResultsJSON(t *testing.T) {
 		},
 	}
 
-	tDir := issue48MakeTemplateDir(t, map[string]string{
+	tDir := makeTemplateDir(t, map[string]string{
 		"fix-findings.md": "Fix {{ISSUE_NUMBER}}\n{{BLOCKING_FINDINGS}}",
 		"update-docs.md":  "Docs {{ISSUE_NUMBER}}",
 		"ship.md":         "Ship {{ISSUE_NUMBER}}\n{{AC_STATUS}}",
 	})
 
-	customInv := &issue48FileCheckInvoker{
+	customInv := &fileCheckInvoker{
 		inner:          inner,
 		jsonPath:       jsonPath,
 		fileExistedPtr: &fileExistedAtFixInvocation,
 	}
 
-	w := &issue48StubIssueWriter{prURL: "https://example.com/pr/48-ac8"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/48-ac8"}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
-		Fetcher:      &issue48StubFetcher{issue: issue48SampleIssue()},
+		Fetcher:      &stubFetcher{issue: sampleIssue()},
 		Invoker:      customInv,
 		IssueWriter:  w,
 		TemplateDir:  tDir,
-		CheckpointFn: issue48NoopCheckpoint,
+		CheckpointFn: noopCheckpoint,
 	}
 
 	_, _ = Run(context.Background(), cfg)
@@ -605,32 +451,67 @@ func TestRunner_Resume_PreservesReviewResultsJSON(t *testing.T) {
 	}
 }
 
-// issue48FileCheckInvoker is an invoker that checks whether a file exists
-// before the first invocation and records the result.
-type issue48FileCheckInvoker struct {
-	inner          *issue48RecordingInvoker
-	jsonPath       string
-	fileExistedPtr *bool
-	called         bool
-}
+// ---------------------------------------------------------------------------
+// Review cycle limit
+// ---------------------------------------------------------------------------
 
-func (f *issue48FileCheckInvoker) Invoke(ctx context.Context, opts agent.InvokeOptions) (*agent.InvokeResult, error) {
-	if !f.called {
-		f.called = true
-		if _, err := os.Stat(f.jsonPath); err == nil {
-			*f.fileExistedPtr = true
+// AC: Pipeline runner stops with blocked label and issue comment when review cycle limit is reached.
+func TestRunner_StopsOnReviewCycleLimit(t *testing.T) {
+	workDir := t.TempDir()
+
+	// Already at Review step with 2 cycles used (default max is 2)
+	priorState := &pipeline.PipelineState{
+		IssueNumber:     42,
+		CurrentStep:     pipeline.StepReview,
+		ReviewCycle:     2,
+		MaxReviewCycles: 2,
+		TestFixAttempts: map[string]int{},
+	}
+	if err := pipeline.SaveState(workDir, priorState); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	// Review agent outputs blocking findings marker
+	inv := &stubInvoker{
+		results: []*agent.InvokeResult{
+			{ExitCode: 0, Completed: true, Stdout: "BLOCKING_FINDINGS: YES\nSecurity issue found."},
+		},
+	}
+	w := &stubIssueWriter{}
+	cfg := Config{
+		WorkDir:      workDir,
+		IssueNumber:  42,
+		Fetcher:      &stubFetcher{issue: sampleIssue()},
+		Invoker:      inv,
+		IssueWriter:  w,
+		TemplateDir:  templateDir(t),
+		CheckpointFn: noopCheckpoint,
+	}
+
+	result, err := Run(context.Background(), cfg)
+	if err == nil {
+		t.Error("Run should return error when review cycle limit exceeded")
+	}
+	if result != nil && result.PRURL != "" {
+		t.Error("should not create PR when blocked on review cycle limit")
+	}
+
+	hasBlocked := false
+	for _, l := range w.labelsAdded {
+		if l == "blocked" {
+			hasBlocked = true
 		}
 	}
-	return f.inner.Invoke(ctx, opts)
+	if !hasBlocked {
+		t.Errorf("blocked label not added; labelsAdded=%v", w.labelsAdded)
+	}
+	if len(w.comments) == 0 {
+		t.Error("must post a comment when blocked on review cycle limit")
+	}
 }
 
-// ---------------------------------------------------------------------------
-// AC10: Update existing tests — Instance 1: TestRunner_StopsOnReviewCycleLimit
-// ---------------------------------------------------------------------------
-// The original test in runner_test.go used Stdout: "BLOCKING_FINDINGS: YES\n..."
-// to trigger blocking. The updated version writes a JSON fixture instead.
-// This test replaces that pattern and must pass with the new implementation.
-
+// TestRunner_StopsOnReviewCycleLimit_WithJSONFixture drives the cycle limit
+// using a blocking review-results.json fixture instead of a stdout marker.
 func TestRunner_StopsOnReviewCycleLimit_WithJSONFixture(t *testing.T) {
 	workDir := t.TempDir()
 
@@ -652,20 +533,20 @@ func TestRunner_StopsOnReviewCycleLimit_WithJSONFixture(t *testing.T) {
 	})
 
 	// Review agent returns no blocking stdout — blocking comes entirely from JSON.
-	inv := &issue48StubInvoker{
+	inv := &stubInvoker{
 		results: []*agent.InvokeResult{
 			{ExitCode: 0, Completed: true, Stdout: ""},
 		},
 	}
-	w := &issue48StubIssueWriter{}
+	w := &stubIssueWriter{}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
-		Fetcher:      &issue48StubFetcher{issue: issue48SampleIssue()},
+		Fetcher:      &stubFetcher{issue: sampleIssue()},
 		Invoker:      inv,
 		IssueWriter:  w,
-		TemplateDir:  issue48TemplateDir(t),
-		CheckpointFn: issue48NoopCheckpoint,
+		TemplateDir:  templateDir(t),
+		CheckpointFn: noopCheckpoint,
 	}
 
 	result, err := Run(context.Background(), cfg)
@@ -691,16 +572,14 @@ func TestRunner_StopsOnReviewCycleLimit_WithJSONFixture(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// AC10: Update existing tests — Instance 2: LogsReviewFindingsSummaryWithCounts
+// Review findings summary logging
 // ---------------------------------------------------------------------------
-// The original test used BLOCKING:/NON-BLOCKING: stdout prefixes. The updated
-// version writes a JSON fixture with 1 blocking and 2 non-blocking findings.
 
 func TestRunner_LogsReviewFindingsSummaryWithCounts_WithJSONFixture(t *testing.T) {
 	var buf bytes.Buffer
 	workDir := t.TempDir()
 
-	tDir := issue48MakeTemplateDir(t, map[string]string{
+	tDir := makeTemplateDir(t, map[string]string{
 		"test-red.md":     "Test {{ISSUE_NUMBER}}",
 		"implement.md":    "Implement {{ISSUE_NUMBER}}",
 		"refactor.md":     "Refactor {{ISSUE_NUMBER}}",
@@ -710,28 +589,16 @@ func TestRunner_LogsReviewFindingsSummaryWithCounts_WithJSONFixture(t *testing.T
 		"ship.md":         "Ship {{ISSUE_NUMBER}}\n{{AC_STATUS}}",
 	})
 
-	// fullRunResults48 provides results for the default happy-path sequence,
-	// with the review step returning empty stdout (blocking from JSON).
-	results := make([]*agent.InvokeResult, 6)
-	for i := range results {
-		results[i] = &agent.InvokeResult{ExitCode: 0, Completed: true}
-	}
-	// Review is index 3; write JSON with 1 blocking + 2 non-blocking findings.
-	// The runner must log "1 blocking" and "2 non-blocking".
-	results[3] = &agent.InvokeResult{ExitCode: 0, Completed: true, Stdout: ""}
-
-	// Pre-write review results so they exist when the review step runs.
-	// We need a hook to write the JSON at the right time. Since writeReviewResults
-	// writes before the run, and the runner fresh-starts, it will delete the file
-	// (AC7). Instead we start at the Review step via saved state.
-	issue48SaveStateAt(t, workDir, pipeline.StepReview)
+	// Start at the Review step via saved state, then write a JSON fixture with
+	// 1 blocking + 2 non-blocking findings so the runner logs the counts.
+	saveStateAt(t, workDir, pipeline.StepReview)
 	writeReviewResults(t, workDir, []ReviewFinding{
 		{Severity: "high", Description: "missing test for Ship step"},
 		{Severity: "low", Description: "variable name could be more descriptive"},
 		{Severity: "low", Description: "consider extracting helper function"},
 	})
 
-	inv := &issue48StubInvoker{
+	inv := &stubInvoker{
 		results: []*agent.InvokeResult{
 			// Review: blocking (high finding in JSON), cycles remaining → goes to Fix
 			{ExitCode: 0, Completed: true, Stdout: ""},
@@ -741,15 +608,15 @@ func TestRunner_LogsReviewFindingsSummaryWithCounts_WithJSONFixture(t *testing.T
 			{ExitCode: 0, Completed: true},
 		},
 	}
-	w := &issue48StubIssueWriter{prURL: "https://example.com/pr/48-ac10-counts"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/48-ac10-counts"}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
-		Fetcher:      &issue48StubFetcher{issue: issue48SampleIssue()},
+		Fetcher:      &stubFetcher{issue: sampleIssue()},
 		Invoker:      inv,
 		IssueWriter:  w,
 		TemplateDir:  tDir,
-		CheckpointFn: issue48NoopCheckpoint,
+		CheckpointFn: noopCheckpoint,
 		Logger:       &buf,
 	}
 
@@ -766,27 +633,21 @@ func TestRunner_LogsReviewFindingsSummaryWithCounts_WithJSONFixture(t *testing.T
 	}
 }
 
-// ---------------------------------------------------------------------------
-// AC10: Update existing tests — Instance 3: LogsReviewFindingsSummaryWhenNoFindings
-// ---------------------------------------------------------------------------
-// The original test used clean stdout. The updated version writes an empty
-// findings array to .themis/review-results.json.
-
 func TestRunner_LogsReviewFindingsSummaryWhenNoFindings_WithJSONFixture(t *testing.T) {
 	var buf bytes.Buffer
 	workDir := t.TempDir()
 
-	tDir := issue48MakeTemplateDir(t, map[string]string{
+	tDir := makeTemplateDir(t, map[string]string{
 		"review.md":      "Review {{ISSUE_NUMBER}}\n{{ACCEPTANCE_CRITERIA}}",
 		"update-docs.md": "Docs {{ISSUE_NUMBER}}",
 		"ship.md":        "Ship {{ISSUE_NUMBER}}\n{{AC_STATUS}}",
 	})
 
 	// Start at Review step; write empty findings (no blocking).
-	issue48SaveStateAt(t, workDir, pipeline.StepReview)
+	saveStateAt(t, workDir, pipeline.StepReview)
 	writeReviewResults(t, workDir, []ReviewFinding{}) // empty — 0 blocking
 
-	inv := &issue48StubInvoker{
+	inv := &stubInvoker{
 		results: []*agent.InvokeResult{
 			// Review: non-blocking (empty JSON)
 			{ExitCode: 0, Completed: true, Stdout: ""},
@@ -794,15 +655,15 @@ func TestRunner_LogsReviewFindingsSummaryWhenNoFindings_WithJSONFixture(t *testi
 			{ExitCode: 0, Completed: true},
 		},
 	}
-	w := &issue48StubIssueWriter{prURL: "https://example.com/pr/48-ac10-nofindings"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/48-ac10-nofindings"}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
-		Fetcher:      &issue48StubFetcher{issue: issue48SampleIssue()},
+		Fetcher:      &stubFetcher{issue: sampleIssue()},
 		Invoker:      inv,
 		IssueWriter:  w,
 		TemplateDir:  tDir,
-		CheckpointFn: issue48NoopCheckpoint,
+		CheckpointFn: noopCheckpoint,
 		Logger:       &buf,
 	}
 
@@ -817,42 +678,38 @@ func TestRunner_LogsReviewFindingsSummaryWhenNoFindings_WithJSONFixture(t *testi
 }
 
 // ---------------------------------------------------------------------------
-// AC10: Update existing tests — Instance 4: ReviewOutputAccumulatedAndAvailableAsTemplateArg
+// Review-output accumulation as {{REVIEW_OUTPUT}}
 // ---------------------------------------------------------------------------
-// The original test relied on non-blocking stdout alone to advance past review.
-// The updated version adds a .themis/review-results.json with empty findings so
-// the JSON-based path sees no blocking findings, while preserving the
-// {{REVIEW_OUTPUT}} assertion (stdout is still captured as REVIEW_OUTPUT).
 
 func TestRunner_ReviewOutputAccumulatedAndAvailableAsTemplateArg_WithJSONFixture(t *testing.T) {
 	workDir := t.TempDir()
-	issue48SaveStateAt(t, workDir, pipeline.StepReview)
+	saveStateAt(t, workDir, pipeline.StepReview)
 
 	// Write empty findings so review is non-blocking.
 	writeReviewResults(t, workDir, []ReviewFinding{})
 
 	const reviewStdout = "Review complete: all checks passed. No blocking issues found."
-	tDir := issue48MakeTemplateDir(t, map[string]string{
+	tDir := makeTemplateDir(t, map[string]string{
 		"review.md":      "Review issue {{ISSUE_NUMBER}}\n{{ACCEPTANCE_CRITERIA}}",
 		"update-docs.md": "Docs for issue {{ISSUE_NUMBER}}\nFullReview:\n{{REVIEW_OUTPUT}}",
 		"ship.md":        "Ship {{ISSUE_NUMBER}}\n{{AC_STATUS}}",
 	})
 
-	inv := &issue48RecordingInvoker{
+	inv := &recordingInvoker{
 		results: []*agent.InvokeResult{
 			// Review step: non-blocking (JSON has empty findings); stdout captured as REVIEW_OUTPUT.
 			{ExitCode: 0, Completed: true, Stdout: reviewStdout},
 		},
 	}
-	w := &issue48StubIssueWriter{prURL: "https://example.com/pr/48-ac10-reviewoutput"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/48-ac10-reviewoutput"}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
-		Fetcher:      &issue48StubFetcher{issue: issue48SampleIssue()},
+		Fetcher:      &stubFetcher{issue: sampleIssue()},
 		Invoker:      inv,
 		IssueWriter:  w,
 		TemplateDir:  tDir,
-		CheckpointFn: issue48NoopCheckpoint,
+		CheckpointFn: noopCheckpoint,
 	}
 
 	if _, err := Run(context.Background(), cfg); err != nil {
@@ -876,5 +733,45 @@ func TestRunner_ReviewOutputAccumulatedAndAvailableAsTemplateArg_WithJSONFixture
 	}
 	if strings.Contains(string(stateBytes), reviewStdout) {
 		t.Error("review stdout must NOT be persisted to state.json (runtime map only)")
+	}
+}
+
+// AC5: When the pipeline resumes at a step after Review (review never ran this session),
+// {{REVIEW_OUTPUT}} must be substituted as empty string rather than a literal placeholder.
+func TestRunner_ReviewOutputIsEmptyWhenResumedPastReview(t *testing.T) {
+	workDir := t.TempDir()
+	saveStateAt(t, workDir, pipeline.StepDocs)
+
+	// Sentinel pattern: REVIEW::{{REVIEW_OUTPUT}}::END → REVIEW::::END after empty substitution
+	tDir := makeTemplateDir(t, map[string]string{
+		"update-docs.md": "Docs for issue {{ISSUE_NUMBER}}\nREVIEW::{{REVIEW_OUTPUT}}::END",
+	})
+
+	inv := &recordingInvoker{}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/26-ac5"}
+	cfg := Config{
+		WorkDir:      workDir,
+		IssueNumber:  42,
+		Fetcher:      &stubFetcher{issue: sampleIssue()},
+		Invoker:      inv,
+		IssueWriter:  w,
+		TemplateDir:  tDir,
+		CheckpointFn: noopCheckpoint,
+	}
+
+	if _, err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run() error: REVIEW_OUTPUT must be available as empty string even without review step: %v", err)
+	}
+
+	if len(inv.opts) == 0 {
+		t.Fatal("expected Docs step to invoke agent; got 0 calls")
+	}
+	docsPrompt := inv.opts[0].Prompt
+	if strings.Contains(docsPrompt, "{{REVIEW_OUTPUT}}") {
+		t.Error("{{REVIEW_OUTPUT}} must be substituted (as empty string), not left as a literal placeholder")
+	}
+	// Empty substitution collapses the sentinel to "REVIEW::::END"
+	if !strings.Contains(docsPrompt, "REVIEW::::END") {
+		t.Errorf("REVIEW_OUTPUT must substitute to empty string when no review ran\ngot prompt: %s", docsPrompt)
 	}
 }

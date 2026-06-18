@@ -1,17 +1,33 @@
-package runner_test
+package runner
+
+// Core runner behaviour: pipeline advancement, step sequencing, state resume,
+// template-argument substitution, and run logging. Review-step and ship-step
+// behaviour live in runner_review_test.go and runner_ship_test.go. Checkpoint
+// integration lives in runner_checkpoint_test.go.
+//
+// Tests are white-box (package runner) so the review unit tests can reference
+// unexported functions; all runner tests share the single set of stubs and
+// helpers defined in this file.
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"git.home.federation.fi/lavernea/themis/internal/agent"
 	"git.home.federation.fi/lavernea/themis/internal/pipeline"
-	"git.home.federation.fi/lavernea/themis/internal/runner"
 	"git.home.federation.fi/lavernea/themis/internal/tracker"
 )
+
+// ---------------------------------------------------------------------------
+// Shared stubs
+// ---------------------------------------------------------------------------
 
 // stubFetcher returns a fixed IssueData.
 type stubFetcher struct {
@@ -23,7 +39,7 @@ func (s *stubFetcher) Fetch(_ context.Context, _ int) (*tracker.IssueData, error
 	return s.issue, s.err
 }
 
-// stubInvoker returns a fixed InvokeResult for each call, then repeats the last.
+// stubInvoker returns results from a fixed list, then repeats a default result.
 type stubInvoker struct {
 	results []*agent.InvokeResult
 	calls   int
@@ -53,13 +69,33 @@ func (c *captureInvoker) Invoke(_ context.Context, opts agent.InvokeOptions) (*a
 	return &agent.InvokeResult{ExitCode: 0, Completed: true}, nil
 }
 
-// stubIssueWriter records issue tracker operations.
+// recordingInvoker captures each Invoke call's InvokeOptions and returns results
+// from a fixed list; once exhausted it returns a default completed result.
+type recordingInvoker struct {
+	opts    []agent.InvokeOptions
+	results []*agent.InvokeResult
+	idx     int
+}
+
+func (r *recordingInvoker) Invoke(_ context.Context, opts agent.InvokeOptions) (*agent.InvokeResult, error) {
+	r.opts = append(r.opts, opts)
+	if r.idx < len(r.results) {
+		res := r.results[r.idx]
+		r.idx++
+		return res, nil
+	}
+	r.idx++
+	return &agent.InvokeResult{ExitCode: 0, Completed: true}, nil
+}
+
+// stubIssueWriter records issue tracker operations and the fields seen by CreatePR.
 type stubIssueWriter struct {
 	labelsAdded   []string
 	labelsRemoved []string
 	comments      []string
 	prBodySeen    string
 	prBaseSeen    string
+	prHeadSeen    string
 	prURL         string
 }
 
@@ -78,14 +114,19 @@ func (s *stubIssueWriter) Comment(_ context.Context, _ int, body string) error {
 	return nil
 }
 
-func (s *stubIssueWriter) CreatePR(_ context.Context, opts runner.PROptions) (string, error) {
+func (s *stubIssueWriter) CreatePR(_ context.Context, opts PROptions) (string, error) {
 	s.prBodySeen = opts.Body
 	s.prBaseSeen = opts.Base
+	s.prHeadSeen = opts.Head
 	if s.prURL != "" {
 		return s.prURL, nil
 	}
 	return "https://git.example.com/pr/99", nil
 }
+
+// ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
 
 func sampleIssue() *tracker.IssueData {
 	return &tracker.IssueData{
@@ -101,6 +142,7 @@ func noopCheckpoint(_ context.Context, _ pipeline.Step, _ string) error {
 	return nil
 }
 
+// templateDir locates the real templates directory by walking up from cwd.
 func templateDir(t *testing.T) string {
 	t.Helper()
 	dir, err := os.Getwd()
@@ -120,9 +162,35 @@ func templateDir(t *testing.T) string {
 	}
 }
 
-func baseConfig(t *testing.T, w *stubIssueWriter, f *stubFetcher, inv agent.Invoker) runner.Config {
+// makeTemplateDir creates a temp dir populated with the given template files.
+func makeTemplateDir(t *testing.T, files map[string]string) string {
 	t.Helper()
-	return runner.Config{
+	dir := t.TempDir()
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("write template %s: %v", name, err)
+		}
+	}
+	return dir
+}
+
+// saveStateAt persists a minimal PipelineState at the given step to workDir.
+func saveStateAt(t *testing.T, workDir string, step pipeline.Step) {
+	t.Helper()
+	s := &pipeline.PipelineState{
+		IssueNumber:     42,
+		CurrentStep:     step,
+		MaxReviewCycles: 2,
+		TestFixAttempts: map[string]int{},
+	}
+	if err := pipeline.SaveState(workDir, s); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+}
+
+func baseConfig(t *testing.T, w *stubIssueWriter, f *stubFetcher, inv agent.Invoker) Config {
+	t.Helper()
+	return Config{
 		WorkDir:      t.TempDir(),
 		IssueNumber:  42,
 		Fetcher:      f,
@@ -133,13 +201,116 @@ func baseConfig(t *testing.T, w *stubIssueWriter, f *stubFetcher, inv agent.Invo
 	}
 }
 
+// logConfig returns a Config wired to buf for log capture.
+func logConfig(t *testing.T, buf *bytes.Buffer, w *stubIssueWriter, inv agent.Invoker) Config {
+	t.Helper()
+	cfg := baseConfig(t, w, &stubFetcher{issue: sampleIssue()}, inv)
+	cfg.Logger = buf
+	return cfg
+}
+
+// writeReviewResults marshals findings to .themis/review-results.json in workDir.
+func writeReviewResults(t *testing.T, workDir string, findings []ReviewFinding) {
+	t.Helper()
+	themisDir := filepath.Join(workDir, ".themis")
+	if err := os.MkdirAll(themisDir, 0o755); err != nil {
+		t.Fatalf("mkdir .themis: %v", err)
+	}
+	data, err := json.Marshal(ReviewResults{Findings: findings})
+	if err != nil {
+		t.Fatalf("marshal review results: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(themisDir, "review-results.json"), data, 0o644); err != nil {
+		t.Fatalf("write review-results.json: %v", err)
+	}
+}
+
+// gitInDir runs a git command in dir with test author identity, failing the test on error.
+func gitInDir(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=test",
+		"GIT_AUTHOR_EMAIL=test@test",
+		"GIT_COMMITTER_NAME=test",
+		"GIT_COMMITTER_EMAIL=test@test",
+		"GIT_TERMINAL_PROMPT=0",
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v in %s: %v\n%s", args, dir, err, out)
+	}
+}
+
+// initLocalRepo creates a real git repo with a single initial commit and no remote.
+func initLocalRepo(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	gitInDir(t, dir, "init")
+	gitInDir(t, dir, "config", "user.email", "test@test")
+	gitInDir(t, dir, "config", "user.name", "test")
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitInDir(t, dir, "add", "README.md")
+	gitInDir(t, dir, "commit", "-m", "initial commit")
+	return dir
+}
+
+// initRepoWithRemote creates a workspace cloned from a local bare repo with an
+// initial commit pushed to origin/main, ready for feature branches.
+func initRepoWithRemote(t *testing.T) string {
+	t.Helper()
+
+	bareDir := t.TempDir()
+	gitInDir(t, bareDir, "init", "--bare")
+
+	// Clone bare repo into a subdirectory (git clone creates the directory)
+	parentDir := t.TempDir()
+	gitInDir(t, parentDir, "clone", bareDir, "workspace")
+	workDir := filepath.Join(parentDir, "workspace")
+	gitInDir(t, workDir, "config", "user.email", "test@test")
+	gitInDir(t, workDir, "config", "user.name", "test")
+
+	// Initial commit, then push to establish origin/main tracking
+	if err := os.WriteFile(filepath.Join(workDir, "README.md"), []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitInDir(t, workDir, "add", "README.md")
+	gitInDir(t, workDir, "commit", "-m", "initial commit")
+	gitInDir(t, workDir, "push", "-u", "origin", "HEAD:main")
+
+	return workDir
+}
+
+// initBranchWithCommits extends a remote-backed repo with a new branch containing
+// one commit per entry in messages (conventional-commit subjects recommended).
+func initBranchWithCommits(t *testing.T, messages []string) string {
+	t.Helper()
+	workDir := initRepoWithRemote(t)
+	gitInDir(t, workDir, "checkout", "-b", "issue/26-test")
+	for i, msg := range messages {
+		fname := fmt.Sprintf("file_%d.go", i)
+		if err := os.WriteFile(filepath.Join(workDir, fname), []byte("package p"), 0o644); err != nil {
+			t.Fatalf("write file: %v", err)
+		}
+		gitInDir(t, workDir, "add", fname)
+		gitInDir(t, workDir, "commit", "-m", msg)
+	}
+	return workDir
+}
+
+// ---------------------------------------------------------------------------
+// Core: pipeline advancement and step sequencing
+// ---------------------------------------------------------------------------
+
 // AC: Pipeline runner loads profile, fetches issue, and runs the pipeline steps in order
 
 func TestRunner_RunsStepsInOrder(t *testing.T) {
 	w := &stubIssueWriter{prURL: "https://example.com/pr/1"}
 	cfg := baseConfig(t, w, &stubFetcher{issue: sampleIssue()}, &stubInvoker{})
 
-	result, err := runner.Run(context.Background(), cfg)
+	result, err := Run(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}
@@ -155,7 +326,7 @@ func TestRunner_SubstitutesIssueNumberInTemplate(t *testing.T) {
 	w := &stubIssueWriter{prURL: "https://example.com/pr/2"}
 	cfg := baseConfig(t, w, &stubFetcher{issue: sampleIssue()}, inv)
 
-	if _, err := runner.Run(context.Background(), cfg); err != nil {
+	if _, err := Run(context.Background(), cfg); err != nil {
 		t.Fatalf("Run error: %v", err)
 	}
 
@@ -177,7 +348,7 @@ func TestRunner_IncludesIssueNumberInPrompt(t *testing.T) {
 	w := &stubIssueWriter{prURL: "https://example.com/pr/3"}
 	cfg := baseConfig(t, w, &stubFetcher{issue: sampleIssue()}, inv)
 
-	if _, err := runner.Run(context.Background(), cfg); err != nil {
+	if _, err := Run(context.Background(), cfg); err != nil {
 		t.Fatalf("Run error: %v", err)
 	}
 
@@ -198,7 +369,7 @@ func TestRunner_IncludesIssueNumberInPrompt(t *testing.T) {
 func TestRunner_SavesStateFile(t *testing.T) {
 	workDir := t.TempDir()
 	w := &stubIssueWriter{prURL: "https://example.com/pr/4"}
-	cfg := runner.Config{
+	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
 		Fetcher:      &stubFetcher{issue: sampleIssue()},
@@ -208,7 +379,7 @@ func TestRunner_SavesStateFile(t *testing.T) {
 		CheckpointFn: noopCheckpoint,
 	}
 
-	if _, err := runner.Run(context.Background(), cfg); err != nil {
+	if _, err := Run(context.Background(), cfg); err != nil {
 		t.Fatalf("Run error: %v", err)
 	}
 
@@ -236,7 +407,7 @@ func TestRunner_ResumesFromSavedState(t *testing.T) {
 
 	inv := &captureInvoker{}
 	w := &stubIssueWriter{prURL: "https://example.com/pr/5"}
-	cfg := runner.Config{
+	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
 		Fetcher:      &stubFetcher{issue: sampleIssue()},
@@ -246,7 +417,7 @@ func TestRunner_ResumesFromSavedState(t *testing.T) {
 		CheckpointFn: noopCheckpoint,
 	}
 
-	if _, err := runner.Run(context.Background(), cfg); err != nil {
+	if _, err := Run(context.Background(), cfg); err != nil {
 		t.Fatalf("Run error: %v", err)
 	}
 
@@ -283,7 +454,7 @@ func TestRunner_StopsOnTestFixLimit(t *testing.T) {
 		},
 	}
 	w := &stubIssueWriter{}
-	cfg := runner.Config{
+	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
 		Fetcher:      &stubFetcher{issue: sampleIssue()},
@@ -294,7 +465,7 @@ func TestRunner_StopsOnTestFixLimit(t *testing.T) {
 		TestACKey:    "ac-0",
 	}
 
-	result, err := runner.Run(context.Background(), cfg)
+	result, err := Run(context.Background(), cfg)
 	if err == nil {
 		t.Error("Run should return error when test-fix limit exceeded")
 	}
@@ -316,31 +487,37 @@ func TestRunner_StopsOnTestFixLimit(t *testing.T) {
 	}
 }
 
-// AC: Pipeline runner stops with blocked label and issue comment when review cycle limit is reached
+// ---------------------------------------------------------------------------
+// Core: template arguments (CHANGED_FILES, PIPELINE_SHAPE, COMMIT_LOG, REVIEW_OUTPUT)
+// ---------------------------------------------------------------------------
 
-func TestRunner_StopsOnReviewCycleLimit(t *testing.T) {
-	workDir := t.TempDir()
+// AC3: changedFiles returns the list of files changed on the current branch vs the base branch,
+// using git diff --name-only against the merge-base.
+func TestRunner_ChangedFiles_IncludesFilesChangedOnBranch(t *testing.T) {
+	workDir := initRepoWithRemote(t)
 
-	// Already at Review step with 2 cycles used (default max is 2)
-	priorState := &pipeline.PipelineState{
+	// Create a feature branch and add a new file
+	gitInDir(t, workDir, "checkout", "-b", "feat/issue-22")
+	if err := os.WriteFile(filepath.Join(workDir, "newfeature.go"), []byte("package main"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitInDir(t, workDir, "add", "newfeature.go")
+	gitInDir(t, workDir, "commit", "-m", "add new feature")
+
+	// Pre-populate to StepDocs: update-docs.md uses {{CHANGED_FILES}}
+	state := &pipeline.PipelineState{
 		IssueNumber:     42,
-		CurrentStep:     pipeline.StepReview,
-		ReviewCycle:     2,
+		CurrentStep:     pipeline.StepDocs,
 		MaxReviewCycles: 2,
 		TestFixAttempts: map[string]int{},
 	}
-	if err := pipeline.SaveState(workDir, priorState); err != nil {
+	if err := pipeline.SaveState(workDir, state); err != nil {
 		t.Fatalf("SaveState: %v", err)
 	}
 
-	// Review agent outputs blocking findings marker
-	inv := &stubInvoker{
-		results: []*agent.InvokeResult{
-			{ExitCode: 0, Completed: true, Stdout: "BLOCKING_FINDINGS: YES\nSecurity issue found."},
-		},
-	}
-	w := &stubIssueWriter{}
-	cfg := runner.Config{
+	inv := &captureInvoker{}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/22ac3"}
+	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
 		Fetcher:      &stubFetcher{issue: sampleIssue()},
@@ -348,105 +525,506 @@ func TestRunner_StopsOnReviewCycleLimit(t *testing.T) {
 		IssueWriter:  w,
 		TemplateDir:  templateDir(t),
 		CheckpointFn: noopCheckpoint,
+		GitPushFn:    nil,
 	}
 
-	result, err := runner.Run(context.Background(), cfg)
-	if err == nil {
-		t.Error("Run should return error when review cycle limit exceeded")
-	}
-	if result != nil && result.PRURL != "" {
-		t.Error("should not create PR when blocked on review cycle limit")
+	if _, err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run error: %v", err)
 	}
 
-	hasBlocked := false
-	for _, l := range w.labelsAdded {
-		if l == "blocked" {
-			hasBlocked = true
-		}
+	if len(inv.prompts) == 0 {
+		t.Fatal("no prompts captured; expected StepDocs to invoke the agent")
 	}
-	if !hasBlocked {
-		t.Errorf("blocked label not added; labelsAdded=%v", w.labelsAdded)
-	}
-	if len(w.comments) == 0 {
-		t.Error("must post a comment when blocked on review cycle limit")
+	// The StepDocs prompt substitutes {{CHANGED_FILES}} — the file added on the branch must appear.
+	docsPrompt := inv.prompts[0]
+	if !strings.Contains(docsPrompt, "newfeature.go") {
+		t.Errorf("StepDocs prompt must contain changed file 'newfeature.go' in {{CHANGED_FILES}};\ngot:\n%s", docsPrompt)
 	}
 }
 
-// AC: Pipeline runner creates PR targeting main on successful completion
+// AC4: changedFiles returns empty string gracefully when git diff fails
+// (e.g., no remote tracking branch exists).
+func TestRunner_ChangedFiles_ReturnsEmptyStringWhenGitFails(t *testing.T) {
+	dir := initLocalRepo(t) // no remote set up
 
-func TestRunner_CreatesPROnSuccess(t *testing.T) {
-	w := &stubIssueWriter{prURL: "https://example.com/pr/10"}
-	cfg := baseConfig(t, w, &stubFetcher{issue: sampleIssue()}, &stubInvoker{})
+	// Feature branch with a commit but no remote tracking branch
+	gitInDir(t, dir, "checkout", "-b", "feat/no-remote")
+	if err := os.WriteFile(filepath.Join(dir, "localfile.go"), []byte("package main"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitInDir(t, dir, "add", "localfile.go")
+	gitInDir(t, dir, "commit", "-m", "add local file")
 
-	result, err := runner.Run(context.Background(), cfg)
+	state := &pipeline.PipelineState{
+		IssueNumber:     42,
+		CurrentStep:     pipeline.StepDocs,
+		MaxReviewCycles: 2,
+		TestFixAttempts: map[string]int{},
+	}
+	if err := pipeline.SaveState(dir, state); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	inv := &captureInvoker{}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/22ac4"}
+	cfg := Config{
+		WorkDir:      dir,
+		IssueNumber:  42,
+		Fetcher:      &stubFetcher{issue: sampleIssue()},
+		Invoker:      inv,
+		IssueWriter:  w,
+		TemplateDir:  templateDir(t),
+		CheckpointFn: noopCheckpoint,
+		GitPushFn:    nil,
+	}
+
+	// Run must succeed even when changedFiles cannot diff against a remote
+	_, err := Run(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Run must succeed gracefully when changedFiles has no remote to diff against: %v", err)
+	}
+
+	// The {{CHANGED_FILES}} placeholder must be replaced (with empty string), not left literal
+	for i, p := range inv.prompts {
+		if strings.Contains(p, "{{CHANGED_FILES}}") {
+			t.Errorf("prompt[%d] still contains literal {{CHANGED_FILES}} — must be substituted with empty string on git failure", i)
+		}
+	}
+}
+
+// AC3: {{PIPELINE_SHAPE}} is a one-line summary computed from commit message prefixes
+// for commits on the issue branch that are not on the base branch.
+func TestRunner_PipelineShapeFromCommitPrefixes(t *testing.T) {
+	commits := []string{
+		"test(runner): add failing tests for issue 26",
+		"feat(runner): implement review output capture",
+	}
+	workDir := initBranchWithCommits(t, commits)
+	saveStateAt(t, workDir, pipeline.StepDocs)
+
+	tDir := makeTemplateDir(t, map[string]string{
+		"update-docs.md": "Docs {{ISSUE_NUMBER}}\nShape:{{PIPELINE_SHAPE}}",
+	})
+
+	inv := &recordingInvoker{}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/26-ac3"}
+	cfg := Config{
+		WorkDir:      workDir,
+		IssueNumber:  42,
+		Fetcher:      &stubFetcher{issue: sampleIssue()},
+		Invoker:      inv,
+		IssueWriter:  w,
+		TemplateDir:  tDir,
+		CheckpointFn: noopCheckpoint,
+	}
+
+	if _, err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run() error: %v", err)
+	}
+
+	if len(inv.opts) == 0 {
+		t.Fatal("expected Docs step to invoke agent; got 0 calls")
+	}
+	docsPrompt := inv.opts[0].Prompt
+	if strings.Contains(docsPrompt, "{{PIPELINE_SHAPE}}") {
+		t.Error("{{PIPELINE_SHAPE}} placeholder must be substituted")
+	}
+	// The summary must reflect the commit type prefixes present on the branch
+	if !strings.Contains(docsPrompt, "test") {
+		t.Errorf("PIPELINE_SHAPE must include 'test' prefix from branch commits\ngot prompt: %s", docsPrompt)
+	}
+	if !strings.Contains(docsPrompt, "feat") {
+		t.Errorf("PIPELINE_SHAPE must include 'feat' prefix from branch commits\ngot prompt: %s", docsPrompt)
+	}
+}
+
+// AC4: {{COMMIT_LOG}} contains git log --oneline output for commits on the issue branch
+// relative to the base branch.
+func TestRunner_CommitLogContainsBranchCommits(t *testing.T) {
+	commits := []string{
+		"test(runner): add failing tests for issue 26",
+		"feat(runner): implement feature for issue 26",
+	}
+	workDir := initBranchWithCommits(t, commits)
+	saveStateAt(t, workDir, pipeline.StepDocs)
+
+	tDir := makeTemplateDir(t, map[string]string{
+		"update-docs.md": "Docs {{ISSUE_NUMBER}}\nLog:{{COMMIT_LOG}}",
+	})
+
+	inv := &recordingInvoker{}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/26-ac4"}
+	cfg := Config{
+		WorkDir:      workDir,
+		IssueNumber:  42,
+		Fetcher:      &stubFetcher{issue: sampleIssue()},
+		Invoker:      inv,
+		IssueWriter:  w,
+		TemplateDir:  tDir,
+		CheckpointFn: noopCheckpoint,
+	}
+
+	if _, err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run() error: %v", err)
+	}
+
+	if len(inv.opts) == 0 {
+		t.Fatal("expected Docs step to invoke agent; got 0 calls")
+	}
+	docsPrompt := inv.opts[0].Prompt
+	if strings.Contains(docsPrompt, "{{COMMIT_LOG}}") {
+		t.Error("{{COMMIT_LOG}} placeholder must be substituted")
+	}
+	// Every commit on the branch must appear in the log output
+	for _, msg := range commits {
+		if !strings.Contains(docsPrompt, msg) {
+			t.Errorf("COMMIT_LOG missing branch commit %q\ngot prompt:\n%s", msg, docsPrompt)
+		}
+	}
+}
+
+// AC6: All three new args (REVIEW_OUTPUT, PIPELINE_SHAPE, COMMIT_LOG) must be present
+// in masterArgs so filterArgs can pass them to templates that reference them.
+func TestRunner_AllNewTemplateArgsAvailableInMasterArgs(t *testing.T) {
+	workDir := t.TempDir()
+	saveStateAt(t, workDir, pipeline.StepDocs)
+
+	// Template references all three new args — verifies each is in masterArgs
+	tDir := makeTemplateDir(t, map[string]string{
+		"update-docs.md": "{{ISSUE_NUMBER}} {{REVIEW_OUTPUT}} {{PIPELINE_SHAPE}} {{COMMIT_LOG}}",
+	})
+
+	inv := &recordingInvoker{}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/26-ac6"}
+	cfg := Config{
+		WorkDir:      workDir,
+		IssueNumber:  42,
+		Fetcher:      &stubFetcher{issue: sampleIssue()},
+		Invoker:      inv,
+		IssueWriter:  w,
+		TemplateDir:  tDir,
+		CheckpointFn: noopCheckpoint,
+	}
+
+	// Must succeed: all new args must be in masterArgs so filterArgs can supply them
+	if _, err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run() error: new args missing from masterArgs (filterArgs cannot protect against absent args): %v", err)
+	}
+
+	if len(inv.opts) == 0 {
+		t.Fatal("expected Docs step to invoke agent; got 0 calls")
+	}
+	// No unresolved placeholders may remain in the rendered prompt
+	docsPrompt := inv.opts[0].Prompt
+	if strings.Contains(docsPrompt, "{{") {
+		t.Errorf("unresolved placeholder remains in Docs prompt; all new args must be in masterArgs:\n%s", docsPrompt)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Core: run logging and observability
+// ---------------------------------------------------------------------------
+
+// AC1: every step transition prints start and done messages to stderr with duration.
+
+func TestRunner_LogsStepStartMessage(t *testing.T) {
+	var buf bytes.Buffer
+	w := &stubIssueWriter{prURL: "https://example.com/pr/28-ac1-start"}
+	cfg := logConfig(t, &buf, w, &stubInvoker{})
+
+	if _, err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+
+	output := buf.String()
+	// Every step that executes must appear by name in the log.
+	for _, step := range []pipeline.Step{
+		pipeline.StepFetch, pipeline.StepTestRed, pipeline.StepImplement,
+		pipeline.StepReview, pipeline.StepShip,
+	} {
+		name := step.String()
+		if !strings.Contains(output, name) {
+			t.Errorf("log must mention step %q; got:\n%s", name, output)
+		}
+	}
+}
+
+func TestRunner_LogsStepDoneWithDuration(t *testing.T) {
+	var buf bytes.Buffer
+	w := &stubIssueWriter{prURL: "https://example.com/pr/28-ac1-done"}
+	cfg := logConfig(t, &buf, w, &stubInvoker{})
+
+	if _, err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "done") {
+		t.Errorf("log must contain 'done' message for step completion; got:\n%s", output)
+	}
+	// Duration must appear in done messages — accept "Xms" or "X.Xs".
+	if !strings.Contains(output, "ms") {
+		t.Errorf("log done message must include millisecond duration (e.g. '5ms'); got:\n%s", output)
+	}
+}
+
+// AC2: state resume is logged: "resuming from step X" vs. "fresh start".
+
+func TestRunner_LogsFreshStartWhenNoStateFile(t *testing.T) {
+	var buf bytes.Buffer
+	workDir := t.TempDir() // no .themis/state.json
+	w := &stubIssueWriter{prURL: "https://example.com/pr/28-ac2-fresh"}
+	cfg := Config{
+		WorkDir:      workDir,
+		IssueNumber:  42,
+		Fetcher:      &stubFetcher{issue: sampleIssue()},
+		Invoker:      &stubInvoker{},
+		IssueWriter:  w,
+		TemplateDir:  templateDir(t),
+		CheckpointFn: noopCheckpoint,
+		Logger:       &buf,
+	}
+
+	if _, err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(strings.ToLower(output), "fresh start") {
+		t.Errorf("expected 'fresh start' in log when no state file; got:\n%s", output)
+	}
+}
+
+func TestRunner_LogsResumingFromStepWhenStateFileExists(t *testing.T) {
+	var buf bytes.Buffer
+	workDir := t.TempDir()
+	saveStateAt(t, workDir, pipeline.StepImplement)
+
+	w := &stubIssueWriter{prURL: "https://example.com/pr/28-ac2-resume"}
+	cfg := Config{
+		WorkDir:      workDir,
+		IssueNumber:  42,
+		Fetcher:      &stubFetcher{issue: sampleIssue()},
+		Invoker:      &stubInvoker{},
+		IssueWriter:  w,
+		TemplateDir:  templateDir(t),
+		CheckpointFn: noopCheckpoint,
+		Logger:       &buf,
+	}
+
+	if _, err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(strings.ToLower(output), "resuming") {
+		t.Errorf("expected 'resuming' in log when state file exists; got:\n%s", output)
+	}
+	// The step name must appear so the user knows exactly where we resumed.
+	if !strings.Contains(output, pipeline.StepImplement.String()) {
+		t.Errorf("expected step name %q in resume log; got:\n%s", pipeline.StepImplement.String(), output)
+	}
+}
+
+// AC3: agent invocations log the model and max turns.
+
+func TestRunner_LogsAgentInvocationModelAndMaxTurns(t *testing.T) {
+	var buf bytes.Buffer
+	inv := &recordingInvoker{}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/28-ac3"}
+	cfg := logConfig(t, &buf, w, inv)
+
+	if _, err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+
+	output := buf.String()
+	// The default profile model is "sonnet" for all non-review agent steps.
+	if !strings.Contains(output, "sonnet") {
+		t.Errorf("expected model name 'sonnet' in agent invocation log; got:\n%s", output)
+	}
+	// Max turns is always 100 for all agent invocations.
+	if !strings.Contains(output, "100") {
+		t.Errorf("expected max turns '100' in agent invocation log; got:\n%s", output)
+	}
+}
+
+// AC4: agent results log commit count and completion status.
+
+func TestRunner_LogsAgentResultCommitCount(t *testing.T) {
+	var buf bytes.Buffer
+	workDir := t.TempDir()
+	saveStateAt(t, workDir, pipeline.StepTestRed)
+
+	inv := &recordingInvoker{
+		results: []*agent.InvokeResult{
+			// TestRed makes 2 commits and completes.
+			{ExitCode: 0, Completed: true, CommitsMade: []string{"abc1234", "def5678"}},
+		},
+	}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/28-ac4-count"}
+	cfg := Config{
+		WorkDir:      workDir,
+		IssueNumber:  42,
+		Fetcher:      &stubFetcher{issue: sampleIssue()},
+		Invoker:      inv,
+		IssueWriter:  w,
+		TemplateDir:  templateDir(t),
+		CheckpointFn: noopCheckpoint,
+		Logger:       &buf,
+	}
+
+	if _, err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+
+	output := buf.String()
+	// "2 commits" (or "2 commit") must appear in the result log.
+	if !strings.Contains(output, "2") || !strings.Contains(strings.ToLower(output), "commit") {
+		t.Errorf("expected '2 commits' in agent result log; got:\n%s", output)
+	}
+}
+
+func TestRunner_LogsAgentResultCompletionStatus(t *testing.T) {
+	var buf bytes.Buffer
+	workDir := t.TempDir()
+	saveStateAt(t, workDir, pipeline.StepTestRed)
+
+	inv := &recordingInvoker{
+		results: []*agent.InvokeResult{
+			// First invocation: not completed, no commits → runner retries TestRed.
+			{ExitCode: 0, Completed: false, CommitsMade: nil},
+			// Second invocation: completed → pipeline advances.
+			{ExitCode: 0, Completed: true},
+		},
+	}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/28-ac4-status"}
+	cfg := Config{
+		WorkDir:      workDir,
+		IssueNumber:  42,
+		Fetcher:      &stubFetcher{issue: sampleIssue()},
+		Invoker:      inv,
+		IssueWriter:  w,
+		TemplateDir:  templateDir(t),
+		CheckpointFn: noopCheckpoint,
+		Logger:       &buf,
+	}
+
+	if _, err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+
+	output := buf.String()
+	lc := strings.ToLower(output)
+	// First invocation result must log "not completed" or equivalent.
+	if !strings.Contains(lc, "not completed") && !strings.Contains(lc, "incomplete") {
+		t.Errorf("expected 'not completed'/'incomplete' in agent result log when Completed=false; got:\n%s", output)
+	}
+	// Second invocation result must log "completed".
+	if !strings.Contains(lc, "completed") {
+		t.Errorf("expected 'completed' in agent result log when Completed=true; got:\n%s", output)
+	}
+}
+
+// AC5: checkpoint results are logged (pass or the specific failure).
+
+func TestRunner_LogsCheckpointPassAfterStep(t *testing.T) {
+	var buf bytes.Buffer
+	workDir := t.TempDir()
+	saveStateAt(t, workDir, pipeline.StepTestRed)
+
+	w := &stubIssueWriter{prURL: "https://example.com/pr/28-ac5-pass"}
+	cfg := Config{
+		WorkDir:      workDir,
+		IssueNumber:  42,
+		Fetcher:      &stubFetcher{issue: sampleIssue()},
+		Invoker:      &stubInvoker{results: []*agent.InvokeResult{{ExitCode: 0, Completed: true}}},
+		IssueWriter:  w,
+		TemplateDir:  templateDir(t),
+		CheckpointFn: noopCheckpoint,
+		Logger:       &buf,
+	}
+
+	if _, err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+
+	output := buf.String()
+	lc := strings.ToLower(output)
+	if !strings.Contains(lc, "checkpoint") {
+		t.Errorf("expected 'checkpoint' in log after agent step; got:\n%s", output)
+	}
+	if !strings.Contains(lc, "pass") && !strings.Contains(lc, "ok") {
+		t.Errorf("expected 'pass' or 'ok' in checkpoint log when it succeeds; got:\n%s", output)
+	}
+}
+
+func TestRunner_LogsCheckpointFailureWithSpecificErrorMessage(t *testing.T) {
+	var buf bytes.Buffer
+	workDir := t.TempDir()
+	saveStateAt(t, workDir, pipeline.StepTestRed)
+
+	const failMsg = "missing test(runner): prefix in last commit"
+	failCheckpoint := func(_ context.Context, _ pipeline.Step, _ string) error {
+		return fmt.Errorf("%s", failMsg)
+	}
+
+	w := &stubIssueWriter{}
+	cfg := Config{
+		WorkDir:      workDir,
+		IssueNumber:  42,
+		Fetcher:      &stubFetcher{issue: sampleIssue()},
+		Invoker:      &stubInvoker{results: []*agent.InvokeResult{{ExitCode: 0, Completed: true}}},
+		IssueWriter:  w,
+		TemplateDir:  templateDir(t),
+		CheckpointFn: failCheckpoint,
+		Logger:       &buf,
+	}
+
+	_, err := Run(context.Background(), cfg)
+	if err == nil {
+		t.Fatal("Run must return error when checkpoint fails")
+	}
+
+	output := buf.String()
+	// The specific error text must appear so the operator knows why the checkpoint failed.
+	if !strings.Contains(output, failMsg) {
+		t.Errorf("checkpoint failure message %q must appear in log; got:\n%s", failMsg, output)
+	}
+}
+
+// AC7: ship step logs the PR URL.
+
+func TestRunner_LogsShipPRURL(t *testing.T) {
+	var buf bytes.Buffer
+	const prURL = "https://example.com/pr/28-ac7"
+	w := &stubIssueWriter{prURL: prURL}
+	cfg := logConfig(t, &buf, w, &stubInvoker{})
+
+	result, err := Run(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}
-	if result.PRURL != "https://example.com/pr/10" {
-		t.Errorf("PRURL: got %q, want %q", result.PRURL, "https://example.com/pr/10")
+	if result.PRURL != prURL {
+		t.Fatalf("PRURL: got %q, want %q", result.PRURL, prURL)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, prURL) {
+		t.Errorf("ship step must log PR URL %q; got:\n%s", prURL, output)
 	}
 }
 
-// AC: PR description includes Closes #N, AC verification reference, and review notes
+// AC8: all output goes to stderr (stdout is reserved for the final PR URL).
+// When Logger is nil, Run must default to os.Stderr and must not panic.
 
-func TestRunner_PRBodyIncludesClosesHash(t *testing.T) {
-	w := &stubIssueWriter{prURL: "https://example.com/pr/11"}
+func TestRunner_NilLoggerDefaultsToStderrWithoutPanic(t *testing.T) {
+	w := &stubIssueWriter{prURL: "https://example.com/pr/28-ac8"}
 	cfg := baseConfig(t, w, &stubFetcher{issue: sampleIssue()}, &stubInvoker{})
+	cfg.Logger = nil // explicitly nil: must fall back to os.Stderr, not panic
 
-	if _, err := runner.Run(context.Background(), cfg); err != nil {
-		t.Fatalf("Run error: %v", err)
-	}
-	if !strings.Contains(w.prBodySeen, "Closes #42") {
-		t.Errorf("PR body must contain 'Closes #42':\n%s", w.prBodySeen)
-	}
-}
-
-func TestRunner_PRBodyIncludesACReference(t *testing.T) {
-	w := &stubIssueWriter{prURL: "https://example.com/pr/12"}
-	cfg := baseConfig(t, w, &stubFetcher{issue: sampleIssue()}, &stubInvoker{})
-
-	if _, err := runner.Run(context.Background(), cfg); err != nil {
-		t.Fatalf("Run error: %v", err)
-	}
-	body := strings.ToLower(w.prBodySeen)
-	if !strings.Contains(body, "acceptance criteria") && !strings.Contains(body, "first ac") && !strings.Contains(body, "second ac") {
-		t.Errorf("PR body must reference acceptance criteria:\n%s", w.prBodySeen)
+	_, err := Run(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Run must succeed when Logger is nil (defaults to os.Stderr): %v", err)
 	}
 }
-
-// AC: The runner's Ship step uses issue.Ref as the PR base branch instead of hardcoded "main"
-// AC: Test confirms PR base branch matches the issue's ref when set
-
-func TestRunner_PRBaseMatchesIssueRef(t *testing.T) {
-	issue := sampleIssue()
-	issue.Ref = "feature-branch"
-
-	w := &stubIssueWriter{prURL: "https://example.com/pr/20"}
-	cfg := baseConfig(t, w, &stubFetcher{issue: issue}, &stubInvoker{})
-
-	if _, err := runner.Run(context.Background(), cfg); err != nil {
-		t.Fatalf("Run error: %v", err)
-	}
-	if w.prBaseSeen != "feature-branch" {
-		t.Errorf("PR base: got %q, want %q", w.prBaseSeen, "feature-branch")
-	}
-}
-
-// AC: When issue.Ref is empty, the runner falls back to "main"
-// AC: Test confirms fallback to "main" when ref is empty
-
-func TestRunner_PRBaseFallsBackToMainWhenRefEmpty(t *testing.T) {
-	issue := sampleIssue()
-	issue.Ref = ""
-
-	w := &stubIssueWriter{prURL: "https://example.com/pr/21"}
-	cfg := baseConfig(t, w, &stubFetcher{issue: issue}, &stubInvoker{})
-
-	if _, err := runner.Run(context.Background(), cfg); err != nil {
-		t.Fatalf("Run error: %v", err)
-	}
-	if w.prBaseSeen != "main" {
-		t.Errorf("PR base with empty ref: got %q, want %q", w.prBaseSeen, "main")
-	}
-}
-

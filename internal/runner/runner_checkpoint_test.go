@@ -1,4 +1,11 @@
-package runner_test
+package runner
+
+// Checkpoint integration: the runner wiring around CheckpointFn — a failing
+// checkpoint stops the pipeline, and the real step checkpoint rejects a step
+// that produced no commit.
+//
+// Shared stubs and helpers (stubFetcher, stubInvoker, stubIssueWriter,
+// sampleIssue, templateDir) are defined in runner_test.go.
 
 import (
 	"context"
@@ -12,11 +19,7 @@ import (
 	"git.home.federation.fi/lavernea/themis/internal/agent"
 	"git.home.federation.fi/lavernea/themis/internal/checkpoint"
 	"git.home.federation.fi/lavernea/themis/internal/pipeline"
-	"git.home.federation.fi/lavernea/themis/internal/runner"
 )
-
-// stubFetcher, stubInvoker, stubIssueWriter, sampleIssue, templateDir are defined
-// in runner_test.go (same package runner_test).
 
 func initGitRepoForRunner(t *testing.T) string {
 	t.Helper()
@@ -59,7 +62,7 @@ func TestRunner_FailingCheckpointStopsPipeline(t *testing.T) {
 		return fmt.Errorf("simulated checkpoint failure for step %v", step)
 	}
 
-	cfg := runner.Config{
+	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
 		Fetcher:      &stubFetcher{issue: sampleIssue()},
@@ -69,7 +72,7 @@ func TestRunner_FailingCheckpointStopsPipeline(t *testing.T) {
 		CheckpointFn: failCheckpoint,
 	}
 
-	_, err := runner.Run(context.Background(), cfg)
+	_, err := Run(context.Background(), cfg)
 	if err == nil {
 		t.Fatal("Run should return an error when checkpoint fails")
 	}
@@ -100,7 +103,7 @@ func TestRunner_StepCheckpoint_NoCommit_StopsPipeline(t *testing.T) {
 		t.Fatalf("SaveState: %v", err)
 	}
 
-	cfg := runner.Config{
+	cfg := Config{
 		WorkDir:      dir,
 		IssueNumber:  42,
 		Fetcher:      &stubFetcher{issue: sampleIssue()},
@@ -110,7 +113,7 @@ func TestRunner_StepCheckpoint_NoCommit_StopsPipeline(t *testing.T) {
 		CheckpointFn: checkpointFn,
 	}
 
-	_, err = runner.Run(ctx, cfg)
+	_, err = Run(ctx, cfg)
 	if err == nil {
 		t.Fatal("Run should fail: TestRed step made no commit, checkpoint must reject it")
 	}
