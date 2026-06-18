@@ -1079,11 +1079,9 @@ func TestInitRepoWithRemote_PortableUnderDefaultBranchMaster(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Issue #40: Runner passes IssueNumber and PipelineStep to Invoke (Targets 7, 8)
+// OTEL: runner passes IssueNumber and PipelineStep to agent invoker
 // ---------------------------------------------------------------------------
 
-// TestRunnerAgentStepPassesIssueNumberToInvoker verifies that agent steps pass
-// cfg.IssueNumber in InvokeOptions (Target 7 / AC1+2).
 func TestRunnerAgentStepPassesIssueNumberToInvoker(t *testing.T) {
 	workDir := t.TempDir()
 	// Start at TestRed so we get exactly one agent-step invocation before the test ends.
@@ -1118,8 +1116,6 @@ func TestRunnerAgentStepPassesIssueNumberToInvoker(t *testing.T) {
 	}
 }
 
-// TestRunnerAgentStepPassesPipelineStepToInvoker verifies that agent steps pass
-// step.String() as PipelineStep in InvokeOptions (Target 7 / AC1+3).
 func TestRunnerAgentStepPassesPipelineStepToInvoker(t *testing.T) {
 	workDir := t.TempDir()
 	// Start at TestRed so the first invocation corresponds to that step.
@@ -1155,8 +1151,6 @@ func TestRunnerAgentStepPassesPipelineStepToInvoker(t *testing.T) {
 	}
 }
 
-// TestRunnerShipStepPassesIssueNumberToInvoker verifies that the Ship step passes
-// cfg.IssueNumber in InvokeOptions (Target 8 / AC1+2).
 func TestRunnerShipStepPassesIssueNumberToInvoker(t *testing.T) {
 	inv := &recordingInvoker{}
 	w := &stubIssueWriter{prURL: "https://example.com/pr/ship-otel"}
@@ -1177,8 +1171,6 @@ func TestRunnerShipStepPassesIssueNumberToInvoker(t *testing.T) {
 	}
 }
 
-// TestRunnerShipStepPassesPipelineStepToInvoker verifies that the Ship step passes
-// "Ship" as PipelineStep in InvokeOptions (Target 8 / AC1+3).
 func TestRunnerShipStepPassesPipelineStepToInvoker(t *testing.T) {
 	inv := &recordingInvoker{}
 	w := &stubIssueWriter{prURL: "https://example.com/pr/ship-otel"}

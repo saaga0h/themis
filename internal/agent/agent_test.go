@@ -213,11 +213,8 @@ func TestInvokeContextCancellation(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Issue #40: InvokeOptions new fields (Target 1)
-// ---------------------------------------------------------------------------
+// --- OTEL: InvokeOptions new fields ---
 
-// TestInvokeOptionsHasIssueNumber verifies that InvokeOptions has an IssueNumber field (Target 1).
 func TestInvokeOptionsHasIssueNumber(t *testing.T) {
 	opts := InvokeOptions{IssueNumber: 42}
 	if opts.IssueNumber != 42 {
@@ -225,7 +222,6 @@ func TestInvokeOptionsHasIssueNumber(t *testing.T) {
 	}
 }
 
-// TestInvokeOptionsHasPipelineStep verifies that InvokeOptions has a PipelineStep field (Target 1).
 func TestInvokeOptionsHasPipelineStep(t *testing.T) {
 	opts := InvokeOptions{PipelineStep: "TestRed"}
 	if opts.PipelineStep != "TestRed" {
@@ -233,12 +229,8 @@ func TestInvokeOptionsHasPipelineStep(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Issue #40: buildOTELResourceAttributes (Targets 2, 3, 4, 5)
-// ---------------------------------------------------------------------------
+// --- OTEL: buildOTELResourceAttributes ---
 
-// TestBuildOTELResourceAttributes_NoParentEnv verifies that with no parent env the result
-// is exactly "issue.number=<N>,pipeline.step=<Step>" with no extra commas (Target 5).
 func TestBuildOTELResourceAttributes_NoParentEnv(t *testing.T) {
 	result := buildOTELResourceAttributes(99, "Implement", nil)
 	want := "issue.number=99,pipeline.step=Implement"
@@ -247,7 +239,6 @@ func TestBuildOTELResourceAttributes_NoParentEnv(t *testing.T) {
 	}
 }
 
-// TestBuildOTELResourceAttributes_ContainsIssueNumber verifies the result contains "issue.number=42" (Target 2).
 func TestBuildOTELResourceAttributes_ContainsIssueNumber(t *testing.T) {
 	result := buildOTELResourceAttributes(42, "TestRed", nil)
 	if !strings.Contains(result, "issue.number=42") {
@@ -255,7 +246,6 @@ func TestBuildOTELResourceAttributes_ContainsIssueNumber(t *testing.T) {
 	}
 }
 
-// TestBuildOTELResourceAttributes_ContainsPipelineStep verifies the result contains "pipeline.step=TestRed" (Target 3).
 func TestBuildOTELResourceAttributes_ContainsPipelineStep(t *testing.T) {
 	result := buildOTELResourceAttributes(42, "TestRed", nil)
 	if !strings.Contains(result, "pipeline.step=TestRed") {
@@ -263,8 +253,6 @@ func TestBuildOTELResourceAttributes_ContainsPipelineStep(t *testing.T) {
 	}
 }
 
-// TestBuildOTELResourceAttributes_PreservesExistingAttrs verifies that existing
-// OTEL_RESOURCE_ATTRIBUTES in the parent env are preserved alongside the new attrs (Target 4).
 func TestBuildOTELResourceAttributes_PreservesExistingAttrs(t *testing.T) {
 	parent := []string{"OTEL_RESOURCE_ATTRIBUTES=existing.key=oldval", "HOME=/root"}
 	result := buildOTELResourceAttributes(42, "Review", parent)
@@ -279,12 +267,8 @@ func TestBuildOTELResourceAttributes_PreservesExistingAttrs(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Issue #40: buildCmdEnv (Targets 6, AC6)
-// ---------------------------------------------------------------------------
+// --- OTEL: buildCmdEnv ---
 
-// TestBuildCmdEnv_SetsOTELResourceAttributes verifies that buildCmdEnv adds
-// OTEL_RESOURCE_ATTRIBUTES containing issue.number and pipeline.step (Target 6 / AC1).
 func TestBuildCmdEnv_SetsOTELResourceAttributes(t *testing.T) {
 	result := buildCmdEnv([]string{"PATH=/usr/bin"}, 7, "Fix")
 
@@ -306,8 +290,6 @@ func TestBuildCmdEnv_SetsOTELResourceAttributes(t *testing.T) {
 	}
 }
 
-// TestBuildCmdEnv_DoesNotSetExporter verifies that buildCmdEnv does NOT set any
-// OTEL exporter env vars, keeping telemetry harmless when no exporter is configured (Target 6 / AC6).
 func TestBuildCmdEnv_DoesNotSetExporter(t *testing.T) {
 	result := buildCmdEnv([]string{"PATH=/usr/bin"}, 7, "Fix")
 	for _, entry := range result {

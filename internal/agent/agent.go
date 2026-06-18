@@ -118,8 +118,7 @@ func containsTestPass(output string) bool {
 	return strings.Contains(output, "PASS") || strings.Contains(output, "ok ")
 }
 
-// buildOTELResourceAttributes constructs the value for OTEL_RESOURCE_ATTRIBUTES,
-// merging issue.number and pipeline.step with any existing attributes from parentEnv.
+// buildOTELResourceAttributes prepends issue.number and pipeline.step to any existing OTEL_RESOURCE_ATTRIBUTES value.
 func buildOTELResourceAttributes(issueNumber int, stepName string, parentEnv []string) string {
 	newAttrs := fmt.Sprintf("issue.number=%d,pipeline.step=%s", issueNumber, stepName)
 	for _, entry := range parentEnv {
@@ -133,8 +132,7 @@ func buildOTELResourceAttributes(issueNumber int, stepName string, parentEnv []s
 	return newAttrs
 }
 
-// buildCmdEnv returns a copy of parentEnv with OTEL_RESOURCE_ATTRIBUTES set to
-// include issue.number and pipeline.step, preserving any existing attributes.
+// buildCmdEnv copies parentEnv, replacing or appending OTEL_RESOURCE_ATTRIBUTES with the merged value.
 func buildCmdEnv(parentEnv []string, issueNumber int, stepName string) []string {
 	otelVal := buildOTELResourceAttributes(issueNumber, stepName, parentEnv)
 	result := make([]string, 0, len(parentEnv)+1)
