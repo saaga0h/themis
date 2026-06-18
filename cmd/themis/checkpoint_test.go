@@ -55,12 +55,27 @@ func TestNewIssueConfig_SetsCheckpointFn(t *testing.T) {
 	dir := initGitRepoCheckpointTest(t)
 	ctx := context.Background()
 
-	cfg, err := newIssueConfig(ctx, 42, dir, dir, &stubMainFetcher{}, &stubMainIssueWriter{})
+	cfg, err := newIssueConfig(ctx, 42, dir, dir, &stubMainFetcher{}, &stubMainIssueWriter{}, defaultMaxTurns)
 	if err != nil {
 		t.Fatalf("newIssueConfig: %v", err)
 	}
 	if cfg.CheckpointFn == nil {
 		t.Error("production runner.Config must have CheckpointFn set")
+	}
+}
+
+// TestNewIssueConfig_PropagatesMaxTurnsToRunnerConfig verifies that the maxTurns
+// argument passed to newIssueConfig flows into runner.Config.MaxTurns (AC1 wiring).
+func TestNewIssueConfig_PropagatesMaxTurnsToRunnerConfig(t *testing.T) {
+	dir := initGitRepoCheckpointTest(t)
+	ctx := context.Background()
+
+	cfg, err := newIssueConfig(ctx, 42, dir, dir, &stubMainFetcher{}, &stubMainIssueWriter{}, 300)
+	if err != nil {
+		t.Fatalf("newIssueConfig: %v", err)
+	}
+	if cfg.MaxTurns != 300 {
+		t.Errorf("runner.Config.MaxTurns = %d, want 300 — newIssueConfig must propagate maxTurns arg to cfg.MaxTurns", cfg.MaxTurns)
 	}
 }
 

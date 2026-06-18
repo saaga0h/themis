@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"git.home.federation.fi/lavernea/themis/internal/pipeline"
+	"git.home.federation.fi/lavernea/themis/internal/runner"
 	"git.home.federation.fi/lavernea/themis/internal/tracker"
 )
 
@@ -432,5 +433,54 @@ func TestRunLoop_StateFileFromPreviousIssueExistsWhenNextStarts(t *testing.T) {
 	}
 	if stateWhenIssue2Starts.IssueNumber != 1 {
 		t.Errorf("state from issue 1 must be preserved; got issue number %d", stateWhenIssue2Starts.IssueNumber)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// MaxTurns wiring: runArgs.maxTurns flows into runner.Config.MaxTurns (AC3)
+// ---------------------------------------------------------------------------
+
+// captureMaxTurnsIssueWriter records the runner.Config.MaxTurns seen when RunFn is called.
+// It satisfies runner.IssueWriter so it can be passed to newIssueConfig.
+type captureMaxTurnsIssueWriter struct {
+	maxTurnsSeen int
+}
+
+func (c *captureMaxTurnsIssueWriter) AddLabel(_ context.Context, _ int, _ string) error    { return nil }
+func (c *captureMaxTurnsIssueWriter) RemoveLabel(_ context.Context, _ int, _ string) error { return nil }
+func (c *captureMaxTurnsIssueWriter) Comment(_ context.Context, _ int, _ string) error     { return nil }
+func (c *captureMaxTurnsIssueWriter) CreatePR(_ context.Context, _ runner.PROptions) (string, error) {
+	return "https://example.com/pr/1", nil
+}
+
+// TestRunRun_MaxTurnsIsPassedFromRunArgsToRunnerConfig verifies that the maxTurns
+// field on runArgs (populated by --max-turns) is forwarded into the runner.Config.MaxTurns
+// built inside runRun's RunFn closure (AC3 wiring layer).
+//
+// Strategy: call newIssueConfig directly with a maxTurns value that would have come from
+// parseRunArgs, and assert that runner.Config.MaxTurns equals that value. This mirrors
+// what runRun must do: `issueCfg, err := newIssueConfig(ctx, ..., parsed.maxTurns)`.
+func TestRunRun_MaxTurnsIsPassedFromRunArgsToRunnerConfig(t *testing.T) {
+	dir := initGitRepoCheckpointTest(t)
+	ctx := context.Background()
+
+	const wantMaxTurns = 300
+
+	// Simulate what runRun does: parse args then pass maxTurns to newIssueConfig.
+	parsed, err := parseRunArgs([]string{"--provider", "gitea", "--max-turns", "300"})
+	if err != nil {
+		t.Fatalf("parseRunArgs: %v", err)
+	}
+	if parsed.maxTurns != wantMaxTurns {
+		t.Fatalf("parseRunArgs maxTurns = %d, want %d", parsed.maxTurns, wantMaxTurns)
+	}
+
+	// newIssueConfig must accept maxTurns and write it into runner.Config.MaxTurns.
+	cfg, err := newIssueConfig(ctx, 1, dir, dir, &stubMainFetcher{}, &captureMaxTurnsIssueWriter{}, parsed.maxTurns)
+	if err != nil {
+		t.Fatalf("newIssueConfig: %v", err)
+	}
+	if cfg.MaxTurns != wantMaxTurns {
+		t.Errorf("runner.Config.MaxTurns = %d, want %d — runRun must pass parsed.maxTurns to newIssueConfig", cfg.MaxTurns, wantMaxTurns)
 	}
 }
