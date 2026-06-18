@@ -32,7 +32,7 @@ func initGitRepoForRunner(t *testing.T) string {
 			t.Fatalf("command %v: %v\n%s", args, err, out)
 		}
 	}
-	run("git", "init")
+	run("git", "init", "--initial-branch=main")
 	run("git", "config", "user.email", "test@test.com")
 	run("git", "config", "user.name", "Test")
 	f := filepath.Join(dir, "README.md")
@@ -120,4 +120,15 @@ func TestRunner_StepCheckpoint_NoCommit_StopsPipeline(t *testing.T) {
 	if !strings.Contains(err.Error(), "checkpoint failed") {
 		t.Errorf("error should mention checkpoint failure, got: %v", err)
 	}
+}
+
+func TestInitGitRepoForRunner_DefaultBranchIsMain(t *testing.T) {
+	assertBranchIsMain(t, initGitRepoForRunner(t))
+}
+
+func TestInitGitRepoForRunner_PortableUnderDefaultBranchMaster(t *testing.T) {
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "init.defaultBranch")
+	t.Setenv("GIT_CONFIG_VALUE_0", "master")
+	assertBranchIsMain(t, initGitRepoForRunner(t))
 }

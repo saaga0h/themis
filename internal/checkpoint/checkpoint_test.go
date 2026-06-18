@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"git.home.federation.fi/lavernea/themis/internal/checkpoint"
@@ -33,9 +34,9 @@ func initGitRepo(t *testing.T) string {
 		}
 	}
 
-	run(bareDir, "git", "init", "--bare")
+	run(bareDir, "git", "init", "--bare", "--initial-branch=main")
 
-	run(dir, "git", "init")
+	run(dir, "git", "init", "--initial-branch=main")
 	run(dir, "git", "config", "user.email", "test@test.com")
 	run(dir, "git", "config", "user.name", "Test")
 
@@ -125,4 +126,28 @@ func TestVerifyCleanWorkingTree_Dirty(t *testing.T) {
 	if err == nil {
 		t.Error("VerifyCleanWorkingTree on dirty repo should return error")
 	}
+}
+
+func assertBranchIsMain(t *testing.T, dir string) {
+	t.Helper()
+	cmd := exec.Command("git", "symbolic-ref", "--short", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git symbolic-ref: %v\n%s", err, out)
+	}
+	if got := strings.TrimSpace(string(out)); got != "main" {
+		t.Errorf("expected branch 'main', got %q", got)
+	}
+}
+
+func TestInitGitRepo_DefaultBranchIsMain(t *testing.T) {
+	assertBranchIsMain(t, initGitRepo(t))
+}
+
+func TestInitGitRepo_PortableUnderDefaultBranchMaster(t *testing.T) {
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "init.defaultBranch")
+	t.Setenv("GIT_CONFIG_VALUE_0", "master")
+	assertBranchIsMain(t, initGitRepo(t))
 }

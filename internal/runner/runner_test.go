@@ -246,7 +246,7 @@ func gitInDir(t *testing.T, dir string, args ...string) {
 func initLocalRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	gitInDir(t, dir, "init")
+	gitInDir(t, dir, "init", "--initial-branch=main")
 	gitInDir(t, dir, "config", "user.email", "test@test")
 	gitInDir(t, dir, "config", "user.name", "test")
 	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("hello"), 0o644); err != nil {
@@ -263,7 +263,7 @@ func initRepoWithRemote(t *testing.T) string {
 	t.Helper()
 
 	bareDir := t.TempDir()
-	gitInDir(t, bareDir, "init", "--bare")
+	gitInDir(t, bareDir, "init", "--bare", "--initial-branch=main")
 
 	// Clone bare repo into a subdirectory (git clone creates the directory)
 	parentDir := t.TempDir()
@@ -1027,4 +1027,53 @@ func TestRunner_NilLoggerDefaultsToStderrWithoutPanic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run must succeed when Logger is nil (defaults to os.Stderr): %v", err)
 	}
+}
+
+func assertBranchIsMain(t *testing.T, dir string) {
+	t.Helper()
+	cmd := exec.Command("git", "symbolic-ref", "--short", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git symbolic-ref: %v\n%s", err, out)
+	}
+	if got := strings.TrimSpace(string(out)); got != "main" {
+		t.Errorf("expected branch 'main', got %q", got)
+	}
+}
+
+func TestInitLocalRepo_DefaultBranchIsMain(t *testing.T) {
+	assertBranchIsMain(t, initLocalRepo(t))
+}
+
+func TestInitLocalRepo_PortableUnderDefaultBranchMain(t *testing.T) {
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "init.defaultBranch")
+	t.Setenv("GIT_CONFIG_VALUE_0", "main")
+	assertBranchIsMain(t, initLocalRepo(t))
+}
+
+func TestInitLocalRepo_PortableUnderDefaultBranchMaster(t *testing.T) {
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "init.defaultBranch")
+	t.Setenv("GIT_CONFIG_VALUE_0", "master")
+	assertBranchIsMain(t, initLocalRepo(t))
+}
+
+func TestInitRepoWithRemote_DefaultBranchIsMain(t *testing.T) {
+	assertBranchIsMain(t, initRepoWithRemote(t))
+}
+
+func TestInitRepoWithRemote_PortableUnderDefaultBranchMain(t *testing.T) {
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "init.defaultBranch")
+	t.Setenv("GIT_CONFIG_VALUE_0", "main")
+	assertBranchIsMain(t, initRepoWithRemote(t))
+}
+
+func TestInitRepoWithRemote_PortableUnderDefaultBranchMaster(t *testing.T) {
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "init.defaultBranch")
+	t.Setenv("GIT_CONFIG_VALUE_0", "master")
+	assertBranchIsMain(t, initRepoWithRemote(t))
 }

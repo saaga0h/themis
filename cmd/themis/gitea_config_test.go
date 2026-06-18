@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -20,7 +21,7 @@ func gitCmd(t *testing.T, dir string, args ...string) {
 func newTestGitRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	gitCmd(t, dir, "init")
+	gitCmd(t, dir, "init", "--initial-branch=main")
 	gitCmd(t, dir, "config", "user.email", "test@test.com")
 	gitCmd(t, dir, "config", "user.name", "Test")
 	return dir
@@ -162,4 +163,28 @@ func TestResolveGiteaConfig_ReturnsErrorWhenNeitherSourceWorks(t *testing.T) {
 	if err == nil {
 		t.Error("resolveGiteaConfig must return an error when neither remote nor env vars provide a value")
 	}
+}
+
+func assertBranchIsMain(t *testing.T, dir string) {
+	t.Helper()
+	cmd := exec.Command("git", "symbolic-ref", "--short", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git symbolic-ref: %v\n%s", err, out)
+	}
+	if got := strings.TrimSpace(string(out)); got != "main" {
+		t.Errorf("expected branch 'main', got %q", got)
+	}
+}
+
+func TestNewTestGitRepo_DefaultBranchIsMain(t *testing.T) {
+	assertBranchIsMain(t, newTestGitRepo(t))
+}
+
+func TestNewTestGitRepo_PortableUnderDefaultBranchMaster(t *testing.T) {
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "init.defaultBranch")
+	t.Setenv("GIT_CONFIG_VALUE_0", "master")
+	assertBranchIsMain(t, newTestGitRepo(t))
 }

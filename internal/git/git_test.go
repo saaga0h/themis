@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -29,7 +30,7 @@ func initTestRepo(t *testing.T) string {
 		}
 	}
 
-	run("init", dir)
+	run("init", "--initial-branch=main", dir)
 	run("config", "user.email", "test@test")
 	run("config", "user.name", "test")
 
@@ -172,4 +173,35 @@ func TestCurrentBranch(t *testing.T) {
 	if branch == "" {
 		t.Error("expected non-empty branch name")
 	}
+}
+
+func assertBranchIsMain(t *testing.T, dir string) {
+	t.Helper()
+	cmd := exec.Command("git", "symbolic-ref", "--short", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git symbolic-ref: %v\n%s", err, out)
+	}
+	if got := strings.TrimSpace(string(out)); got != "main" {
+		t.Errorf("expected branch 'main', got %q", got)
+	}
+}
+
+func TestInitTestRepo_DefaultBranchIsMain(t *testing.T) {
+	assertBranchIsMain(t, initTestRepo(t))
+}
+
+func TestInitTestRepo_PortableUnderDefaultBranchMain(t *testing.T) {
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "init.defaultBranch")
+	t.Setenv("GIT_CONFIG_VALUE_0", "main")
+	assertBranchIsMain(t, initTestRepo(t))
+}
+
+func TestInitTestRepo_PortableUnderDefaultBranchMaster(t *testing.T) {
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "init.defaultBranch")
+	t.Setenv("GIT_CONFIG_VALUE_0", "master")
+	assertBranchIsMain(t, initTestRepo(t))
 }

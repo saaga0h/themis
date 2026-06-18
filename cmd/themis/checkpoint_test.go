@@ -37,7 +37,7 @@ func initGitRepoCheckpointTest(t *testing.T) string {
 			t.Fatalf("command %v: %v\n%s", args, err, out)
 		}
 	}
-	run("git", "init")
+	run("git", "init", "--initial-branch=main")
 	run("git", "config", "user.email", "test@test.com")
 	run("git", "config", "user.name", "Test")
 	f := filepath.Join(dir, "README.md")
@@ -62,4 +62,15 @@ func TestNewIssueConfig_SetsCheckpointFn(t *testing.T) {
 	if cfg.CheckpointFn == nil {
 		t.Error("production runner.Config must have CheckpointFn set")
 	}
+}
+
+func TestInitGitRepoCheckpointTest_DefaultBranchIsMain(t *testing.T) {
+	assertBranchIsMain(t, initGitRepoCheckpointTest(t))
+}
+
+func TestInitGitRepoCheckpointTest_PortableUnderDefaultBranchMaster(t *testing.T) {
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "init.defaultBranch")
+	t.Setenv("GIT_CONFIG_VALUE_0", "master")
+	assertBranchIsMain(t, initGitRepoCheckpointTest(t))
 }
