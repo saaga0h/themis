@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -18,6 +19,68 @@ import (
 	"git.home.federation.fi/lavernea/themis/internal/prompt"
 	"git.home.federation.fi/lavernea/themis/internal/tracker"
 )
+
+const blockingThreshold = "medium"
+
+// ReviewFinding is a single finding produced by the review step.
+type ReviewFinding struct {
+	Severity    string `json:"severity"`
+	Description string `json:"description"`
+	File        string `json:"file,omitempty"`
+	Line        int    `json:"line,omitempty"`
+}
+
+// ReviewResults holds the structured output written by the review step agent.
+type ReviewResults struct {
+	Findings []ReviewFinding `json:"findings"`
+}
+
+func readReviewResults(workDir string) ([]ReviewFinding, bool) {
+	path := filepath.Join(workDir, ".themis", "review-results.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false
+	}
+	var rr ReviewResults
+	if err := json.Unmarshal(data, &rr); err != nil {
+		return nil, false
+	}
+	return rr.Findings, true
+}
+
+func determineBlockingStatus(findings []ReviewFinding) bool {
+	for _, f := range findings {
+		switch f.Severity {
+		case "critical", "high", blockingThreshold:
+			return true
+		}
+	}
+	return false
+}
+
+// formatBlockingFindings returns a human-readable list of blocking findings
+// ordered by severity (critical → high → medium), omitting low-severity findings.
+func formatBlockingFindings(findings []ReviewFinding) string {
+	order := []string{"critical", "high", blockingThreshold}
+	var sb strings.Builder
+	for _, sev := range order {
+		for _, f := range findings {
+			if f.Severity != sev {
+				continue
+			}
+			fmt.Fprintf(&sb, "- %s: %s", strings.ToUpper(sev), f.Description)
+			if f.File != "" {
+				fmt.Fprintf(&sb, " (%s", f.File)
+				if f.Line > 0 {
+					fmt.Fprintf(&sb, ":%d", f.Line)
+				}
+				sb.WriteString(")")
+			}
+			sb.WriteString("\n")
+		}
+	}
+	return sb.String()
+}
 
 // IssueWriter handles issue tracker write operations.
 type IssueWriter interface {
@@ -105,6 +168,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 	}
 	if state == nil {
 		fmt.Fprintf(log, "fresh start\n")
+		_ = os.Remove(filepath.Join(cfg.WorkDir, ".themis", "review-results.json"))
 		state = &pipeline.PipelineState{
 			IssueNumber:     cfg.IssueNumber,
 			CurrentStep:     pipeline.StepFetch,
@@ -114,6 +178,8 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			CodeVersion:     cfg.CodeVersion,
 		}
 	}
+
+	initialReviewCycle := state.ReviewCycle
 
 	issue, err := cfg.Fetcher.Fetch(ctx, cfg.IssueNumber)
 	if err != nil {
@@ -312,25 +378,40 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			fmt.Fprintf(log, "%s: checkpoint pass\n", step)
 		}
 
-		if step == pipeline.StepReview {
-			blocking, nonBlocking := countReviewFindings(invokeResult.Stdout)
-			fmt.Fprintf(log, "%s: review findings: %d blocking, %d non-blocking\n", step, blocking, nonBlocking)
-		}
-
 		stepResult := deriveStepResult(step, invokeResult, cfg)
 		if step == pipeline.StepReview {
 			reviewOutput = invokeResult.Stdout
-			if stepResult.BlockingFindings {
-				lastBlockingFindings = extractBlockingFindings(invokeResult.Stdout)
+			findings, found := readReviewResults(cfg.WorkDir)
+			if !found {
+				fmt.Fprintf(log, "warning: review-results.json not found after review step — treating as blocking\n")
+				blocking, nonBlocking := countReviewFindings(invokeResult.Stdout)
+				fmt.Fprintf(log, "%s: review findings: %d blocking, %d non-blocking\n", step, blocking, nonBlocking)
+				if stepResult.BlockingFindings {
+					lastBlockingFindings = extractBlockingFindingsFromStdout(invokeResult.Stdout)
+				}
+			} else {
+				blocking := 0
+				nonBlocking := 0
+				for _, f := range findings {
+					switch f.Severity {
+					case "critical", "high", blockingThreshold:
+						blocking++
+					default:
+						nonBlocking++
+					}
+				}
+				fmt.Fprintf(log, "%s: review findings: %d blocking, %d non-blocking\n", step, blocking, nonBlocking)
+				if stepResult.BlockingFindings {
+					lastBlockingFindings = formatBlockingFindings(findings)
+				}
 			}
 		}
 
 		next, advErr := state.Advance(stepResult)
 		if advErr != nil {
-			// Review cycle limit reached — ship with findings documented, not blocked.
-			// The code works (tests pass), the review has opinions the agent couldn't resolve.
-			// Let the human decide via the PR.
-			if strings.Contains(advErr.Error(), "review cycle") {
+			if strings.Contains(advErr.Error(), "review cycle") && state.ReviewCycle > initialReviewCycle {
+				// Cycle limit hit during this run — code works, review has unresolved opinions.
+				// Continue to ship so the human can decide via the PR.
 				fmt.Fprintf(log, "%s: %v — continuing to ship with unresolved findings\n", step, advErr)
 				state.CurrentStep = pipeline.StepDocs
 				if err := pipeline.SaveState(cfg.WorkDir, state); err != nil {
@@ -339,7 +420,6 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 				fmt.Fprintf(log, "%s: done (%dms)\n", step, time.Since(stepStart).Milliseconds())
 				continue
 			}
-			// Other errors (test-fix limit) still block — the code doesn't work.
 			blockErr := blockIssue(ctx, cfg, advErr)
 			if blockErr != nil {
 				return nil, fmt.Errorf("blocking issue after %v: %w", advErr, blockErr)
@@ -380,7 +460,21 @@ func deriveStepResult(step pipeline.Step, r *agent.InvokeResult, cfg Config) pip
 		return pipeline.StepResult{Success: false, TestACKey: key}
 
 	case pipeline.StepReview:
-		blocking := hasBlockingFindings(r.Stdout)
+		findings, found := readReviewResults(cfg.WorkDir)
+		if !found {
+			if r.Stdout == "" {
+				// Missing JSON and no stdout — treat as non-blocking, warning logged by Run.
+				return pipeline.StepResult{Success: true, BlockingFindings: false}
+			}
+			// Missing JSON but agent produced stdout — fall back to stdout-based detection.
+			upper := strings.ToUpper(r.Stdout)
+			blocking := stdoutBlockingRE.MatchString(r.Stdout) || strings.Contains(upper, "BLOCKING_FINDINGS: YES")
+			return pipeline.StepResult{
+				Success:          !blocking,
+				BlockingFindings: blocking,
+			}
+		}
+		blocking := determineBlockingStatus(findings)
 		return pipeline.StepResult{
 			Success:          !blocking,
 			BlockingFindings: blocking,
@@ -389,30 +483,6 @@ func deriveStepResult(step pipeline.Step, r *agent.InvokeResult, cfg Config) pip
 	default:
 		return pipeline.StepResult{Success: true}
 	}
-}
-
-var blockingLineRE = regexp.MustCompile(`(?im)^blocking:\s+.+`)
-
-func hasBlockingFindings(output string) bool {
-	if blockingLineRE.MatchString(output) {
-		return true
-	}
-	upper := strings.ToUpper(output)
-	return strings.Contains(upper, "BLOCKING_FINDINGS: YES")
-}
-
-func extractBlockingFindings(output string) string {
-	var lines []string
-	for _, line := range strings.Split(output, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(strings.ToUpper(trimmed), "BLOCKING:") {
-			lines = append(lines, trimmed)
-		}
-	}
-	if len(lines) == 0 {
-		return output
-	}
-	return strings.Join(lines, "\n")
 }
 
 func countReviewFindings(output string) (blocking, nonBlocking int) {
@@ -426,6 +496,22 @@ func countReviewFindings(output string) (blocking, nonBlocking int) {
 	}
 	return
 }
+
+func extractBlockingFindingsFromStdout(output string) string {
+	var lines []string
+	for _, line := range strings.Split(output, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(strings.ToUpper(trimmed), "BLOCKING:") {
+			lines = append(lines, trimmed)
+		}
+	}
+	if len(lines) == 0 {
+		return output
+	}
+	return strings.Join(lines, "\n")
+}
+
+var stdoutBlockingRE = regexp.MustCompile(`(?im)^blocking:\s+.+`)
 
 var placeholderRE = regexp.MustCompile(`\{\{([A-Z0-9_]+)\}\}`)
 
