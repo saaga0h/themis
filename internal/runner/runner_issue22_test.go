@@ -94,7 +94,16 @@ func (w *issueWriter22) CreatePR(_ context.Context, opts runner.PROptions) (stri
 // so the prefix strip fails and the function falls back to returning "main".
 // The test therefore fails before the implementation.
 func TestRunner_ShipStep_BranchNameUsesGitCurrentBranch(t *testing.T) {
-	dir := initIssue22Repo(t)
+	// Use a remote-backed repo and add a commit ahead of origin/main so the ship
+	// step's "no commits — nothing to ship" guard (issue #35) is satisfied; this
+	// test is only about branch-name resolution in detached-HEAD state.
+	dir := initIssue22RepoWithRemote(t)
+
+	if err := os.WriteFile(filepath.Join(dir, "feature.go"), []byte("package p"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitInDir(t, dir, "add", "feature.go")
+	gitInDir(t, dir, "commit", "-m", "feat: add feature ahead of base")
 
 	// Detach HEAD: .git/HEAD becomes a bare SHA, not a branch ref.
 	gitInDir(t, dir, "checkout", "--detach")

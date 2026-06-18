@@ -10,30 +10,46 @@ import (
 	"git.home.federation.fi/lavernea/themis/internal/checkpoint"
 )
 
-// initGitRepo creates a temp git repo with an initial commit and returns its path.
+// initGitRepo creates a temp git repo with an initial commit and a remote whose
+// tracking branch (origin/main) marks the base, then returns the repo path.
+//
+// The remote is required because the checkpoint walks BranchCommitLog, which
+// enumerates commits relative to the nearest remote-tracking branch (merge-base
+// against refs/remotes/). A repo with no remote yields an empty log — exactly
+// the situation in production, where the working tree is always cloned from the
+// tracker. The initial commit becomes the base; commits added afterwards by
+// makeCommit are "ahead" and therefore visible to the checkpoint.
 func initGitRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
+	bareDir := t.TempDir()
 
-	run := func(args ...string) {
+	run := func(workDir string, args ...string) {
 		t.Helper()
 		cmd := exec.Command(args[0], args[1:]...)
-		cmd.Dir = dir
+		cmd.Dir = workDir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("command %v failed: %v\n%s", args, err, out)
 		}
 	}
 
-	run("git", "init")
-	run("git", "config", "user.email", "test@test.com")
-	run("git", "config", "user.name", "Test")
+	run(bareDir, "git", "init", "--bare")
+
+	run(dir, "git", "init")
+	run(dir, "git", "config", "user.email", "test@test.com")
+	run(dir, "git", "config", "user.name", "Test")
 
 	f := filepath.Join(dir, "README.md")
 	if err := os.WriteFile(f, []byte("# test\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	run("git", "add", "README.md")
-	run("git", "commit", "-m", "chore: initial commit")
+	run(dir, "git", "add", "README.md")
+	run(dir, "git", "commit", "-m", "chore: initial commit")
+
+	// Establish origin/main as the base so merge-base resolution succeeds.
+	run(dir, "git", "remote", "add", "origin", bareDir)
+	run(dir, "git", "push", "origin", "HEAD:refs/heads/main")
+	run(dir, "git", "fetch", "origin")
 
 	return dir
 }
