@@ -32,6 +32,25 @@ func (f *failAfterInvoker) Invoke(_ context.Context, _ agent.InvokeOptions) (*ag
 // default happy-path pipeline (TestRed, Implement, Refactor, Review, Docs).
 const pipelineAgentCallCount = 5
 
+// nonBlockingReviewInvoker wraps an inner invoker and writes an empty
+// .themis/review-results.json before each call. Since issue #48 the review
+// verdict comes from that file (a missing file is treated as blocking), so a
+// full happy-path pipeline must produce it to pass the review step without
+// entering a fix cycle — mirroring the real review agent, which writes the file.
+type nonBlockingReviewInvoker struct {
+	inner agent.Invoker
+}
+
+func (n *nonBlockingReviewInvoker) Invoke(ctx context.Context, opts agent.InvokeOptions) (*agent.InvokeResult, error) {
+	if opts.WorkDir != "" {
+		themisDir := filepath.Join(opts.WorkDir, ".themis")
+		if err := os.MkdirAll(themisDir, 0o755); err == nil {
+			_ = os.WriteFile(filepath.Join(themisDir, "review-results.json"), []byte(`{"findings":[]}`), 0o644)
+		}
+	}
+	return n.inner.Invoke(ctx, opts)
+}
+
 // AC1: Ship step invokes Claude Code with ship.md template instead of calling buildPRBody() directly.
 func TestRunner_ShipStepInvokesAgent(t *testing.T) {
 	inv := &recordingInvoker{}
@@ -112,7 +131,7 @@ func TestRunner_ShipPromptContainsContextualData(t *testing.T) {
 		WorkDir:      workDir,
 		IssueNumber:  42,
 		Fetcher:      &stubFetcher{issue: sampleIssue()},
-		Invoker:      inv,
+		Invoker:      &nonBlockingReviewInvoker{inner: inv},
 		IssueWriter:  w,
 		TemplateDir:  tDir,
 		CheckpointFn: noopCheckpoint,
@@ -163,16 +182,16 @@ func TestRunner_ShipUsesAgentOutputAsPRBody(t *testing.T) {
 
 	inv := &recordingInvoker{
 		results: []*agent.InvokeResult{
-			{ExitCode: 0, Completed: true},              // TestRed
-			{ExitCode: 0, Completed: true},              // Implement
-			{ExitCode: 0, Completed: true},              // Refactor
-			{ExitCode: 0, Completed: true, Stdout: ""},  // Review (no blocking findings)
-			{ExitCode: 0, Completed: true},              // Docs
+			{ExitCode: 0, Completed: true},                      // TestRed
+			{ExitCode: 0, Completed: true},                      // Implement
+			{ExitCode: 0, Completed: true},                      // Refactor
+			{ExitCode: 0, Completed: true, Stdout: ""},          // Review (no blocking findings)
+			{ExitCode: 0, Completed: true},                      // Docs
 			{ExitCode: 0, Completed: true, Stdout: agentPRBody}, // Ship
 		},
 	}
 	w := &stubIssueWriter{prURL: "https://example.com/pr/27-ac4"}
-	cfg := baseConfig(t, w, &stubFetcher{issue: sampleIssue()}, inv)
+	cfg := baseConfig(t, w, &stubFetcher{issue: sampleIssue()}, &nonBlockingReviewInvoker{inner: inv})
 
 	if _, err := runner.Run(context.Background(), cfg); err != nil {
 		t.Fatalf("Run() error: %v", err)
@@ -207,7 +226,7 @@ func TestRunner_ShipFallsBackToBuildPRBodyWhenAgentFails(t *testing.T) {
 		err:          fmt.Errorf("claude code: agent invocation failed"),
 	}
 	w := &stubIssueWriter{prURL: "https://example.com/pr/27-ac5"}
-	cfg := baseConfig(t, w, &stubFetcher{issue: sampleIssue()}, inv)
+	cfg := baseConfig(t, w, &stubFetcher{issue: sampleIssue()}, &nonBlockingReviewInvoker{inner: inv})
 
 	// Run must succeed even when the ship agent call fails (fallback path).
 	if _, err := runner.Run(context.Background(), cfg); err != nil {

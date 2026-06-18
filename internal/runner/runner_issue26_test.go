@@ -75,58 +75,13 @@ func initBranchWithCommits(t *testing.T, messages []string) string {
 	return workDir
 }
 
-// AC1 + AC2: Runner accumulates review-step stdout in a runtime map (not persisted to
-// state.json) and exposes it as {{REVIEW_OUTPUT}} in subsequent step templates.
-func TestRunner_ReviewOutputAccumulatedAndAvailableAsTemplateArg(t *testing.T) {
-	workDir := t.TempDir()
-	saveStateAt(t, workDir, pipeline.StepReview)
-
-	const reviewStdout = "Review complete: all checks passed. No blocking issues found."
-	tDir := makeTemplateDir(t, map[string]string{
-		"review.md":      "Review issue {{ISSUE_NUMBER}}\n{{ACCEPTANCE_CRITERIA}}",
-		"update-docs.md": "Docs for issue {{ISSUE_NUMBER}}\nFullReview:\n{{REVIEW_OUTPUT}}",
-	})
-
-	inv := &recordingInvoker{
-		results: []*agent.InvokeResult{
-			// Review step: non-blocking stdout; pipeline advances to Docs
-			{ExitCode: 0, Completed: true, Stdout: reviewStdout},
-		},
-	}
-	w := &stubIssueWriter{prURL: "https://example.com/pr/26-ac1"}
-	cfg := runner.Config{
-		WorkDir:      workDir,
-		IssueNumber:  42,
-		Fetcher:      &stubFetcher{issue: sampleIssue()},
-		Invoker:      inv,
-		IssueWriter:  w,
-		TemplateDir:  tDir,
-		CheckpointFn: noopCheckpoint,
-	}
-
-	if _, err := runner.Run(context.Background(), cfg); err != nil {
-		t.Fatalf("Run() error: %v", err)
-	}
-
-	// Must have called both Review (idx 0) and Docs (idx 1)
-	if len(inv.opts) < 2 {
-		t.Fatalf("expected ≥2 agent calls (review + docs); got %d", len(inv.opts))
-	}
-	docsPrompt := inv.opts[1].Prompt
-	if !strings.Contains(docsPrompt, reviewStdout) {
-		t.Errorf("Docs prompt must contain full review stdout as {{REVIEW_OUTPUT}}\nwant substring: %q\ngot prompt:\n%s",
-			reviewStdout, docsPrompt)
-	}
-
-	// AC1: accumulation is runtime-only — stdout must NOT be written to state.json
-	stateBytes, err := os.ReadFile(filepath.Join(workDir, ".themis", "state.json"))
-	if err != nil {
-		t.Fatalf("reading state.json: %v", err)
-	}
-	if strings.Contains(string(stateBytes), reviewStdout) {
-		t.Error("review stdout must NOT be persisted to state.json (runtime map only per AC1)")
-	}
-}
+// AC1 + AC2: Runner accumulates review-step stdout in a runtime map (not persisted
+// to state.json) and exposes it as {{REVIEW_OUTPUT}} in subsequent step templates.
+//
+// The stdout-driven variant of this test was removed for issue #48: with the
+// review verdict now coming from .themis/review-results.json, advancing past a
+// non-blocking review requires the JSON fixture. The replacement lives in
+// runner_issue48_test.go (TestRunner_ReviewOutputAccumulatedAndAvailableAsTemplateArg_WithJSONFixture).
 
 // AC5: When the pipeline resumes at a step after Review (review never ran this session),
 // {{REVIEW_OUTPUT}} must be substituted as empty string rather than a literal placeholder.

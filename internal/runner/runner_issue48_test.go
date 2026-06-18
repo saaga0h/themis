@@ -321,7 +321,7 @@ func TestRunner_ReviewStep_MissingJSONIsBlocking(t *testing.T) {
 	// Run — the review cycle limit must eventually be hit (or pipeline advances to fix).
 	// We only need to observe that at the review step, blocking=true was detected.
 	// The runner will either enter a fix cycle or hit the cycle limit.
-	_, _ = Run(context.Background(), cfg)
+	_, runErr := Run(context.Background(), cfg)
 
 	logOutput := logBuf.String()
 	lc := strings.ToLower(logOutput)
@@ -329,6 +329,16 @@ func TestRunner_ReviewStep_MissingJSONIsBlocking(t *testing.T) {
 	// Must log a warning about the missing file.
 	if !strings.Contains(lc, "review-results.json") && !strings.Contains(lc, "warning") {
 		t.Errorf("log must contain a warning about missing review-results.json when file is absent; got:\n%s", logOutput)
+	}
+
+	// The missing-JSON fail-safe must actually drive the pipeline: either it
+	// enters a fix cycle (review → fix, so the invoker is called more than once),
+	// or it blocks with a review-cycle-limit error. A warning alone is not enough.
+	enteredFixCycle := inv.calls > 1
+	hitCycleLimit := runErr != nil && strings.Contains(runErr.Error(), "review cycle")
+	if !enteredFixCycle && !hitCycleLimit {
+		t.Errorf("missing JSON must trigger a fix cycle (invoker called >1, got %d) or a review-cycle error (got %v); log:\n%s",
+			inv.calls, runErr, logOutput)
 	}
 }
 

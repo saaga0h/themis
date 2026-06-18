@@ -390,11 +390,6 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			findings, found := readReviewResults(cfg.WorkDir)
 			if !found {
 				fmt.Fprintf(log, "warning: review-results.json not found after review step — treating as blocking\n")
-				blocking, nonBlocking := countReviewFindings(invokeResult.Stdout)
-				fmt.Fprintf(log, "%s: review findings: %d blocking, %d non-blocking\n", step, blocking, nonBlocking)
-				if stepResult.BlockingFindings {
-					lastBlockingFindings = extractBlockingFindingsFromStdout(invokeResult.Stdout)
-				}
 			} else {
 				blocking, nonBlocking := countFindingsBySeverity(findings)
 				fmt.Fprintf(log, "%s: review findings: %d blocking, %d non-blocking\n", step, blocking, nonBlocking)
@@ -459,17 +454,9 @@ func deriveStepResult(step pipeline.Step, r *agent.InvokeResult, cfg Config) pip
 	case pipeline.StepReview:
 		findings, found := readReviewResults(cfg.WorkDir)
 		if !found {
-			if r.Stdout == "" {
-				// Missing JSON and no stdout — treat as non-blocking, warning logged by Run.
-				return pipeline.StepResult{Success: true, BlockingFindings: false}
-			}
-			// Missing JSON but agent produced stdout — fall back to stdout-based detection.
-			upper := strings.ToUpper(r.Stdout)
-			blocking := stdoutBlockingRE.MatchString(r.Stdout) || strings.Contains(upper, "BLOCKING_FINDINGS: YES")
-			return pipeline.StepResult{
-				Success:          !blocking,
-				BlockingFindings: blocking,
-			}
+			// Missing JSON is the fail-safe: the review step produced no
+			// structured result, so treat it as blocking regardless of stdout.
+			return pipeline.StepResult{Success: false, BlockingFindings: true}
 		}
 		blocking := determineBlockingStatus(findings)
 		return pipeline.StepResult{
@@ -481,34 +468,6 @@ func deriveStepResult(step pipeline.Step, r *agent.InvokeResult, cfg Config) pip
 		return pipeline.StepResult{Success: true}
 	}
 }
-
-func countReviewFindings(output string) (blocking, nonBlocking int) {
-	for _, line := range strings.Split(output, "\n") {
-		upper := strings.ToUpper(strings.TrimSpace(line))
-		if strings.HasPrefix(upper, "BLOCKING:") {
-			blocking++
-		} else if strings.HasPrefix(upper, "NON-BLOCKING:") {
-			nonBlocking++
-		}
-	}
-	return
-}
-
-func extractBlockingFindingsFromStdout(output string) string {
-	var lines []string
-	for _, line := range strings.Split(output, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(strings.ToUpper(trimmed), "BLOCKING:") {
-			lines = append(lines, trimmed)
-		}
-	}
-	if len(lines) == 0 {
-		return output
-	}
-	return strings.Join(lines, "\n")
-}
-
-var stdoutBlockingRE = regexp.MustCompile(`(?im)^blocking:\s+.+`)
 
 var placeholderRE = regexp.MustCompile(`\{\{([A-Z0-9_]+)\}\}`)
 
