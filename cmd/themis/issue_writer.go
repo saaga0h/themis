@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"git.home.federation.fi/lavernea/themis/internal/runner"
 )
@@ -185,7 +186,7 @@ func newIssueWriter(provider, owner, repo, apiBase string) runner.IssueWriter {
 			repo:    repo,
 			apiBase: apiBase,
 			token:   os.Getenv("GITEA_TOKEN"),
-			client:  &http.Client{},
+			client:  &http.Client{Timeout: 30 * time.Second},
 		}
 	default:
 		return &ghIssueWriter{}

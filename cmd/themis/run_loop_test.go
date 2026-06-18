@@ -595,10 +595,6 @@ func TestRunLoop_ListReadyIssuesError_ReturnsWrappedError(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// MaxTurns wiring: runArgs.maxTurns flows into runner.Config.MaxTurns (AC3)
-// ---------------------------------------------------------------------------
-
 // TestRunRun_MaxTurnsIsPassedFromRunArgsToRunnerConfig verifies that the maxTurns
 // field on runArgs (populated by --max-turns) is forwarded into the runner.Config.MaxTurns
 // built inside runRun's RunFn closure (AC3 wiring layer).

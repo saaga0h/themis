@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"git.home.federation.fi/lavernea/themis/internal/tracker"
 )
@@ -190,7 +191,7 @@ func newGiteaQuerier(owner, repo, apiBase, token string) *GiteaQuerier {
 		repo:    repo,
 		apiBase: strings.TrimRight(apiBase, "/"),
 		token:   token,
-		client:  &http.Client{},
+		client:  &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
