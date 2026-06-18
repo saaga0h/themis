@@ -247,6 +247,14 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 					return nil, fmt.Errorf("branch %s: %w", branchName, err)
 				}
 			}
+			// Seed review-results.json with empty findings so that Review is
+			// non-blocking unless the review agent itself writes blocking findings.
+			// This only runs on fresh pipeline starts (resumed runs skip Branch).
+			themisDir := filepath.Join(cfg.WorkDir, ".themis")
+			if mkErr := os.MkdirAll(themisDir, 0o755); mkErr == nil {
+				_ = os.WriteFile(filepath.Join(themisDir, "review-results.json"),
+					[]byte(`{"findings":[]}`), 0o644)
+			}
 			next, err := state.Advance(pipeline.StepResult{Success: true})
 			if err != nil {
 				return nil, fmt.Errorf("advancing step %v: %w", step, err)
@@ -296,10 +304,12 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 					model := modelForStep(step, prof)
 					fmt.Fprintf(log, "%s: invoking agent model=%s maxTurns=%d\n", step, model, 100)
 					invokeResult, invokeErr := cfg.Invoker.Invoke(ctx, agent.InvokeOptions{
-						Prompt:   substituted,
-						Model:    model,
-						MaxTurns: 100,
-						WorkDir:  cfg.WorkDir,
+						Prompt:       substituted,
+						Model:        model,
+						MaxTurns:     100,
+						WorkDir:      cfg.WorkDir,
+						IssueNumber:  cfg.IssueNumber,
+						PipelineStep: pipeline.StepShip.String(),
 					})
 					if invokeErr != nil {
 						fmt.Fprintf(log, "warning: ship agent invocation failed: %v; falling back to buildPRBody\n", invokeErr)
@@ -322,6 +332,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			if err := pipeline.SaveState(cfg.WorkDir, state); err != nil {
 				return nil, fmt.Errorf("saving final state: %w", err)
 			}
+			_ = os.Remove(filepath.Join(cfg.WorkDir, ".themis", "review-results.json"))
 			fmt.Fprintf(log, "%s: done (%dms)\n", step, time.Since(stepStart).Milliseconds())
 			return &Result{PRURL: prURL}, nil
 		}
@@ -361,10 +372,12 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		fmt.Fprintf(log, "%s: invoking agent model=%s maxTurns=%d\n", step, model, 100)
 
 		invokeResult, err := cfg.Invoker.Invoke(ctx, agent.InvokeOptions{
-			Prompt:   substituted,
-			Model:    model,
-			MaxTurns: 100,
-			WorkDir:  cfg.WorkDir,
+			Prompt:       substituted,
+			Model:        model,
+			MaxTurns:     100,
+			WorkDir:      cfg.WorkDir,
+			IssueNumber:  cfg.IssueNumber,
+			PipelineStep: step.String(),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("agent invocation at step %v: %w", step, err)

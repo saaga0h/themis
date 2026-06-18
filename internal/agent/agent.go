@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -27,6 +28,8 @@ type InvokeOptions struct {
 	MaxTurns     int
 	WorkDir      string
 	AllowedTools []string
+	IssueNumber  int
+	PipelineStep string
 }
 
 // Invoker is the interface for spawning an agent with a prompt and getting a result.
@@ -53,6 +56,7 @@ func (c *ClaudeCodeInvoker) Invoke(ctx context.Context, opts InvokeOptions) (*In
 	args := c.buildArgs(opts)
 	cmd := exec.CommandContext(ctx, "claude", args...)
 	cmd.Dir = workDir
+	cmd.Env = buildCmdEnv(os.Environ(), opts.IssueNumber, opts.PipelineStep)
 	cmd.Stdin = strings.NewReader(opts.Prompt)
 
 	var stdout bytes.Buffer
@@ -112,5 +116,40 @@ func containsCompletionMarker(output string) bool {
 
 func containsTestPass(output string) bool {
 	return strings.Contains(output, "PASS") || strings.Contains(output, "ok ")
+}
+
+// buildOTELResourceAttributes constructs the value for OTEL_RESOURCE_ATTRIBUTES,
+// merging issue.number and pipeline.step with any existing attributes from parentEnv.
+func buildOTELResourceAttributes(issueNumber int, stepName string, parentEnv []string) string {
+	newAttrs := fmt.Sprintf("issue.number=%d,pipeline.step=%s", issueNumber, stepName)
+	for _, entry := range parentEnv {
+		if strings.HasPrefix(entry, "OTEL_RESOURCE_ATTRIBUTES=") {
+			existing := strings.TrimPrefix(entry, "OTEL_RESOURCE_ATTRIBUTES=")
+			if existing != "" {
+				return newAttrs + "," + existing
+			}
+		}
+	}
+	return newAttrs
+}
+
+// buildCmdEnv returns a copy of parentEnv with OTEL_RESOURCE_ATTRIBUTES set to
+// include issue.number and pipeline.step, preserving any existing attributes.
+func buildCmdEnv(parentEnv []string, issueNumber int, stepName string) []string {
+	otelVal := buildOTELResourceAttributes(issueNumber, stepName, parentEnv)
+	result := make([]string, 0, len(parentEnv)+1)
+	replaced := false
+	for _, entry := range parentEnv {
+		if strings.HasPrefix(entry, "OTEL_RESOURCE_ATTRIBUTES=") {
+			result = append(result, "OTEL_RESOURCE_ATTRIBUTES="+otelVal)
+			replaced = true
+		} else {
+			result = append(result, entry)
+		}
+	}
+	if !replaced {
+		result = append(result, "OTEL_RESOURCE_ATTRIBUTES="+otelVal)
+	}
+	return result
 }
 
