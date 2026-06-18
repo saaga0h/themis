@@ -64,7 +64,7 @@ func (n *nonBlockingReviewInvoker) Invoke(ctx context.Context, opts agent.Invoke
 // PR creation, base selection, and body content
 // ---------------------------------------------------------------------------
 
-// AC: Pipeline runner creates PR targeting main on successful completion
+// Pipeline runner creates PR targeting main on successful completion
 func TestRunner_CreatesPROnSuccess(t *testing.T) {
 	w := &stubIssueWriter{prURL: "https://example.com/pr/10"}
 	cfg := baseConfig(t, w, &stubFetcher{issue: sampleIssue()}, &stubInvoker{})
@@ -78,7 +78,7 @@ func TestRunner_CreatesPROnSuccess(t *testing.T) {
 	}
 }
 
-// AC: PR description includes Closes #N, AC verification reference, and review notes
+// PR description includes Closes #N, AC verification reference, and review notes
 
 func TestRunner_PRBodyIncludesClosesHash(t *testing.T) {
 	w := &stubIssueWriter{prURL: "https://example.com/pr/11"}
@@ -105,7 +105,7 @@ func TestRunner_PRBodyIncludesACReference(t *testing.T) {
 	}
 }
 
-// AC: The runner's Ship step uses issue.Ref as the PR base branch instead of hardcoded "main"
+// The runner's Ship step uses issue.Ref as the PR base branch instead of hardcoded "main"
 
 func TestRunner_PRBaseMatchesIssueRef(t *testing.T) {
 	issue := sampleIssue()
@@ -122,7 +122,7 @@ func TestRunner_PRBaseMatchesIssueRef(t *testing.T) {
 	}
 }
 
-// AC: When issue.Ref is empty, the runner falls back to "main"
+// When issue.Ref is empty, the runner falls back to "main"
 
 func TestRunner_PRBaseFallsBackToMainWhenRefEmpty(t *testing.T) {
 	issue := sampleIssue()
@@ -143,7 +143,7 @@ func TestRunner_PRBaseFallsBackToMainWhenRefEmpty(t *testing.T) {
 // Branch-name resolution
 // ---------------------------------------------------------------------------
 
-// AC2: the runner resolves the ship branch via git.CurrentBranch (accepting context),
+// the runner resolves the ship branch via git.CurrentBranch (accepting context),
 // so a detached HEAD yields "HEAD" rather than the old .git/HEAD reader's "main".
 func TestRunner_ShipStep_BranchNameUsesGitCurrentBranch(t *testing.T) {
 	// Use a remote-backed repo and add a commit ahead of origin/main so the ship
@@ -170,7 +170,7 @@ func TestRunner_ShipStep_BranchNameUsesGitCurrentBranch(t *testing.T) {
 		t.Fatalf("SaveState: %v", err)
 	}
 
-	w := &stubIssueWriter{prURL: "https://example.com/pr/22ac2"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/example"}
 	cfg := Config{
 		WorkDir:      dir,
 		IssueNumber:  42,
@@ -196,10 +196,10 @@ func TestRunner_ShipStep_BranchNameUsesGitCurrentBranch(t *testing.T) {
 // Ship agent invocation and PR body composition
 // ---------------------------------------------------------------------------
 
-// AC1: Ship step invokes Claude Code with ship.md template instead of calling buildPRBody() directly.
+// Ship step invokes Claude Code with ship.md template instead of calling buildPRBody() directly.
 func TestRunner_ShipStepInvokesAgent(t *testing.T) {
 	inv := &recordingInvoker{}
-	w := &stubIssueWriter{prURL: "https://example.com/pr/27-ac1"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/example"}
 	cfg := baseConfig(t, w, &stubFetcher{issue: sampleIssue()}, inv)
 
 	if _, err := Run(context.Background(), cfg); err != nil {
@@ -221,7 +221,7 @@ func TestRunner_ShipStepInvokesAgent(t *testing.T) {
 	}
 }
 
-// AC2: ship.md template includes the pr-composition skill content or references it.
+// ship.md template includes the pr-composition skill content or references it.
 func TestShipMdTemplateReferencesPRCompositionSkill(t *testing.T) {
 	tDir := templateDir(t)
 	content, err := os.ReadFile(filepath.Join(tDir, "ship.md"))
@@ -235,10 +235,10 @@ func TestShipMdTemplateReferencesPRCompositionSkill(t *testing.T) {
 	}
 }
 
-// AC3: Agent receives review output, pipeline shape, commit log, and AC status as context.
+// Agent receives review output, pipeline shape, commit log, and AC status as context.
 func TestRunner_ShipPromptContainsContextualData(t *testing.T) {
 	commits := []string{
-		"test(runner): add failing tests for issue 27",
+		"test(runner): add failing tests",
 		"feat(runner): implement ship agent invocation",
 	}
 	workDir := initBranchWithCommits(t, commits)
@@ -270,7 +270,7 @@ func TestRunner_ShipPromptContainsContextualData(t *testing.T) {
 			{ExitCode: 0, Completed: true, Stdout: "All ACs passed"}, // Ship
 		},
 	}
-	w := &stubIssueWriter{prURL: "https://example.com/pr/27-ac3"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/example"}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
@@ -307,7 +307,7 @@ func TestRunner_ShipPromptContainsContextualData(t *testing.T) {
 	}
 
 	// Must contain commit log (a commit message from the branch).
-	if !strings.Contains(shipPrompt, "add failing tests for issue 27") {
+	if !strings.Contains(shipPrompt, "add failing tests") {
 		t.Errorf("ship prompt missing commit log entry\ngot prompt:\n%s", shipPrompt)
 	}
 
@@ -317,7 +317,7 @@ func TestRunner_ShipPromptContainsContextualData(t *testing.T) {
 	}
 }
 
-// AC4 + AC6: PR body is the agent-composed output; PR is created via the API with that body.
+// PR body is the agent-composed output; PR is created via the API with that body.
 func TestRunner_ShipUsesAgentOutputAsPRBody(t *testing.T) {
 	const agentPRBody = "All ACs passed\n\n" +
 		"## Implementation narrative\n\nWired ship step to invoke Claude Code.\n\n" +
@@ -334,7 +334,7 @@ func TestRunner_ShipUsesAgentOutputAsPRBody(t *testing.T) {
 			{ExitCode: 0, Completed: true, Stdout: agentPRBody}, // Ship
 		},
 	}
-	w := &stubIssueWriter{prURL: "https://example.com/pr/27-ac4"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/example"}
 	cfg := baseConfig(t, w, &stubFetcher{issue: sampleIssue()}, &nonBlockingReviewInvoker{inner: inv})
 
 	if _, err := Run(context.Background(), cfg); err != nil {
@@ -363,13 +363,13 @@ func TestRunner_ShipUsesAgentOutputAsPRBody(t *testing.T) {
 	}
 }
 
-// AC5: If agent invocation fails, Ship step falls back to buildPRBody() and logs a warning.
+// If agent invocation fails, Ship step falls back to buildPRBody() and logs a warning.
 func TestRunner_ShipFallsBackToBuildPRBodyWhenAgentFails(t *testing.T) {
 	inv := &failAfterInvoker{
 		successLimit: pipelineAgentCallCount, // pipeline steps succeed, ship step fails
 		err:          fmt.Errorf("claude code: agent invocation failed"),
 	}
-	w := &stubIssueWriter{prURL: "https://example.com/pr/27-ac5"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/example"}
 	cfg := baseConfig(t, w, &stubFetcher{issue: sampleIssue()}, &nonBlockingReviewInvoker{inner: inv})
 
 	// Run must succeed even when the ship agent call fails (fallback path).
@@ -398,15 +398,15 @@ func TestRunner_ShipFallsBackToBuildPRBodyWhenAgentFails(t *testing.T) {
 // Ship guards: zero commits and base-branch collision
 // ---------------------------------------------------------------------------
 
-// AC1 + AC2: Ship step returns an error naming the branch and "nothing to ship"
+// Ship step returns an error naming the branch and "nothing to ship"
 // when no commits exist on the issue branch relative to the base.
 func TestRunner_ShipGuard_RejectsWhenNoBranchCommits(t *testing.T) {
 	workDir := initRepoWithRemote(t)
 	// Feature branch with zero commits on top of main.
-	gitInDir(t, workDir, "checkout", "-b", "issue/35-no-commits")
+	gitInDir(t, workDir, "checkout", "-b", "feature/no-commits")
 	saveStateAt(t, workDir, pipeline.StepShip)
 
-	w := &stubIssueWriter{prURL: "https://example.com/pr/35-ac2"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/example"}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
@@ -425,8 +425,8 @@ func TestRunner_ShipGuard_RejectsWhenNoBranchCommits(t *testing.T) {
 	if !strings.Contains(err.Error(), "no commits on branch") {
 		t.Errorf("error must contain 'no commits on branch'; got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "issue/35-no-commits") {
-		t.Errorf("error must contain the branch name 'issue/35-no-commits'; got: %v", err)
+	if !strings.Contains(err.Error(), "feature/no-commits") {
+		t.Errorf("error must contain the branch name 'feature/no-commits'; got: %v", err)
 	}
 	if !strings.Contains(err.Error(), "nothing to ship") {
 		t.Errorf("error must contain 'nothing to ship'; got: %v", err)
@@ -439,7 +439,7 @@ func TestRunner_ShipGuard_RejectsWhenNoBranchCommits(t *testing.T) {
 	}
 }
 
-// AC3: Ship step returns an error when the current branch equals the base branch,
+// Ship step returns an error when the current branch equals the base branch,
 // indicating no issue branch was created.
 func TestRunner_ShipGuard_RejectsWhenCurrentBranchIsBaseBranch(t *testing.T) {
 	dir := initLocalRepo(t)
@@ -450,7 +450,7 @@ func TestRunner_ShipGuard_RejectsWhenCurrentBranchIsBaseBranch(t *testing.T) {
 	issue := sampleIssue()
 	issue.Ref = "themis-2.0" // base == current branch
 
-	w := &stubIssueWriter{prURL: "https://example.com/pr/35-ac3"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/example"}
 	cfg := Config{
 		WorkDir:      dir,
 		IssueNumber:  42,
@@ -480,17 +480,17 @@ func TestRunner_ShipGuard_RejectsWhenCurrentBranchIsBaseBranch(t *testing.T) {
 	}
 }
 
-// AC4: PR creation proceeds normally when commits exist on the branch and the
+// PR creation proceeds normally when commits exist on the branch and the
 // branch differs from the base.
 func TestRunner_ShipGuard_ProceedsWhenCommitsExistOnBranch(t *testing.T) {
 	commits := []string{
-		"test(runner): add failing tests for issue 35",
+		"test(runner): add failing tests",
 		"feat(runner): implement ship step guard",
 	}
 	workDir := initBranchWithCommits(t, commits)
 	saveStateAt(t, workDir, pipeline.StepShip)
 
-	const wantPRURL = "https://example.com/pr/35-ac4"
+	const wantPRURL = "https://example.com/pr/example"
 	w := &stubIssueWriter{prURL: wantPRURL}
 	cfg := Config{
 		WorkDir:      workDir,

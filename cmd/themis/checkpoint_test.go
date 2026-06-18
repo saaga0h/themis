@@ -49,7 +49,7 @@ func initGitRepoCheckpointTest(t *testing.T) string {
 	return dir
 }
 
-// AC4: cmd/themis/main.go sets CheckpointFn in the production runner.Config.
+// cmd/themis/main.go sets CheckpointFn in the production runner.Config.
 // newIssueConfig does not exist yet — this test will fail to compile until implemented.
 func TestNewIssueConfig_SetsCheckpointFn(t *testing.T) {
 	dir := initGitRepoCheckpointTest(t)

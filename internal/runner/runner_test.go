@@ -288,7 +288,7 @@ func initRepoWithRemote(t *testing.T) string {
 func initBranchWithCommits(t *testing.T, messages []string) string {
 	t.Helper()
 	workDir := initRepoWithRemote(t)
-	gitInDir(t, workDir, "checkout", "-b", "issue/26-test")
+	gitInDir(t, workDir, "checkout", "-b", "feature/work")
 	for i, msg := range messages {
 		fname := fmt.Sprintf("file_%d.go", i)
 		if err := os.WriteFile(filepath.Join(workDir, fname), []byte("package p"), 0o644); err != nil {
@@ -304,7 +304,7 @@ func initBranchWithCommits(t *testing.T, messages []string) string {
 // Core: pipeline advancement and step sequencing
 // ---------------------------------------------------------------------------
 
-// AC: Pipeline runner loads profile, fetches issue, and runs the pipeline steps in order
+// Pipeline runner loads profile, fetches issue, and runs the pipeline steps in order
 
 func TestRunner_RunsStepsInOrder(t *testing.T) {
 	w := &stubIssueWriter{prURL: "https://example.com/pr/1"}
@@ -319,7 +319,7 @@ func TestRunner_RunsStepsInOrder(t *testing.T) {
 	}
 }
 
-// AC: Pipeline runner loads the correct prompt template for each step and substitutes issue-specific arguments
+// Pipeline runner loads the correct prompt template for each step and substitutes issue-specific arguments
 
 func TestRunner_SubstitutesIssueNumberInTemplate(t *testing.T) {
 	inv := &captureInvoker{}
@@ -364,7 +364,7 @@ func TestRunner_IncludesIssueNumberInPrompt(t *testing.T) {
 	}
 }
 
-// AC: Pipeline state is saved to .themis/state.json after each step
+// Pipeline state is saved to .themis/state.json after each step
 
 func TestRunner_SavesStateFile(t *testing.T) {
 	workDir := t.TempDir()
@@ -389,7 +389,7 @@ func TestRunner_SavesStateFile(t *testing.T) {
 	}
 }
 
-// AC: Resume — pipeline resumes from saved state (kill and restart)
+// Resume — pipeline resumes from saved state (kill and restart)
 
 func TestRunner_ResumesFromSavedState(t *testing.T) {
 	workDir := t.TempDir()
@@ -431,7 +431,7 @@ func TestRunner_ResumesFromSavedState(t *testing.T) {
 	}
 }
 
-// AC: Pipeline runner stops with blocked label and issue comment when test-fix limit (3) is reached
+// Pipeline runner stops with blocked label and issue comment when test-fix limit (3) is reached
 
 func TestRunner_StopsOnTestFixLimit(t *testing.T) {
 	workDir := t.TempDir()
@@ -491,13 +491,13 @@ func TestRunner_StopsOnTestFixLimit(t *testing.T) {
 // Core: template arguments (CHANGED_FILES, PIPELINE_SHAPE, COMMIT_LOG, REVIEW_OUTPUT)
 // ---------------------------------------------------------------------------
 
-// AC3: changedFiles returns the list of files changed on the current branch vs the base branch,
+// changedFiles returns the list of files changed on the current branch vs the base branch,
 // using git diff --name-only against the merge-base.
 func TestRunner_ChangedFiles_IncludesFilesChangedOnBranch(t *testing.T) {
 	workDir := initRepoWithRemote(t)
 
 	// Create a feature branch and add a new file
-	gitInDir(t, workDir, "checkout", "-b", "feat/issue-22")
+	gitInDir(t, workDir, "checkout", "-b", "feat/changed-files")
 	if err := os.WriteFile(filepath.Join(workDir, "newfeature.go"), []byte("package main"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -516,7 +516,7 @@ func TestRunner_ChangedFiles_IncludesFilesChangedOnBranch(t *testing.T) {
 	}
 
 	inv := &captureInvoker{}
-	w := &stubIssueWriter{prURL: "https://example.com/pr/22ac3"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/example"}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
@@ -542,7 +542,7 @@ func TestRunner_ChangedFiles_IncludesFilesChangedOnBranch(t *testing.T) {
 	}
 }
 
-// AC4: changedFiles returns empty string gracefully when git diff fails
+// changedFiles returns empty string gracefully when git diff fails
 // (e.g., no remote tracking branch exists).
 func TestRunner_ChangedFiles_ReturnsEmptyStringWhenGitFails(t *testing.T) {
 	dir := initLocalRepo(t) // no remote set up
@@ -566,7 +566,7 @@ func TestRunner_ChangedFiles_ReturnsEmptyStringWhenGitFails(t *testing.T) {
 	}
 
 	inv := &captureInvoker{}
-	w := &stubIssueWriter{prURL: "https://example.com/pr/22ac4"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/example"}
 	cfg := Config{
 		WorkDir:      dir,
 		IssueNumber:  42,
@@ -592,11 +592,11 @@ func TestRunner_ChangedFiles_ReturnsEmptyStringWhenGitFails(t *testing.T) {
 	}
 }
 
-// AC3: {{PIPELINE_SHAPE}} is a one-line summary computed from commit message prefixes
+// {{PIPELINE_SHAPE}} is a one-line summary computed from commit message prefixes
 // for commits on the issue branch that are not on the base branch.
 func TestRunner_PipelineShapeFromCommitPrefixes(t *testing.T) {
 	commits := []string{
-		"test(runner): add failing tests for issue 26",
+		"test(runner): add failing tests",
 		"feat(runner): implement review output capture",
 	}
 	workDir := initBranchWithCommits(t, commits)
@@ -607,7 +607,7 @@ func TestRunner_PipelineShapeFromCommitPrefixes(t *testing.T) {
 	})
 
 	inv := &recordingInvoker{}
-	w := &stubIssueWriter{prURL: "https://example.com/pr/26-ac3"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/example"}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
@@ -638,12 +638,12 @@ func TestRunner_PipelineShapeFromCommitPrefixes(t *testing.T) {
 	}
 }
 
-// AC4: {{COMMIT_LOG}} contains git log --oneline output for commits on the issue branch
+// {{COMMIT_LOG}} contains git log --oneline output for commits on the issue branch
 // relative to the base branch.
 func TestRunner_CommitLogContainsBranchCommits(t *testing.T) {
 	commits := []string{
-		"test(runner): add failing tests for issue 26",
-		"feat(runner): implement feature for issue 26",
+		"test(runner): add failing tests",
+		"feat(runner): implement feature",
 	}
 	workDir := initBranchWithCommits(t, commits)
 	saveStateAt(t, workDir, pipeline.StepDocs)
@@ -653,7 +653,7 @@ func TestRunner_CommitLogContainsBranchCommits(t *testing.T) {
 	})
 
 	inv := &recordingInvoker{}
-	w := &stubIssueWriter{prURL: "https://example.com/pr/26-ac4"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/example"}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
@@ -683,7 +683,7 @@ func TestRunner_CommitLogContainsBranchCommits(t *testing.T) {
 	}
 }
 
-// AC6: All three new args (REVIEW_OUTPUT, PIPELINE_SHAPE, COMMIT_LOG) must be present
+// All three new args (REVIEW_OUTPUT, PIPELINE_SHAPE, COMMIT_LOG) must be present
 // in masterArgs so filterArgs can pass them to templates that reference them.
 func TestRunner_AllNewTemplateArgsAvailableInMasterArgs(t *testing.T) {
 	workDir := t.TempDir()
@@ -695,7 +695,7 @@ func TestRunner_AllNewTemplateArgsAvailableInMasterArgs(t *testing.T) {
 	})
 
 	inv := &recordingInvoker{}
-	w := &stubIssueWriter{prURL: "https://example.com/pr/26-ac6"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/example"}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
@@ -725,11 +725,11 @@ func TestRunner_AllNewTemplateArgsAvailableInMasterArgs(t *testing.T) {
 // Core: run logging and observability
 // ---------------------------------------------------------------------------
 
-// AC1: every step transition prints start and done messages to stderr with duration.
+// every step transition prints start and done messages to stderr with duration.
 
 func TestRunner_LogsStepStartMessage(t *testing.T) {
 	var buf bytes.Buffer
-	w := &stubIssueWriter{prURL: "https://example.com/pr/28-ac1-start"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/start"}
 	cfg := logConfig(t, &buf, w, &stubInvoker{})
 
 	if _, err := Run(context.Background(), cfg); err != nil {
@@ -751,7 +751,7 @@ func TestRunner_LogsStepStartMessage(t *testing.T) {
 
 func TestRunner_LogsStepDoneWithDuration(t *testing.T) {
 	var buf bytes.Buffer
-	w := &stubIssueWriter{prURL: "https://example.com/pr/28-ac1-done"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/done"}
 	cfg := logConfig(t, &buf, w, &stubInvoker{})
 
 	if _, err := Run(context.Background(), cfg); err != nil {
@@ -768,12 +768,12 @@ func TestRunner_LogsStepDoneWithDuration(t *testing.T) {
 	}
 }
 
-// AC2: state resume is logged: "resuming from step X" vs. "fresh start".
+// state resume is logged: "resuming from step X" vs. "fresh start".
 
 func TestRunner_LogsFreshStartWhenNoStateFile(t *testing.T) {
 	var buf bytes.Buffer
 	workDir := t.TempDir() // no .themis/state.json
-	w := &stubIssueWriter{prURL: "https://example.com/pr/28-ac2-fresh"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/fresh"}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
@@ -800,7 +800,7 @@ func TestRunner_LogsResumingFromStepWhenStateFileExists(t *testing.T) {
 	workDir := t.TempDir()
 	saveStateAt(t, workDir, pipeline.StepImplement)
 
-	w := &stubIssueWriter{prURL: "https://example.com/pr/28-ac2-resume"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/resume"}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
@@ -826,12 +826,12 @@ func TestRunner_LogsResumingFromStepWhenStateFileExists(t *testing.T) {
 	}
 }
 
-// AC3: agent invocations log the model and max turns.
+// agent invocations log the model and max turns.
 
 func TestRunner_LogsAgentInvocationModelAndMaxTurns(t *testing.T) {
 	var buf bytes.Buffer
 	inv := &recordingInvoker{}
-	w := &stubIssueWriter{prURL: "https://example.com/pr/28-ac3"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/example"}
 	cfg := logConfig(t, &buf, w, inv)
 
 	if _, err := Run(context.Background(), cfg); err != nil {
@@ -849,7 +849,7 @@ func TestRunner_LogsAgentInvocationModelAndMaxTurns(t *testing.T) {
 	}
 }
 
-// AC4: agent results log commit count and completion status.
+// agent results log commit count and completion status.
 
 func TestRunner_LogsAgentResultCommitCount(t *testing.T) {
 	var buf bytes.Buffer
@@ -862,7 +862,7 @@ func TestRunner_LogsAgentResultCommitCount(t *testing.T) {
 			{ExitCode: 0, Completed: true, CommitsMade: []string{"abc1234", "def5678"}},
 		},
 	}
-	w := &stubIssueWriter{prURL: "https://example.com/pr/28-ac4-count"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/count"}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
@@ -898,7 +898,7 @@ func TestRunner_LogsAgentResultCompletionStatus(t *testing.T) {
 			{ExitCode: 0, Completed: true},
 		},
 	}
-	w := &stubIssueWriter{prURL: "https://example.com/pr/28-ac4-status"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/status"}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
@@ -926,14 +926,14 @@ func TestRunner_LogsAgentResultCompletionStatus(t *testing.T) {
 	}
 }
 
-// AC5: checkpoint results are logged (pass or the specific failure).
+// checkpoint results are logged (pass or the specific failure).
 
 func TestRunner_LogsCheckpointPassAfterStep(t *testing.T) {
 	var buf bytes.Buffer
 	workDir := t.TempDir()
 	saveStateAt(t, workDir, pipeline.StepTestRed)
 
-	w := &stubIssueWriter{prURL: "https://example.com/pr/28-ac5-pass"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/pass"}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
@@ -993,11 +993,11 @@ func TestRunner_LogsCheckpointFailureWithSpecificErrorMessage(t *testing.T) {
 	}
 }
 
-// AC7: ship step logs the PR URL.
+// ship step logs the PR URL.
 
 func TestRunner_LogsShipPRURL(t *testing.T) {
 	var buf bytes.Buffer
-	const prURL = "https://example.com/pr/28-ac7"
+	const prURL = "https://example.com/pr/example"
 	w := &stubIssueWriter{prURL: prURL}
 	cfg := logConfig(t, &buf, w, &stubInvoker{})
 
@@ -1015,11 +1015,11 @@ func TestRunner_LogsShipPRURL(t *testing.T) {
 	}
 }
 
-// AC8: all output goes to stderr (stdout is reserved for the final PR URL).
+// all output goes to stderr (stdout is reserved for the final PR URL).
 // When Logger is nil, Run must default to os.Stderr and must not panic.
 
 func TestRunner_NilLoggerDefaultsToStderrWithoutPanic(t *testing.T) {
-	w := &stubIssueWriter{prURL: "https://example.com/pr/28-ac8"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/example"}
 	cfg := baseConfig(t, w, &stubFetcher{issue: sampleIssue()}, &stubInvoker{})
 	cfg.Logger = nil // explicitly nil: must fall back to os.Stderr, not panic
 

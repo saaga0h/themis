@@ -161,7 +161,7 @@ func TestRunner_ReviewStep_MissingJSONIsBlocking(t *testing.T) {
 			{ExitCode: 0, Completed: true},
 		},
 	}
-	w := &stubIssueWriter{prURL: "https://example.com/pr/48-ac5"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/example"}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
@@ -275,7 +275,7 @@ func TestRunner_FixTemplate_BlockingFindingsPlaceholderIsFormattedList(t *testin
 			{ExitCode: 0, Completed: true},
 		},
 	}
-	w := &stubIssueWriter{prURL: "https://example.com/pr/48-ac6"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/example"}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
@@ -334,7 +334,7 @@ func TestRunner_FreshStart_DeletesReviewResultsJSON(t *testing.T) {
 		t.Fatal("precondition: review-results.json must exist before run")
 	}
 
-	w := &stubIssueWriter{prURL: "https://example.com/pr/48-ac7-fresh"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/fresh"}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
@@ -377,7 +377,7 @@ func TestRunner_IssueMismatch_DeletesReviewResultsJSON(t *testing.T) {
 	})
 	jsonPath := filepath.Join(workDir, ".themis", "review-results.json")
 
-	w := &stubIssueWriter{prURL: "https://example.com/pr/48-ac7-mismatch"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/mismatch"}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42, // different from state
@@ -433,7 +433,7 @@ func TestRunner_Resume_PreservesReviewResultsJSON(t *testing.T) {
 		fileExistedPtr: &fileExistedAtFixInvocation,
 	}
 
-	w := &stubIssueWriter{prURL: "https://example.com/pr/48-ac8"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/example"}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
@@ -455,7 +455,7 @@ func TestRunner_Resume_PreservesReviewResultsJSON(t *testing.T) {
 // Review cycle limit
 // ---------------------------------------------------------------------------
 
-// AC: Pipeline runner stops with blocked label and issue comment when review cycle limit is reached.
+// Pipeline runner stops with blocked label and issue comment when review cycle limit is reached.
 func TestRunner_StopsOnReviewCycleLimit(t *testing.T) {
 	workDir := t.TempDir()
 
@@ -608,7 +608,7 @@ func TestRunner_LogsReviewFindingsSummaryWithCounts_WithJSONFixture(t *testing.T
 			{ExitCode: 0, Completed: true},
 		},
 	}
-	w := &stubIssueWriter{prURL: "https://example.com/pr/48-ac10-counts"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/counts"}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
@@ -655,7 +655,7 @@ func TestRunner_LogsReviewFindingsSummaryWhenNoFindings_WithJSONFixture(t *testi
 			{ExitCode: 0, Completed: true},
 		},
 	}
-	w := &stubIssueWriter{prURL: "https://example.com/pr/48-ac10-nofindings"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/nofindings"}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
@@ -701,7 +701,7 @@ func TestRunner_ReviewOutputAccumulatedAndAvailableAsTemplateArg_WithJSONFixture
 			{ExitCode: 0, Completed: true, Stdout: reviewStdout},
 		},
 	}
-	w := &stubIssueWriter{prURL: "https://example.com/pr/48-ac10-reviewoutput"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/reviewoutput"}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
@@ -736,7 +736,7 @@ func TestRunner_ReviewOutputAccumulatedAndAvailableAsTemplateArg_WithJSONFixture
 	}
 }
 
-// AC5: When the pipeline resumes at a step after Review (review never ran this session),
+// When the pipeline resumes at a step after Review (review never ran this session),
 // {{REVIEW_OUTPUT}} must be substituted as empty string rather than a literal placeholder.
 func TestRunner_ReviewOutputIsEmptyWhenResumedPastReview(t *testing.T) {
 	workDir := t.TempDir()
@@ -748,7 +748,7 @@ func TestRunner_ReviewOutputIsEmptyWhenResumedPastReview(t *testing.T) {
 	})
 
 	inv := &recordingInvoker{}
-	w := &stubIssueWriter{prURL: "https://example.com/pr/26-ac5"}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/example"}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,

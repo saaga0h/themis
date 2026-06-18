@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-// AC: themis issue <number> CLI subcommand exists and parses issue number and --provider flag
+// themis issue <number> CLI subcommand exists and parses issue number and --provider flag
 
 func TestParseIssueArgs_ValidGitHub(t *testing.T) {
 	args, err := parseIssueArgs([]string{"42", "--provider", "github"})

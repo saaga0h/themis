@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// AC: themis run --provider gitea subcommand exists (not "unknown command")
+// themis run --provider gitea subcommand exists (not "unknown command")
 
 func TestRunSubcommandIsRecognized(t *testing.T) {
 	// Without a live tracker, the command will fail — but it must NOT print

@@ -44,7 +44,7 @@ func initGitRepoForRunner(t *testing.T) string {
 	return dir
 }
 
-// AC5: Runner stops with an error when checkpoint fails.
+// Runner stops with an error when checkpoint fails.
 func TestRunner_FailingCheckpointStopsPipeline(t *testing.T) {
 	workDir := t.TempDir()
 
@@ -81,7 +81,7 @@ func TestRunner_FailingCheckpointStopsPipeline(t *testing.T) {
 	}
 }
 
-// AC5+AC1: Using the real step checkpoint — missing commit on TestRed must stop the pipeline.
+// Using the real step checkpoint — missing commit on TestRed must stop the pipeline.
 // checkpoint.NewStepCheckpoint does not exist yet — this test will fail to compile until implemented.
 func TestRunner_StepCheckpoint_NoCommit_StopsPipeline(t *testing.T) {
 	dir := initGitRepoForRunner(t)

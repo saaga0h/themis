@@ -7,7 +7,7 @@ import (
 	"git.home.federation.fi/lavernea/themis/internal/agent"
 )
 
-// AC1: claudeInvoker wrapper in invoker.go is removed; newIssueConfig wires *agent.ClaudeCodeInvoker directly.
+// claudeInvoker wrapper in invoker.go is removed; newIssueConfig wires *agent.ClaudeCodeInvoker directly.
 // This test fails before the implementation because newIssueConfig currently uses &claudeInvoker{}.
 func TestNewIssueConfig_UsesClaudeCodeInvokerDirectly(t *testing.T) {
 	dir := initGitRepoCheckpointTest(t)

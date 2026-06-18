@@ -12,9 +12,9 @@ import (
 
 // initGitRepo and makeCommit helpers are defined in checkpoint_test.go (same package).
 
-// AC1: checkpoint function maps pipeline steps to expected commit prefixes.
-// AC2: checkpoint function calls VerifyCleanWorkingTree after every agent step.
-// AC3: Refactor and Docs steps allow no new commit (may be no-ops).
+// checkpoint function maps pipeline steps to expected commit prefixes.
+// checkpoint function calls VerifyCleanWorkingTree after every agent step.
+// Refactor and Docs steps allow no new commit (may be no-ops).
 //
 // NewStepCheckpoint does not exist yet — these tests will fail to compile until implemented.
 
@@ -83,7 +83,7 @@ func TestNewStepCheckpoint_Refactor_CorrectPrefix(t *testing.T) {
 	}
 }
 
-// AC3: Refactor step allows no new commit.
+// Refactor step allows no new commit.
 func TestNewStepCheckpoint_Refactor_NoNewCommit_OK(t *testing.T) {
 	dir := initGitRepo(t)
 	ctx := context.Background()
@@ -136,7 +136,7 @@ func TestNewStepCheckpoint_Docs_CorrectPrefix(t *testing.T) {
 	}
 }
 
-// AC3: Docs step allows no new commit.
+// Docs step allows no new commit.
 func TestNewStepCheckpoint_Docs_NoNewCommit_OK(t *testing.T) {
 	dir := initGitRepo(t)
 	ctx := context.Background()
@@ -150,7 +150,7 @@ func TestNewStepCheckpoint_Docs_NoNewCommit_OK(t *testing.T) {
 	}
 }
 
-// AC2: checkpoint calls VerifyCleanWorkingTree — dirty tree must fail even with correct prefix.
+// checkpoint calls VerifyCleanWorkingTree — dirty tree must fail even with correct prefix.
 func TestNewStepCheckpoint_DirtyWorkingTree_Fails(t *testing.T) {
 	dir := initGitRepo(t)
 	ctx := context.Background()
@@ -168,7 +168,7 @@ func TestNewStepCheckpoint_DirtyWorkingTree_Fails(t *testing.T) {
 	}
 }
 
-// AC2: VerifyCleanWorkingTree is called even for no-op steps (Refactor with dirty tree must fail).
+// VerifyCleanWorkingTree is called even for no-op steps (Refactor with dirty tree must fail).
 func TestNewStepCheckpoint_Refactor_NoNewCommit_DirtyTree_Fails(t *testing.T) {
 	dir := initGitRepo(t)
 	ctx := context.Background()

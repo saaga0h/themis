@@ -39,7 +39,7 @@ func initGitRepoWithGiteaRemote(t *testing.T, remoteURL string) string {
 	return dir
 }
 
-// AC8: resolveGiteaConfig infers owner, repo, apiBase from the git remote URL
+// resolveGiteaConfig infers owner, repo, apiBase from the git remote URL
 // when no GITEA_* env vars are set.
 func TestResolveGiteaConfig_InfersFromHTTPSRemote(t *testing.T) {
 	dir := initGitRepoWithGiteaRemote(t, "https://gitea.example.com/owner/repo.git")
@@ -62,7 +62,7 @@ func TestResolveGiteaConfig_InfersFromHTTPSRemote(t *testing.T) {
 	}
 }
 
-// AC5: env vars override values inferred from the git remote
+// env vars override values inferred from the git remote
 func TestResolveGiteaConfig_EnvVarsOverrideInferred(t *testing.T) {
 	dir := initGitRepoWithGiteaRemote(t, "https://gitea.example.com/remote-owner/remote-repo.git")
 	t.Setenv("GITEA_OWNER", "env-owner")
@@ -84,7 +84,7 @@ func TestResolveGiteaConfig_EnvVarsOverrideInferred(t *testing.T) {
 	}
 }
 
-// AC5: only the set env var wins; unset fields fall through to the inferred value
+// only the set env var wins; unset fields fall through to the inferred value
 func TestResolveGiteaConfig_PartialEnvVarOverride(t *testing.T) {
 	dir := initGitRepoWithGiteaRemote(t, "https://gitea.example.com/remote-owner/remote-repo.git")
 	t.Setenv("GITEA_OWNER", "env-owner")
@@ -106,7 +106,7 @@ func TestResolveGiteaConfig_PartialEnvVarOverride(t *testing.T) {
 	}
 }
 
-// AC6: no origin remote → falls back to env vars rather than returning an error
+// no origin remote → falls back to env vars rather than returning an error
 func TestResolveGiteaConfig_FallsBackToEnvVarsWhenNoRemote(t *testing.T) {
 	dir := newTestGitRepo(t)
 	t.Setenv("GITEA_OWNER", "fallback-owner")
@@ -128,7 +128,7 @@ func TestResolveGiteaConfig_FallsBackToEnvVarsWhenNoRemote(t *testing.T) {
 	}
 }
 
-// AC6: unrecognized remote format → falls back to env vars rather than returning an error
+// unrecognized remote format → falls back to env vars rather than returning an error
 func TestResolveGiteaConfig_FallsBackToEnvVarsForUnrecognizedRemote(t *testing.T) {
 	dir := initGitRepoWithGiteaRemote(t, "git@github.com:owner/repo.git") // SCP-style, not a URL
 	t.Setenv("GITEA_OWNER", "fallback-owner")
@@ -150,7 +150,7 @@ func TestResolveGiteaConfig_FallsBackToEnvVarsForUnrecognizedRemote(t *testing.T
 	}
 }
 
-// AC7: neither remote nor env vars → returns a clear error
+// neither remote nor env vars → returns a clear error
 func TestResolveGiteaConfig_ReturnsErrorWhenNeitherSourceWorks(t *testing.T) {
 	dir := newTestGitRepo(t)
 	// no remote, no env vars

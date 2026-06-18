@@ -2,7 +2,7 @@ package main
 
 import "testing"
 
-// AC: themis run --provider gitea subcommand exists and supports --provider and --dry-run flags
+// themis run --provider gitea subcommand exists and supports --provider and --dry-run flags
 
 func TestParseRunArgs_ProviderGitea(t *testing.T) {
 	args, err := parseRunArgs([]string{"--provider", "gitea"})

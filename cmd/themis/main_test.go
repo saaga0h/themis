@@ -29,7 +29,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// AC: themis version prints a version string to stdout and exits 0
+// themis version prints a version string to stdout and exits 0
 func TestVersionPrintsNonEmptyString(t *testing.T) {
 	cmd := exec.Command(binary, "version")
 	out, err := cmd.Output()
@@ -42,7 +42,7 @@ func TestVersionPrintsNonEmptyString(t *testing.T) {
 	}
 }
 
-// AC: go.mod exists at repo root with module path git.home.federation.fi/lavernea/themis
+// go.mod exists at repo root with module path git.home.federation.fi/lavernea/themis
 func TestGoModModulePath(t *testing.T) {
 	content, err := os.ReadFile("../../go.mod")
 	if err != nil {
@@ -53,7 +53,7 @@ func TestGoModModulePath(t *testing.T) {
 	}
 }
 
-// AC: Makefile exists with build, test, and lint targets that succeed
+// Makefile exists with build, test, and lint targets that succeed
 func TestMakefileHasGoBuildTarget(t *testing.T) {
 	assertMakefileTarget(t, "build")
 }

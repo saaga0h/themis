@@ -10,7 +10,7 @@ import (
 	"git.home.federation.fi/lavernea/themis/internal/tracker"
 )
 
-// AC: AC parser extracts checkbox items from issue body into a structured list of strings
+// AC parser extracts checkbox items from issue body into a structured list of strings
 
 func TestParseCheckboxes_ExtractsBothCheckedAndUnchecked(t *testing.T) {
 	body := "## Summary\n\nSome text.\n\n## Acceptance Criteria\n\n- [ ] First item\n- [x] Second item already done\n- [ ] Third item\n\n## Notes\n\nSome notes."
@@ -41,7 +41,7 @@ func TestParseCheckboxes_NoCheckboxes(t *testing.T) {
 	}
 }
 
-// AC: Issue tracker integration fetches issue data from GitHub via gh issue view --json
+// Issue tracker integration fetches issue data from GitHub via gh issue view --json
 
 func TestParseGitHubJSON_ExtractsIssueData(t *testing.T) {
 	input := `{
@@ -77,15 +77,15 @@ func TestParseGitHubJSON_InvalidJSON(t *testing.T) {
 	}
 }
 
-// AC: Issue tracker integration fetches issue data from Gitea API
+// Issue tracker integration fetches issue data from Gitea API
 
 func TestGiteaFetcher_FetchesFromAPI(t *testing.T) {
 	issue := map[string]interface{}{
-		"number": 11,
-		"title":  "Wire pipeline",
-		"body":   "- [ ] AC item one\n- [ ] AC item two",
-		"labels": []map[string]interface{}{{"name": "ready-for-agent"}},
-		"state":  "open",
+		"number":   11,
+		"title":    "Wire pipeline",
+		"body":     "- [ ] AC item one\n- [ ] AC item two",
+		"labels":   []map[string]interface{}{{"name": "ready-for-agent"}},
+		"state":    "open",
 		"html_url": "https://git.example.com/owner/repo/issues/11",
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -156,7 +156,7 @@ func TestNewFetcher_InvalidProvider(t *testing.T) {
 	}
 }
 
-// AC: tracker.IssueData includes a Ref field populated from the issue's ref/branch metadata
+// tracker.IssueData includes a Ref field populated from the issue's ref/branch metadata
 
 func TestIssueData_HasRefField(t *testing.T) {
 	issue := &tracker.IssueData{
@@ -169,7 +169,7 @@ func TestIssueData_HasRefField(t *testing.T) {
 	}
 }
 
-// AC: GiteaFetcher populates Ref from the Gitea API response
+// GiteaFetcher populates Ref from the Gitea API response
 
 func TestGiteaFetcher_PopulatesRefFromAPIResponse(t *testing.T) {
 	issue := map[string]interface{}{
@@ -224,7 +224,7 @@ func TestGiteaFetcher_RefIsEmptyWhenAbsentFromAPI(t *testing.T) {
 	}
 }
 
-// AC: GitHubFetcher populates Ref from gh CLI output (or defaults to "main" if not set)
+// GitHubFetcher populates Ref from gh CLI output (or defaults to "main" if not set)
 
 func TestParseGitHubJSON_PopulatesRefWhenPresent(t *testing.T) {
 	input := `{

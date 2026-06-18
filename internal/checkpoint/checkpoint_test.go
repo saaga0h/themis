@@ -73,8 +73,8 @@ func makeCommit(t *testing.T, dir, message string) {
 	run("git", "commit", "-m", message)
 }
 
-// AC: Checkpoint verification after TestRed confirms last commit message starts with test(
-// AC: Checkpoint verification after Implement confirms last commit message starts with feat(
+// Checkpoint verification after TestRed confirms last commit message starts with test(
+// Checkpoint verification after Implement confirms last commit message starts with feat(
 
 func TestVerifyCommitPrefix_Matches(t *testing.T) {
 	dir := initGitRepo(t)
@@ -104,7 +104,7 @@ func TestVerifyCommitPrefix_ImplementPrefix(t *testing.T) {
 	}
 }
 
-// AC: Checkpoint verification detects dirty working tree and reports error
+// Checkpoint verification detects dirty working tree and reports error
 
 func TestVerifyCleanWorkingTree_Clean(t *testing.T) {
 	dir := initGitRepo(t)

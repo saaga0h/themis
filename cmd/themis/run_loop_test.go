@@ -61,7 +61,7 @@ func makeReadyIssues(numbers ...int) []*tracker.IssueData {
 	return issues
 }
 
-// AC: all open issues labeled ready-for-agent processed in ascending order
+// all open issues labeled ready-for-agent processed in ascending order
 
 func TestRunLoop_ProcessesIssuesInAscendingOrder(t *testing.T) {
 	var processed []int
@@ -91,7 +91,7 @@ func TestRunLoop_ProcessesIssuesInAscendingOrder(t *testing.T) {
 	}
 }
 
-// AC: each issue is processed by calling the same pipeline as themis issue (shared runner.Run)
+// each issue is processed by calling the same pipeline as themis issue (shared runner.Run)
 
 func TestRunLoop_CallsRunFnForEachIssue(t *testing.T) {
 	var called []int
@@ -114,7 +114,7 @@ func TestRunLoop_CallsRunFnForEachIssue(t *testing.T) {
 	}
 }
 
-// AC: if an issue blocks (cycle limit, test-fix limit), log failure and continue
+// if an issue blocks (cycle limit, test-fix limit), log failure and continue
 
 func TestRunLoop_ContinuesAfterBlockedIssue(t *testing.T) {
 	var processed []int
@@ -173,7 +173,7 @@ func TestRunLoop_LogsBlockedIssueFailure(t *testing.T) {
 	}
 }
 
-// AC: if issue has "depends on #N" in body and #N is still open, skip with log message
+// if issue has "depends on #N" in body and #N is still open, skip with log message
 
 func TestRunLoop_SkipsIssueThatDependsOnOpenIssue(t *testing.T) {
 	issue2 := &tracker.IssueData{
@@ -279,7 +279,7 @@ func TestRunLoop_LogsSkippedDependency(t *testing.T) {
 	}
 }
 
-// AC: --dry-run flag lists which issues would be processed without running them
+// --dry-run flag lists which issues would be processed without running them
 
 func TestRunLoop_DryRunDoesNotCallRunFn(t *testing.T) {
 	var log bytes.Buffer
@@ -312,7 +312,7 @@ func TestRunLoop_DryRunDoesNotCallRunFn(t *testing.T) {
 	}
 }
 
-// AC: the loop stops if fewer than 10% of max turns remain
+// the loop stops if fewer than 10% of max turns remain
 
 func TestRunLoop_StopsImmediatelyWhenInsufficientTurnsRemain(t *testing.T) {
 	var processed []int
@@ -369,7 +369,7 @@ func TestRunLoop_StopsAfterTurnsBudgetDropsBelow10Percent(t *testing.T) {
 	}
 }
 
-// AC: state file from each completed issue is preserved until the next issue's run clears it
+// state file from each completed issue is preserved until the next issue's run clears it
 
 func TestRunLoop_StateFileExistsAfterIssueCompletes(t *testing.T) {
 	workDir := t.TempDir()

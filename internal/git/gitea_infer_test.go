@@ -18,7 +18,7 @@ func initTestRepoWithRemote(t *testing.T, remoteURL string) string {
 	return dir
 }
 
-// AC1 + AC3: HTTPS remote → owner, repo, apiBase
+// HTTPS remote → owner, repo, apiBase
 func TestInferGiteaConfig_ParsesHTTPSRemote(t *testing.T) {
 	t.Setenv("GITEA_OWNER", "")
 	t.Setenv("GITEA_REPO", "")
@@ -40,7 +40,7 @@ func TestInferGiteaConfig_ParsesHTTPSRemote(t *testing.T) {
 	}
 }
 
-// AC2: SSH remote → owner, repo, apiBase (scheme becomes https)
+// SSH remote → owner, repo, apiBase (scheme becomes https)
 func TestInferGiteaConfig_ParsesSSHRemote(t *testing.T) {
 	t.Setenv("GITEA_OWNER", "")
 	t.Setenv("GITEA_REPO", "")
@@ -62,7 +62,7 @@ func TestInferGiteaConfig_ParsesSSHRemote(t *testing.T) {
 	}
 }
 
-// AC4: .git suffix is stripped from the repo name
+// .git suffix is stripped from the repo name
 func TestInferGiteaConfig_StripsGitSuffix(t *testing.T) {
 	t.Setenv("GITEA_OWNER", "")
 	t.Setenv("GITEA_REPO", "")
@@ -78,7 +78,7 @@ func TestInferGiteaConfig_StripsGitSuffix(t *testing.T) {
 	}
 }
 
-// AC4: also works when the remote URL has no .git suffix
+// also works when the remote URL has no .git suffix
 func TestInferGiteaConfig_WorksWithoutGitSuffix(t *testing.T) {
 	t.Setenv("GITEA_OWNER", "")
 	t.Setenv("GITEA_REPO", "")
@@ -94,7 +94,7 @@ func TestInferGiteaConfig_WorksWithoutGitSuffix(t *testing.T) {
 	}
 }
 
-// AC6 (remote side): no origin remote → returns an error
+// no origin remote → returns an error
 func TestInferGiteaConfig_ReturnsErrorWhenNoRemote(t *testing.T) {
 	t.Setenv("GITEA_OWNER", "")
 	t.Setenv("GITEA_REPO", "")
@@ -107,7 +107,7 @@ func TestInferGiteaConfig_ReturnsErrorWhenNoRemote(t *testing.T) {
 	}
 }
 
-// AC6 (remote side): SCP-style SSH (git@host:path) is not a parseable URL → returns an error
+// SCP-style SSH (git@host:path) is not a parseable URL → returns an error
 func TestInferGiteaConfig_ReturnsErrorForUnrecognizedRemoteFormat(t *testing.T) {
 	t.Setenv("GITEA_OWNER", "")
 	t.Setenv("GITEA_REPO", "")
