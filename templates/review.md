@@ -14,35 +14,22 @@
 
 ## Instructions
 
-Review the implementation on the current branch. For each finding, classify it
-strictly as **blocking** or **non-blocking** using the criteria below.
+Run the **review command** via Task to review the implementation on the current
+branch. Pass `--autonomous` and the scope `--last-plan`:
 
-### What counts as blocking
+> /review --autonomous --last-plan
 
-Only the following are blocking:
+Running in autonomous mode. Include this instruction in the delegation:
+> Running in autonomous mode. Skip human confirmation and recommendation steps.
+> Write structured findings to .themis/review-results.json.
 
-- **Security vulnerability** — exploitable in the project's threat model (not theoretical)
-- **AC not covered** — a specified behaviour has no test and no implementation
-- **Compile failure** — the code does not build
-- **Abstraction boundary violated** — directly contradicts the coding standards rules
-- **Data loss or corruption** — incorrect state transitions, lost writes
+The review command will:
+1. Run all standard review agents (complexity, convention, coverage, security, architecture)
+2. Classify each finding by severity (CRITICAL, HIGH, MEDIUM, LOW)
+3. Write structured results to `.themis/review-results.json`
 
-### What is non-blocking (everything else)
+After the review command returns, verify that `.themis/review-results.json` exists.
+If it does not exist, something went wrong — report the error.
 
-- Style preferences
-- "Consider" or "could be improved" suggestions
-- Performance concerns without a concrete benchmark
-- Missing features beyond the AC scope
-- Redundant code that does not affect correctness
-- Medium-severity findings that require a separate issue to address properly
-
-### Output format
-
-List all findings with their classification:
-
-```
-BLOCKING: <description> (<file>:<line>)
-NON-BLOCKING: <description> (<file>:<line>)
-```
-
-If there are no blocking findings, state: `No blocking findings.`
+Do not classify findings yourself. Do not write the JSON file yourself.
+The review command handles all of this.
