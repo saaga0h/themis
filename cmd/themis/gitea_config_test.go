@@ -21,7 +21,7 @@ func gitCmd(t *testing.T, dir string, args ...string) {
 func newTestGitRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	gitCmd(t, dir, "init")
+	gitCmd(t, dir, "init", "--initial-branch=main")
 	gitCmd(t, dir, "config", "user.email", "test@test.com")
 	gitCmd(t, dir, "config", "user.name", "Test")
 	return dir

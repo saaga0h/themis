@@ -246,7 +246,7 @@ func gitInDir(t *testing.T, dir string, args ...string) {
 func initLocalRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	gitInDir(t, dir, "init")
+	gitInDir(t, dir, "init", "--initial-branch=main")
 	gitInDir(t, dir, "config", "user.email", "test@test")
 	gitInDir(t, dir, "config", "user.name", "test")
 	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("hello"), 0o644); err != nil {

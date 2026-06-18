@@ -32,7 +32,7 @@ func initGitRepoForRunner(t *testing.T) string {
 			t.Fatalf("command %v: %v\n%s", args, err, out)
 		}
 	}
-	run("git", "init")
+	run("git", "init", "--initial-branch=main")
 	run("git", "config", "user.email", "test@test.com")
 	run("git", "config", "user.name", "Test")
 	f := filepath.Join(dir, "README.md")

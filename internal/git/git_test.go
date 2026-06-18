@@ -30,7 +30,7 @@ func initTestRepo(t *testing.T) string {
 		}
 	}
 
-	run("init", dir)
+	run("init", "--initial-branch=main", dir)
 	run("config", "user.email", "test@test")
 	run("config", "user.name", "test")
 
