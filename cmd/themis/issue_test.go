@@ -62,3 +62,37 @@ func TestParseIssueArgs_InvalidProvider(t *testing.T) {
 		t.Error("parseIssueArgs should return error for unknown provider")
 	}
 }
+
+// --max-turns flag and default (issue #52)
+
+func TestParseIssueArgs_MaxTurnsFlag(t *testing.T) {
+	args, err := parseIssueArgs([]string{"42", "--provider", "gitea", "--max-turns", "300"})
+	if err != nil {
+		t.Fatalf("parseIssueArgs error: %v", err)
+	}
+	if args.number != 42 {
+		t.Errorf("number: got %d, want 42", args.number)
+	}
+	if args.provider != "gitea" {
+		t.Errorf("provider: got %q, want %q", args.provider, "gitea")
+	}
+	if args.maxTurns != 300 {
+		t.Errorf("maxTurns: got %d, want 300", args.maxTurns)
+	}
+}
+
+func TestParseIssueArgs_DefaultMaxTurns(t *testing.T) {
+	args, err := parseIssueArgs([]string{"42", "--provider", "gitea"})
+	if err != nil {
+		t.Fatalf("parseIssueArgs error: %v", err)
+	}
+	if args.maxTurns != defaultMaxTurns {
+		t.Errorf("maxTurns default: got %d, want defaultMaxTurns (%d)", args.maxTurns, defaultMaxTurns)
+	}
+}
+
+func TestDefaultMaxTurns_Is250(t *testing.T) {
+	if defaultMaxTurns != 250 {
+		t.Errorf("defaultMaxTurns: got %d, want 250", defaultMaxTurns)
+	}
+}

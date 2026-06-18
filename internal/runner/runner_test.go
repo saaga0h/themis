@@ -833,6 +833,7 @@ func TestRunner_LogsAgentInvocationModelAndMaxTurns(t *testing.T) {
 	inv := &recordingInvoker{}
 	w := &stubIssueWriter{prURL: "https://example.com/pr/example"}
 	cfg := logConfig(t, &buf, w, inv)
+	cfg.MaxTurns = 250
 
 	if _, err := Run(context.Background(), cfg); err != nil {
 		t.Fatalf("Run error: %v", err)
@@ -843,9 +844,9 @@ func TestRunner_LogsAgentInvocationModelAndMaxTurns(t *testing.T) {
 	if !strings.Contains(output, "sonnet") {
 		t.Errorf("expected model name 'sonnet' in agent invocation log; got:\n%s", output)
 	}
-	// Max turns is always 100 for all agent invocations.
-	if !strings.Contains(output, "100") {
-		t.Errorf("expected max turns '100' in agent invocation log; got:\n%s", output)
+	// Max turns must reflect the configured value, not a hardcoded constant.
+	if !strings.Contains(output, "250") {
+		t.Errorf("expected max turns '250' in agent invocation log; got:\n%s", output)
 	}
 }
 
@@ -1188,5 +1189,56 @@ func TestRunnerShipStepPassesPipelineStepToInvoker(t *testing.T) {
 	if shipOpts.PipelineStep != pipeline.StepShip.String() {
 		t.Errorf("ship-step InvokeOptions.PipelineStep = %q, want %q",
 			shipOpts.PipelineStep, pipeline.StepShip.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// MaxTurns: Config.MaxTurns propagates to every agent invocation (issue #52)
+// ---------------------------------------------------------------------------
+
+// TestRunner_PassesConfigMaxTurnsToEveryAgentStep verifies that when
+// Config.MaxTurns is set, every agent pipeline invocation (all 5 agent steps
+// plus the ship step) receives that value in InvokeOptions.MaxTurns.
+func TestRunner_PassesConfigMaxTurnsToEveryAgentStep(t *testing.T) {
+	inv := &recordingInvoker{}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/maxturns"}
+	cfg := baseConfig(t, w, &stubFetcher{issue: sampleIssue()}, inv)
+	cfg.MaxTurns = 300
+
+	if _, err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+
+	// pipelineAgentCallCount (5) agent steps + 1 ship step = 6 total invocations.
+	totalExpected := pipelineAgentCallCount + 1
+	if len(inv.opts) < totalExpected {
+		t.Fatalf("expected at least %d invocations, got %d", totalExpected, len(inv.opts))
+	}
+	for i, opts := range inv.opts {
+		if opts.MaxTurns != 300 {
+			t.Errorf("invocation %d: InvokeOptions.MaxTurns = %d, want 300", i, opts.MaxTurns)
+		}
+	}
+}
+
+// TestRunner_PassesConfigMaxTurnsToShipStep verifies specifically that the ship
+// step invocation uses Config.MaxTurns, not a hardcoded literal.
+func TestRunner_PassesConfigMaxTurnsToShipStep(t *testing.T) {
+	inv := &recordingInvoker{}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/maxturns-ship"}
+	cfg := baseConfig(t, w, &stubFetcher{issue: sampleIssue()}, inv)
+	cfg.MaxTurns = 300
+
+	if _, err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+
+	totalExpected := pipelineAgentCallCount + 1
+	if len(inv.opts) < totalExpected {
+		t.Fatalf("expected at least %d invocations (pipeline + ship), got %d", totalExpected, len(inv.opts))
+	}
+	shipOpts := inv.opts[pipelineAgentCallCount]
+	if shipOpts.MaxTurns != 300 {
+		t.Errorf("ship-step InvokeOptions.MaxTurns = %d, want 300", shipOpts.MaxTurns)
 	}
 }

@@ -83,3 +83,28 @@ func TestParseRunArgs_MissingProviderValue(t *testing.T) {
 		t.Error("parseRunArgs should return error when --provider has no value")
 	}
 }
+
+// --max-turns flag and default (issue #52)
+
+func TestParseRunArgs_MaxTurnsFlag(t *testing.T) {
+	args, err := parseRunArgs([]string{"--provider", "gitea", "--max-turns", "300"})
+	if err != nil {
+		t.Fatalf("parseRunArgs error: %v", err)
+	}
+	if args.provider != "gitea" {
+		t.Errorf("provider: got %q, want %q", args.provider, "gitea")
+	}
+	if args.maxTurns != 300 {
+		t.Errorf("maxTurns: got %d, want 300", args.maxTurns)
+	}
+}
+
+func TestParseRunArgs_DefaultMaxTurns(t *testing.T) {
+	args, err := parseRunArgs([]string{"--provider", "gitea"})
+	if err != nil {
+		t.Fatalf("parseRunArgs error: %v", err)
+	}
+	if args.maxTurns != defaultMaxTurns {
+		t.Errorf("maxTurns default: got %d, want defaultMaxTurns (%d)", args.maxTurns, defaultMaxTurns)
+	}
+}
