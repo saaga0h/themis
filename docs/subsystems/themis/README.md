@@ -51,7 +51,7 @@ Lists all open issues labelled `ready-for-agent`, sorts them by issue number (as
 
 - Issues are processed lowest-number-first.
 - If fewer than 10 % of agentic turns remain (`THEMIS_TURNS_REMAINING_FRACTION < 0.10`), the loop stops early and prints `insufficient turns remaining` to stderr. When `THEMIS_TURNS_REMAINING_FRACTION` is unset the loop runs unrestricted.
-- If an issue body contains `depends on #N` and issue `N` is still open, that issue is skipped for this run.
+- If an issue body contains `depends on #N` and issue `N` is still open, that issue is skipped for this run. If the dependency check itself fails (network error, API error), the issue is also skipped rather than aborting the loop.
 - A failure on one issue (non-zero exit from the pipeline) is logged to stderr and the loop continues with the next issue.
 - Before each issue the runner checks out `main` to avoid branch-state contamination between issues.
 
