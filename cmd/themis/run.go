@@ -219,7 +219,7 @@ func (q *GiteaQuerier) ListReadyIssues(ctx context.Context) ([]*tracker.IssueDat
 		}
 		if resp.StatusCode != http.StatusOK {
 			resp.Body.Close()
-			return nil, fmt.Errorf("Gitea API returned %d", resp.StatusCode)
+			return nil, fmt.Errorf("gitea API returned %d", resp.StatusCode)
 		}
 		var items []issueItem
 		decodeErr := json.NewDecoder(resp.Body).Decode(&items)
@@ -243,7 +243,7 @@ func (q *GiteaQuerier) IsOpen(ctx context.Context, number int) (bool, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return false, fmt.Errorf("Gitea API returned %d for issue #%d", resp.StatusCode, number)
+		return false, fmt.Errorf("gitea API returned %d for issue #%d", resp.StatusCode, number)
 	}
 	var issue struct {
 		State string `json:"state"`

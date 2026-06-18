@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"git.home.federation.fi/lavernea/themis/internal/pipeline"
-	"git.home.federation.fi/lavernea/themis/internal/runner"
 	"git.home.federation.fi/lavernea/themis/internal/tracker"
 )
 
@@ -445,19 +444,6 @@ func TestRunLoop_StateFileFromPreviousIssueExistsWhenNextStarts(t *testing.T) {
 // MaxTurns wiring: runArgs.maxTurns flows into runner.Config.MaxTurns (AC3)
 // ---------------------------------------------------------------------------
 
-// captureMaxTurnsIssueWriter records the runner.Config.MaxTurns seen when RunFn is called.
-// It satisfies runner.IssueWriter so it can be passed to newIssueConfig.
-type captureMaxTurnsIssueWriter struct {
-	maxTurnsSeen int
-}
-
-func (c *captureMaxTurnsIssueWriter) AddLabel(_ context.Context, _ int, _ string) error    { return nil }
-func (c *captureMaxTurnsIssueWriter) RemoveLabel(_ context.Context, _ int, _ string) error { return nil }
-func (c *captureMaxTurnsIssueWriter) Comment(_ context.Context, _ int, _ string) error     { return nil }
-func (c *captureMaxTurnsIssueWriter) CreatePR(_ context.Context, _ runner.PROptions) (string, error) {
-	return "https://example.com/pr/1", nil
-}
-
 // ---------------------------------------------------------------------------
 // Issue #43: resilience — runLoop skips on dependency check error
 // ---------------------------------------------------------------------------
@@ -521,10 +507,10 @@ func TestRunLoop_IsOpenError_SkipsIssueAndLogsDetails(t *testing.T) {
 
 	// AC1: log message must mention the skipped issue number and the dependency number
 	logStr := log.String()
-	if !bytes.Contains(log.Bytes(), []byte("#1")) && !bytes.Contains(log.Bytes(), []byte("1")) {
+	if !bytes.Contains(log.Bytes(), []byte("#1")) {
 		t.Errorf("log must mention skipped issue #1; got: %s", logStr)
 	}
-	if !bytes.Contains(log.Bytes(), []byte("#5")) && !bytes.Contains(log.Bytes(), []byte("5")) {
+	if !bytes.Contains(log.Bytes(), []byte("#5")) {
 		t.Errorf("log must mention dependency #5; got: %s", logStr)
 	}
 }
@@ -575,6 +561,45 @@ func TestRunLoop_DependencySkipRunsBeforeTurnBudgetCheck(t *testing.T) {
 	}
 }
 
+// AC3 (error branch): When IsOpen returns an error for a dependency, the dep-skip
+// fires before the turn-budget check, so RemainingFraction is never called.
+func TestRunLoop_IsOpenError_DepSkipRunsBeforeTurnBudgetCheck(t *testing.T) {
+	var log bytes.Buffer
+
+	issue1 := &tracker.IssueData{
+		Number: 1,
+		Title:  "Issue 1",
+		Body:   "depends on #5\n## AC\n- [ ] Something",
+		Labels: []string{"ready-for-agent"},
+	}
+
+	turns := &stubTurns{fractions: []float64{0.05}} // below 10% — would trigger early exit if checked
+
+	cfg := loopConfig{
+		Querier: &stubQuerier{
+			issues:    []*tracker.IssueData{issue1},
+			isOpenErr: fmt.Errorf("network timeout"),
+		},
+		RunFn:  func(_ context.Context, _ *tracker.IssueData) error { return nil },
+		Turns:  turns,
+		Logger: &log,
+	}
+
+	if err := runLoop(context.Background(), cfg); err != nil {
+		t.Fatalf("runLoop must not return error when IsOpen fails; got: %v", err)
+	}
+
+	// The dep-skip (error branch) must fire before the turn-budget check.
+	if turns.calls != 0 {
+		t.Errorf("RemainingFraction must not be called for an IsOpen-error dep-skip; got %d call(s)", turns.calls)
+	}
+
+	// The early-exit log must not appear — the budget was not consulted.
+	if bytes.Contains(log.Bytes(), []byte("insufficient turns remaining")) {
+		t.Errorf("turn-budget check fired before IsOpen-error dep-skip; log: %s", log.String())
+	}
+}
+
 // AC4: When ListReadyIssues returns an error, runLoop returns a non-nil error
 // containing the string "listing ready issues".
 func TestRunLoop_ListReadyIssuesError_ReturnsWrappedError(t *testing.T) {
@@ -618,7 +643,7 @@ func TestRunRun_MaxTurnsIsPassedFromRunArgsToRunnerConfig(t *testing.T) {
 	}
 
 	// newIssueConfig must accept maxTurns and write it into runner.Config.MaxTurns.
-	cfg, err := newIssueConfig(ctx, 1, dir, dir, &stubMainFetcher{}, &captureMaxTurnsIssueWriter{}, parsed.maxTurns)
+	cfg, err := newIssueConfig(ctx, 1, dir, dir, &stubMainFetcher{}, &stubMainIssueWriter{}, parsed.maxTurns)
 	if err != nil {
 		t.Fatalf("newIssueConfig: %v", err)
 	}

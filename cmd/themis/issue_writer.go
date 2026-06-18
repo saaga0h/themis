@@ -69,7 +69,10 @@ func (g *giteaIssueWriter) AddLabel(ctx context.Context, number int, label strin
 	if err != nil {
 		return err
 	}
-	body, _ := json.Marshal(map[string]interface{}{"labels": []int{labelID}})
+	body, err := json.Marshal(map[string]interface{}{"labels": []int{labelID}})
+	if err != nil {
+		return fmt.Errorf("marshaling add-label request: %w", err)
+	}
 	return g.do(ctx, "POST",
 		fmt.Sprintf("/repos/%s/%s/issues/%d/labels", g.owner, g.repo, number),
 		body, nil)
@@ -86,7 +89,10 @@ func (g *giteaIssueWriter) RemoveLabel(ctx context.Context, number int, label st
 }
 
 func (g *giteaIssueWriter) Comment(ctx context.Context, number int, body string) error {
-	payload, _ := json.Marshal(map[string]string{"body": body})
+	payload, err := json.Marshal(map[string]string{"body": body})
+	if err != nil {
+		return fmt.Errorf("marshaling comment request: %w", err)
+	}
 	return g.do(ctx, "POST",
 		fmt.Sprintf("/repos/%s/%s/issues/%d/comments", g.owner, g.repo, number),
 		payload, nil)
@@ -97,12 +103,15 @@ func (g *giteaIssueWriter) CreatePR(ctx context.Context, opts runner.PROptions) 
 	if base == "" {
 		base = "main"
 	}
-	payload, _ := json.Marshal(map[string]string{
+	payload, err := json.Marshal(map[string]string{
 		"title": opts.Title,
 		"body":  opts.Body,
 		"base":  base,
 		"head":  opts.Head,
 	})
+	if err != nil {
+		return "", fmt.Errorf("marshaling create-pr request: %w", err)
+	}
 	var result struct {
 		HTMLURL string `json:"html_url"`
 	}
@@ -130,7 +139,10 @@ func (g *giteaIssueWriter) findOrCreateLabel(ctx context.Context, name string) (
 		}
 	}
 	// Create the label.
-	payload, _ := json.Marshal(map[string]string{"name": name, "color": "#e11d48"})
+	payload, err := json.Marshal(map[string]string{"name": name, "color": "#e11d48"})
+	if err != nil {
+		return 0, fmt.Errorf("marshaling create-label request: %w", err)
+	}
 	var created struct {
 		ID int `json:"id"`
 	}
