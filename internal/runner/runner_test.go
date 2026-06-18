@@ -263,7 +263,7 @@ func initRepoWithRemote(t *testing.T) string {
 	t.Helper()
 
 	bareDir := t.TempDir()
-	gitInDir(t, bareDir, "init", "--bare")
+	gitInDir(t, bareDir, "init", "--bare", "--initial-branch=main")
 
 	// Clone bare repo into a subdirectory (git clone creates the directory)
 	parentDir := t.TempDir()
@@ -1058,4 +1058,22 @@ func TestInitLocalRepo_PortableUnderDefaultBranchMaster(t *testing.T) {
 	t.Setenv("GIT_CONFIG_KEY_0", "init.defaultBranch")
 	t.Setenv("GIT_CONFIG_VALUE_0", "master")
 	assertBranchIsMain(t, initLocalRepo(t))
+}
+
+func TestInitRepoWithRemote_DefaultBranchIsMain(t *testing.T) {
+	assertBranchIsMain(t, initRepoWithRemote(t))
+}
+
+func TestInitRepoWithRemote_PortableUnderDefaultBranchMain(t *testing.T) {
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "init.defaultBranch")
+	t.Setenv("GIT_CONFIG_VALUE_0", "main")
+	assertBranchIsMain(t, initRepoWithRemote(t))
+}
+
+func TestInitRepoWithRemote_PortableUnderDefaultBranchMaster(t *testing.T) {
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "init.defaultBranch")
+	t.Setenv("GIT_CONFIG_VALUE_0", "master")
+	assertBranchIsMain(t, initRepoWithRemote(t))
 }
