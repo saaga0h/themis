@@ -125,21 +125,22 @@ func runLoop(ctx context.Context, cfg loopConfig) error {
 	})
 
 	for _, issue := range issues {
-		if cfg.Turns.RemainingFraction() < 0.10 {
-			fmt.Fprintf(out, "insufficient turns remaining\n")
-			return nil
-		}
-
 		if m := dependsOnRE.FindStringSubmatch(issue.Body); m != nil {
 			depNum, _ := strconv.Atoi(m[1])
 			open, err := cfg.Querier.IsOpen(ctx, depNum)
 			if err != nil {
-				return fmt.Errorf("checking dependency #%d for issue #%d: %w", depNum, issue.Number, err)
+				fmt.Fprintf(out, "skipping issue #%d: dependency check error for #%d: %v\n", issue.Number, depNum, err)
+				continue
 			}
 			if open {
 				fmt.Fprintf(out, "skipping issue #%d: depends on open issue #%d\n", issue.Number, depNum)
 				continue
 			}
+		}
+
+		if cfg.Turns.RemainingFraction() < 0.10 {
+			fmt.Fprintf(out, "insufficient turns remaining\n")
+			return nil
 		}
 
 		if cfg.DryRun {
