@@ -118,6 +118,18 @@ wired together in `cmd/`.
 - Every new error path must have a test that triggers it. If a function returns an
   error under a specific condition, a test must exercise that condition and verify
   the error
+- **Test file naming**: test files are named after the code they test
+  (`runner_test.go`, `pipeline_test.go`), not after the issue that created them.
+  **Never create `<package>_issue<N>_test.go` files.** When an issue adds tests,
+  they go into the existing test file for that package, alongside related tests.
+  If a package's test file grows large enough to warrant splitting, split by
+  behaviour area (`runner_review_test.go`, `runner_ship_test.go`), not by issue
+  number. This is a **blocking review finding** — per-issue test files are rejected.
+- **Test helpers are shared, not duplicated.** A package has one set of stub types
+  and helper functions used across all its tests. Do not create per-issue copies
+  of the same stub (`issue22StubFetcher`, `issue48StubFetcher`). If an existing
+  stub doesn't support a new test's needs, extend the existing stub — do not
+  clone it with a different prefix.
 
 ### Configuration and hardcoded values
 - **No hardcoded hostnames, URLs, ports, or infrastructure-specific values in source
@@ -187,7 +199,9 @@ docs(<scope>):     update documentation                   (if docs changed)
 | `{{ISSUE_BODY}}` | Issue body markdown | All templates |
 | `{{ACCEPTANCE_CRITERIA}}` | Parsed AC checkboxes | Agent-step templates |
 | `{{AC_STATUS}}` | Same as ACCEPTANCE_CRITERIA | `ship.md` only |
-| `{{REVIEW_OUTPUT}}` | Last Review step stdout | `fix-findings.md` |
+| `{{REVIEW_OUTPUT}}` | Last Review step stdout | `ship.md` |
+| `{{BLOCKING_FINDINGS}}` | Blocking findings from `.themis/review-results.json`, formatted as severity-ordered human-readable list (critical → high → medium, low omitted) | `fix-findings.md` |
+| `{{REVIEW_CYCLE}}` | Current review cycle number (1-indexed) | `fix-findings.md` |
 | `{{PIPELINE_SHAPE}}` | Distinct commit prefixes | `ship.md` |
 | `{{COMMIT_LOG}}` | Branch commit log | `ship.md` |
 | `{{CHANGED_FILES}}` | Files changed on branch | Templates that use it |
@@ -244,6 +258,8 @@ or through the `runner.Config` struct — not through a direct import.
 - Any unthreaded context (I/O function without `context.Context` parameter)
 - Any credentials in source code
 - Any cross-internal dependency not listed in the dependency direction section above
+- Any per-issue test file (`<package>_issue<N>_test.go`)
+- Any duplicated test stub that clones an existing stub with a different prefix
 
 Contract violations are always blocking — never downgrade one for convenience.
 
@@ -280,3 +296,5 @@ The reviewer must verify all of the following before approving:
 - [ ] No new cross-internal dependencies beyond those listed in the dependency direction section
 - [ ] Pipeline step templates use only documented `{{KEY}}` placeholders
 - [ ] PR review notes document all non-blocking findings — sparse notes on a non-trivial diff are suspect
+- [ ] Test files are named by behaviour, not by issue number — no `_issue<N>_test.go` files
+- [ ] Test stubs are shared — no per-issue copies of the same stub type
