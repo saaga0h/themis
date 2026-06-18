@@ -319,76 +319,12 @@ func TestRunner_LogsCheckpointFailureWithSpecificErrorMessage(t *testing.T) {
 }
 
 // AC6: review findings are summarized: "N blocking, M non-blocking".
-
-func TestRunner_LogsReviewFindingsSummaryWithCounts(t *testing.T) {
-	var buf bytes.Buffer
-
-	// 1 BLOCKING + 2 NON-BLOCKING lines in the review output.
-	const reviewOutput = "BLOCKING: missing test for Ship step (runner.go:158)\n" +
-		"NON-BLOCKING: variable name could be more descriptive (runner.go:243)\n" +
-		"NON-BLOCKING: consider extracting helper function (runner.go:300)"
-
-	// Happy-path fresh run; Review is index 3 in the agent call sequence.
-	inv := &recordingInvoker{
-		results: fullRunResults(map[int]*agent.InvokeResult{
-			3: {ExitCode: 0, Completed: true, Stdout: reviewOutput}, // Review: 1 blocking
-		}),
-	}
-	w := &stubIssueWriter{prURL: "https://example.com/pr/28-ac6-counts"}
-	cfg := runner.Config{
-		WorkDir:      t.TempDir(),
-		IssueNumber:  42,
-		Fetcher:      &stubFetcher{issue: sampleIssue()},
-		Invoker:      inv,
-		IssueWriter:  w,
-		TemplateDir:  minimalTemplates(t),
-		CheckpointFn: noopCheckpoint,
-		Logger:       &buf,
-	}
-
-	if _, err := runner.Run(context.Background(), cfg); err != nil {
-		t.Fatalf("Run error: %v", err)
-	}
-
-	output := buf.String()
-	if !strings.Contains(output, "1 blocking") {
-		t.Errorf("expected '1 blocking' in review findings summary; got:\n%s", output)
-	}
-	if !strings.Contains(output, "2 non-blocking") {
-		t.Errorf("expected '2 non-blocking' in review findings summary; got:\n%s", output)
-	}
-}
-
-func TestRunner_LogsReviewFindingsSummaryWhenNoFindings(t *testing.T) {
-	var buf bytes.Buffer
-
-	// Clean review: no BLOCKING or NON-BLOCKING prefix lines.
-	inv := &recordingInvoker{
-		results: fullRunResults(map[int]*agent.InvokeResult{
-			3: {ExitCode: 0, Completed: true, Stdout: "No blocking findings. All ACs verified."},
-		}),
-	}
-	w := &stubIssueWriter{prURL: "https://example.com/pr/28-ac6-clean"}
-	cfg := runner.Config{
-		WorkDir:      t.TempDir(),
-		IssueNumber:  42,
-		Fetcher:      &stubFetcher{issue: sampleIssue()},
-		Invoker:      inv,
-		IssueWriter:  w,
-		TemplateDir:  minimalTemplates(t),
-		CheckpointFn: noopCheckpoint,
-		Logger:       &buf,
-	}
-
-	if _, err := runner.Run(context.Background(), cfg); err != nil {
-		t.Fatalf("Run error: %v", err)
-	}
-
-	output := buf.String()
-	if !strings.Contains(output, "0 blocking") {
-		t.Errorf("expected '0 blocking' in review summary when no findings; got:\n%s", output)
-	}
-}
+//
+// The stdout-based variants of this test (TestRunner_LogsReviewFindingsSummaryWithCounts
+// and ...WhenNoFindings) were removed for issue #48: review verdicts now come from
+// .themis/review-results.json, not stdout. The JSON-based replacements live in
+// runner_issue48_test.go (TestRunner_LogsReviewFindingsSummaryWithCounts_WithJSONFixture
+// and ...WhenNoFindings_WithJSONFixture).
 
 // AC7: ship step logs the PR URL.
 
