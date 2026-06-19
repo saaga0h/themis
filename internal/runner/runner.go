@@ -108,6 +108,7 @@ type GitOps interface {
 	BranchCommitLog(ctx context.Context, dir string) string
 	CommitsAheadOfBase(ctx context.Context, dir, base string) (int, error)
 	ChangedFiles(ctx context.Context, dir string) string
+	CommitSHAs(ctx context.Context, dir string) ([]string, error)
 }
 
 // IssueWriter handles issue tracker write operations.
@@ -348,14 +349,18 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 				} else {
 					model := modelForStep(step, prof)
 					fmt.Fprintf(log, "%s: invoking agent model=%s maxTurns=%d\n", step, model, cfg.MaxTurns)
-					invokeResult, invokeErr := cfg.Invoker.Invoke(ctx, agent.InvokeOptions{
+					shipOpts := agent.InvokeOptions{
 						Prompt:       substituted,
 						Model:        model,
 						MaxTurns:     cfg.MaxTurns,
 						WorkDir:      cfg.WorkDir,
 						IssueNumber:  cfg.IssueNumber,
 						PipelineStep: pipeline.StepShip.String(),
-					})
+					}
+					if cfg.Git != nil {
+						shipOpts.CommitCountFn = cfg.Git.CommitSHAs
+					}
+					invokeResult, invokeErr := cfg.Invoker.Invoke(ctx, shipOpts)
 					if invokeErr != nil {
 						fmt.Fprintf(log, "warning: ship agent invocation failed: %v; falling back to buildPRBody\n", invokeErr)
 					} else if invokeResult.Stdout != "" {
@@ -420,14 +425,18 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		model := modelForStep(step, prof)
 		fmt.Fprintf(log, "%s: invoking agent model=%s maxTurns=%d\n", step, model, cfg.MaxTurns)
 
-		invokeResult, err := cfg.Invoker.Invoke(ctx, agent.InvokeOptions{
+		opts := agent.InvokeOptions{
 			Prompt:       substituted,
 			Model:        model,
 			MaxTurns:     cfg.MaxTurns,
 			WorkDir:      cfg.WorkDir,
 			IssueNumber:  cfg.IssueNumber,
 			PipelineStep: step.String(),
-		})
+		}
+		if cfg.Git != nil {
+			opts.CommitCountFn = cfg.Git.CommitSHAs
+		}
+		invokeResult, err := cfg.Invoker.Invoke(ctx, opts)
 		if err != nil {
 			return nil, fmt.Errorf("agent invocation at step %v: %w", step, err)
 		}

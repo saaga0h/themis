@@ -45,6 +45,10 @@ func (g *cmdGitOps) ChangedFiles(ctx context.Context, dir string) string {
 	return git.ChangedFiles(ctx, dir)
 }
 
+func (g *cmdGitOps) CommitSHAs(ctx context.Context, dir string) ([]string, error) {
+	return git.CommitsBefore(ctx, dir)
+}
+
 // profileLoader wraps profile.Load with the signature expected by runner.Config.ProfileLoader.
 func profileLoader(dir string) (runner.ProfileData, error) {
 	p, err := profile.Load(dir)

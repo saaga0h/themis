@@ -39,6 +39,7 @@ import (
 //   - updated Config literals that previously set GitBranchFn/GitPushFn
 type fakeGitOps struct {
 	currentBranchFn func(ctx context.Context, dir string) (string, error)
+	commitSHAsFn    func(ctx context.Context, dir string) ([]string, error)
 	checkedOut      []string
 	pushed          []string
 	commitLog       string
@@ -78,6 +79,13 @@ func (f *fakeGitOps) CommitsAheadOfBase(ctx context.Context, dir, base string) (
 
 func (f *fakeGitOps) ChangedFiles(_ context.Context, _ string) string {
 	return f.changedFiles
+}
+
+func (f *fakeGitOps) CommitSHAs(ctx context.Context, dir string) ([]string, error) {
+	if f.commitSHAsFn != nil {
+		return f.commitSHAsFn(ctx, dir)
+	}
+	return nil, nil
 }
 
 // Compile-time assertion: fakeGitOps must implement GitOps.
@@ -690,6 +698,58 @@ func TestRunner_PipelineShapeFromCommitPrefixes(t *testing.T) {
 	}
 	if !strings.Contains(docsPrompt, "feat") {
 		t.Errorf("PIPELINE_SHAPE must include 'feat' prefix from branch commits\ngot prompt: %s", docsPrompt)
+	}
+}
+
+// CommitCountFn must be wired from GitOps.CommitSHAs so the agent layer can
+// snapshot commits before/after an invocation and populate InvokeResult.CommitsMade.
+// Before this fix the runner never set CommitCountFn, leaving CommitsMade empty
+// and causing the pipeline to loop on TestRed.
+func TestRunner_SetsCommitCountFnWhenGitIsConfigured(t *testing.T) {
+	workDir := t.TempDir()
+	saveStateAt(t, workDir, pipeline.StepDocs)
+
+	tDir := makeTemplateDir(t, map[string]string{
+		"update-docs.md": "Docs {{ISSUE_NUMBER}}",
+	})
+
+	inv := &recordingInvoker{}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/example"}
+
+	var sentinelCalled bool
+	cfg := Config{
+		WorkDir:      workDir,
+		IssueNumber:  42,
+		Fetcher:      &stubFetcher{issue: sampleIssue()},
+		Invoker:      inv,
+		IssueWriter:  w,
+		TemplateDir:  tDir,
+		CheckpointFn: noopCheckpoint,
+		Git: &fakeGitOps{
+			commitsAhead: 1,
+			commitSHAsFn: func(_ context.Context, _ string) ([]string, error) {
+				sentinelCalled = true
+				return nil, nil
+			},
+		},
+	}
+
+	if _, err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run() error: %v", err)
+	}
+
+	if len(inv.opts) == 0 {
+		t.Fatal("expected Docs step to invoke agent; got 0 calls")
+	}
+	if inv.opts[0].CommitCountFn == nil {
+		t.Fatal("CommitCountFn must be non-nil when cfg.Git is set")
+	}
+	// The wired function must be GitOps.CommitSHAs, not some unrelated closure.
+	if _, err := inv.opts[0].CommitCountFn(context.Background(), workDir); err != nil {
+		t.Fatalf("wired CommitCountFn returned error: %v", err)
+	}
+	if !sentinelCalled {
+		t.Error("CommitCountFn must delegate to GitOps.CommitSHAs")
 	}
 }
 
