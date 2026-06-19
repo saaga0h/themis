@@ -1,3 +1,8 @@
+---
+name: pr-composition
+description: Compose a PR description that surfaces what the implementation and review found — status line, implementation narrative, pipeline shape, review findings, follow-ups. Used by the ship step of the factory pipeline.
+---
+
 # PR Composition
 
 A skill for composing pull request descriptions that surface what the implementation and review found. The PR gives the reviewer enough information to make an informed merge decision without reading every line of code first.

@@ -112,7 +112,6 @@ func commitSetDiff(before, after []string) []string {
 func (c *ClaudeCodeInvoker) buildArgs(opts InvokeOptions) []string {
 	args := []string{
 		"--print",
-		"--verbose",
 		"--dangerously-skip-permissions",
 		"--max-turns", strconv.Itoa(opts.MaxTurns),
 		"--model", opts.Model,
