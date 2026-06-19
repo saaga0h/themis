@@ -90,7 +90,7 @@ func formatBlockingFindings(findings []ReviewFinding) string {
 	return sb.String()
 }
 
-// ProfileData holds the subset of profile settings the runner needs.
+// ProfileData holds the subset of profile fields the runner needs.
 // Concrete values are injected via Config.ProfileLoader; cmd/themis/ translates
 // profile.Profile into this struct so the runner does not import internal/profile.
 type ProfileData struct {
@@ -197,7 +197,9 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 	}
 	if state == nil {
 		fmt.Fprintf(log, "fresh start\n")
-		_ = os.Remove(filepath.Join(cfg.WorkDir, ".themis", "review-results.json"))
+		if rmErr := os.Remove(filepath.Join(cfg.WorkDir, ".themis", "review-results.json")); rmErr != nil && !os.IsNotExist(rmErr) {
+			fmt.Fprintf(log, "warning: removing review-results.json: %v\n", rmErr)
+		}
 		state = &pipeline.PipelineState{
 			IssueNumber:     cfg.IssueNumber,
 			CurrentStep:     pipeline.StepFetch,
@@ -284,11 +286,12 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			// non-blocking unless the review agent itself writes blocking findings.
 			// This only runs on fresh pipeline starts (resumed runs skip Branch).
 			themisDir := filepath.Join(cfg.WorkDir, ".themis")
-			if mkErr := os.MkdirAll(themisDir, 0o755); mkErr == nil {
-				if wfErr := os.WriteFile(filepath.Join(themisDir, "review-results.json"),
-					[]byte(`{"findings":[]}`), 0o644); wfErr != nil {
-					return nil, fmt.Errorf("seeding review-results.json: %w", wfErr)
-				}
+			if mkErr := os.MkdirAll(themisDir, 0o755); mkErr != nil {
+				return nil, fmt.Errorf("creating .themis directory: %w", mkErr)
+			}
+			if wfErr := os.WriteFile(filepath.Join(themisDir, "review-results.json"),
+				[]byte(`{"findings":[]}`), 0o644); wfErr != nil {
+				return nil, fmt.Errorf("seeding review-results.json: %w", wfErr)
 			}
 			next, err := state.Advance(pipeline.StepResult{Success: true})
 			if err != nil {
@@ -333,10 +336,16 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			prBody := buildPRBody(cfg.IssueNumber, issue.Title, acs)
 
 			shipTmplPath := filepath.Join(cfg.TemplateDir, "ship.md")
-			if shipTmplContent, readErr := os.ReadFile(shipTmplPath); readErr == nil {
+			shipTmplContent, readErr := os.ReadFile(shipTmplPath)
+			if readErr != nil {
+				fmt.Fprintf(log, "warning: ship template read failed: %v — using fallback PR body\n", readErr)
+			} else {
 				shipArgs := buildTemplateArgs(ctx, cfg, issue, branch, state.ReviewCycle, codingStandards, ubiquitousLanguage, lastBlockingFindings, reviewOutput)
 				filteredArgs := filterArgs(string(shipTmplContent), shipArgs)
-				if substituted, subErr := prompt.Substitute(string(shipTmplContent), filteredArgs); subErr == nil {
+				substituted, subErr := prompt.Substitute(string(shipTmplContent), filteredArgs)
+				if subErr != nil {
+					fmt.Fprintf(log, "warning: ship template substitution failed: %v — using fallback PR body\n", subErr)
+				} else {
 					model := modelForStep(step, prof)
 					fmt.Fprintf(log, "%s: invoking agent model=%s maxTurns=%d\n", step, model, cfg.MaxTurns)
 					invokeResult, invokeErr := cfg.Invoker.Invoke(ctx, agent.InvokeOptions{
@@ -368,7 +377,9 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			if err := pipeline.SaveState(cfg.WorkDir, state); err != nil {
 				return nil, fmt.Errorf("saving final state: %w", err)
 			}
-			_ = os.Remove(filepath.Join(cfg.WorkDir, ".themis", "review-results.json"))
+			if rmErr := os.Remove(filepath.Join(cfg.WorkDir, ".themis", "review-results.json")); rmErr != nil && !os.IsNotExist(rmErr) {
+				fmt.Fprintf(log, "warning: removing review-results.json: %v\n", rmErr)
+			}
 			fmt.Fprintf(log, "%s: done (%dms)\n", step, time.Since(stepStart).Milliseconds())
 			return &Result{PRURL: prURL}, nil
 		}
