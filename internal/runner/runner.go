@@ -13,9 +13,7 @@ import (
 	"time"
 
 	"github.com/saaga0h/themis/internal/agent"
-	"github.com/saaga0h/themis/internal/git"
 	"github.com/saaga0h/themis/internal/pipeline"
-	"github.com/saaga0h/themis/internal/profile"
 	"github.com/saaga0h/themis/internal/prompt"
 	"github.com/saaga0h/themis/internal/tracker"
 )
@@ -39,7 +37,7 @@ type ReviewResults struct {
 	Findings []ReviewFinding `json:"findings"`
 }
 
-func readReviewResults(workDir string) ([]ReviewFinding, bool) {
+func readReviewResults(ctx context.Context, workDir string) ([]ReviewFinding, bool) {
 	path := filepath.Join(workDir, ".themis", "review-results.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -92,6 +90,26 @@ func formatBlockingFindings(findings []ReviewFinding) string {
 	return sb.String()
 }
 
+// ProfileData holds the subset of profile fields the runner needs.
+// Concrete values are injected via Config.ProfileLoader; cmd/themis/ translates
+// profile.Profile into this struct so the runner does not import internal/profile.
+type ProfileData struct {
+	ImplementModel string
+	ReviewModel    string
+}
+
+// GitOps groups the git operations that the runner requires. Concrete
+// implementations live in cmd/themis/; tests substitute fakes.
+type GitOps interface {
+	CheckoutNewBranch(ctx context.Context, dir, name string) error
+	Checkout(ctx context.Context, dir, name string) error
+	PushBranch(ctx context.Context, dir, branch string) error
+	CurrentBranch(ctx context.Context, dir string) (string, error)
+	BranchCommitLog(ctx context.Context, dir string) string
+	CommitsAheadOfBase(ctx context.Context, dir, base string) (int, error)
+	ChangedFiles(ctx context.Context, dir string) string
+}
+
 // IssueWriter handles issue tracker write operations.
 type IssueWriter interface {
 	AddLabel(ctx context.Context, number int, label string) error
@@ -110,19 +128,19 @@ type PROptions struct {
 
 // Config holds all dependencies for a pipeline run.
 type Config struct {
-	WorkDir      string
-	IssueNumber  int
-	Fetcher      tracker.Fetcher
-	Invoker      agent.Invoker
-	IssueWriter  IssueWriter
-	TemplateDir  string
-	CheckpointFn func(ctx context.Context, step pipeline.Step, workDir string) error
-	TestACKey    string
-	GitBranchFn  func(ctx context.Context, workDir, branch string) error
-	GitPushFn    func(ctx context.Context, workDir, branch string) error
-	Logger       io.Writer
-	CodeVersion  string
-	MaxTurns     int
+	WorkDir       string
+	IssueNumber   int
+	Fetcher       tracker.Fetcher
+	Invoker       agent.Invoker
+	IssueWriter   IssueWriter
+	TemplateDir   string
+	CheckpointFn  func(ctx context.Context, step pipeline.Step, workDir string) error
+	TestACKey     string
+	Git           GitOps
+	ProfileLoader func(dir string) (ProfileData, error)
+	Logger        io.Writer
+	CodeVersion   string
+	MaxTurns      int
 }
 
 // Result holds the outcome of a successful pipeline run.
@@ -167,8 +185,8 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			if cfg.CodeVersion != "" && state.CodeVersion != "" && state.CodeVersion != cfg.CodeVersion {
 				fmt.Fprintf(log, "warning: state was created by version %s, current version is %s\n", state.CodeVersion, cfg.CodeVersion)
 			}
-			if state.CurrentStep > pipeline.StepBranch {
-				if branch, brErr := git.CurrentBranch(ctx, cfg.WorkDir); brErr == nil {
+			if state.CurrentStep > pipeline.StepBranch && cfg.Git != nil {
+				if branch, brErr := cfg.Git.CurrentBranch(ctx, cfg.WorkDir); brErr == nil {
 					if !strings.Contains(branch, strconv.Itoa(cfg.IssueNumber)) {
 						fmt.Fprintf(log, "warning: current branch %q does not contain issue number %d\n", branch, cfg.IssueNumber)
 					}
@@ -179,7 +197,9 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 	}
 	if state == nil {
 		fmt.Fprintf(log, "fresh start\n")
-		_ = os.Remove(filepath.Join(cfg.WorkDir, ".themis", "review-results.json"))
+		if rmErr := os.Remove(filepath.Join(cfg.WorkDir, ".themis", "review-results.json")); rmErr != nil && !os.IsNotExist(rmErr) {
+			fmt.Fprintf(log, "warning: removing review-results.json: %v\n", rmErr)
+		}
 		state = &pipeline.PipelineState{
 			IssueNumber:     cfg.IssueNumber,
 			CurrentStep:     pipeline.StepFetch,
@@ -197,13 +217,23 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		return nil, fmt.Errorf("fetching issue #%d: %w", cfg.IssueNumber, err)
 	}
 
-	prof, err := profile.Load(cfg.WorkDir)
-	if err != nil {
-		return nil, fmt.Errorf("loading profile: %w", err)
+	var prof ProfileData
+	if cfg.ProfileLoader != nil {
+		var err error
+		prof, err = cfg.ProfileLoader(cfg.WorkDir)
+		if err != nil {
+			return nil, fmt.Errorf("loading profile: %w", err)
+		}
+	}
+	if prof.ImplementModel == "" {
+		prof.ImplementModel = "sonnet"
+	}
+	if prof.ReviewModel == "" {
+		prof.ReviewModel = "sonnet"
 	}
 
-	codingStandards := readFileOrEmpty(filepath.Join(cfg.WorkDir, "CODING_STANDARDS.md"))
-	ubiquitousLanguage := readFileOrEmpty(filepath.Join(cfg.WorkDir, "UBIQUITOUS_LANGUAGE.md"))
+	codingStandards := readFileOrEmpty(ctx, filepath.Join(cfg.WorkDir, "CODING_STANDARDS.md"))
+	ubiquitousLanguage := readFileOrEmpty(ctx, filepath.Join(cfg.WorkDir, "UBIQUITOUS_LANGUAGE.md"))
 
 	var lastBlockingFindings string
 	var reviewOutput string
@@ -213,11 +243,8 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		stepStart := time.Now()
 		fmt.Fprintf(log, "%s: start\n", step)
 
-		// Fetch step: git fetch origin.
+		// Fetch step: auto-advance (fetch is a best-effort pre-run sync handled by the caller).
 		if step == pipeline.StepFetch {
-			if err := git.Fetch(ctx, cfg.WorkDir); err != nil {
-				fmt.Fprintf(log, "warning: git fetch failed: %v\n", err)
-			}
 			next, err := state.Advance(pipeline.StepResult{Success: true})
 			if err != nil {
 				return nil, fmt.Errorf("advancing step %v: %w", step, err)
@@ -247,18 +274,24 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		// Branch step: create issue branch, or checkout if it already exists.
 		if step == pipeline.StepBranch {
 			branchName := fmt.Sprintf("issue/%d-%s", cfg.IssueNumber, slugify(issue.Title))
-			if cfg.GitBranchFn != nil {
-				if err := cfg.GitBranchFn(ctx, cfg.WorkDir, branchName); err != nil {
-					return nil, fmt.Errorf("branch %s: %w", branchName, err)
+			if cfg.Git != nil {
+				if err := cfg.Git.CheckoutNewBranch(ctx, cfg.WorkDir, branchName); err != nil {
+					if checkoutErr := cfg.Git.Checkout(ctx, cfg.WorkDir, branchName); checkoutErr != nil {
+						return nil, fmt.Errorf("branch %s: create failed (%v), checkout failed (%v)", branchName, err, checkoutErr)
+					}
+					fmt.Fprintf(log, "note: branch %s already exists, checked out existing\n", branchName)
 				}
 			}
 			// Seed review-results.json with empty findings so that Review is
 			// non-blocking unless the review agent itself writes blocking findings.
 			// This only runs on fresh pipeline starts (resumed runs skip Branch).
 			themisDir := filepath.Join(cfg.WorkDir, ".themis")
-			if mkErr := os.MkdirAll(themisDir, 0o755); mkErr == nil {
-				_ = os.WriteFile(filepath.Join(themisDir, "review-results.json"),
-					[]byte(`{"findings":[]}`), 0o644)
+			if mkErr := os.MkdirAll(themisDir, 0o755); mkErr != nil {
+				return nil, fmt.Errorf("creating .themis directory: %w", mkErr)
+			}
+			if wfErr := os.WriteFile(filepath.Join(themisDir, "review-results.json"),
+				[]byte(`{"findings":[]}`), 0o644); wfErr != nil {
+				return nil, fmt.Errorf("seeding review-results.json: %w", wfErr)
 			}
 			next, err := state.Advance(pipeline.StepResult{Success: true})
 			if err != nil {
@@ -274,9 +307,13 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 
 		// Ship step: push branch, invoke agent for PR body, create PR.
 		if step == pipeline.StepShip {
-			branch, branchErr := git.CurrentBranch(ctx, cfg.WorkDir)
-			if branchErr != nil {
-				branch = "main"
+			var branch string
+			var branchErr error
+			if cfg.Git != nil {
+				branch, branchErr = cfg.Git.CurrentBranch(ctx, cfg.WorkDir)
+				if branchErr != nil {
+					branch = "main"
+				}
 			}
 			acs := tracker.ParseCheckboxes(issue.Body)
 			base := issue.Ref
@@ -284,17 +321,14 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 				base = "main"
 			}
 
-			if branchErr == nil {
-				if branch == base {
+			if cfg.Git != nil {
+				if branchErr == nil && branch == base {
 					return nil, fmt.Errorf("current branch is the base branch — no issue branch was created")
 				}
-				if n, countErr := git.CommitsAheadOfBase(ctx, cfg.WorkDir, base); countErr == nil && n == 0 {
+				if n, countErr := cfg.Git.CommitsAheadOfBase(ctx, cfg.WorkDir, base); countErr == nil && n == 0 {
 					return nil, fmt.Errorf("no commits on branch %s — nothing to ship", branch)
 				}
-			}
-
-			if cfg.GitPushFn != nil {
-				if err := cfg.GitPushFn(ctx, cfg.WorkDir, branch); err != nil {
+				if err := cfg.Git.PushBranch(ctx, cfg.WorkDir, branch); err != nil {
 					return nil, fmt.Errorf("pushing branch %s: %w", branch, err)
 				}
 			}
@@ -302,10 +336,16 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			prBody := buildPRBody(cfg.IssueNumber, issue.Title, acs)
 
 			shipTmplPath := filepath.Join(cfg.TemplateDir, "ship.md")
-			if shipTmplContent, readErr := os.ReadFile(shipTmplPath); readErr == nil {
+			shipTmplContent, readErr := os.ReadFile(shipTmplPath)
+			if readErr != nil {
+				fmt.Fprintf(log, "warning: ship template read failed: %v — using fallback PR body\n", readErr)
+			} else {
 				shipArgs := buildTemplateArgs(ctx, cfg, issue, branch, state.ReviewCycle, codingStandards, ubiquitousLanguage, lastBlockingFindings, reviewOutput)
 				filteredArgs := filterArgs(string(shipTmplContent), shipArgs)
-				if substituted, subErr := prompt.Substitute(string(shipTmplContent), filteredArgs); subErr == nil {
+				substituted, subErr := prompt.Substitute(string(shipTmplContent), filteredArgs)
+				if subErr != nil {
+					fmt.Fprintf(log, "warning: ship template substitution failed: %v — using fallback PR body\n", subErr)
+				} else {
 					model := modelForStep(step, prof)
 					fmt.Fprintf(log, "%s: invoking agent model=%s maxTurns=%d\n", step, model, cfg.MaxTurns)
 					invokeResult, invokeErr := cfg.Invoker.Invoke(ctx, agent.InvokeOptions{
@@ -337,7 +377,9 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			if err := pipeline.SaveState(cfg.WorkDir, state); err != nil {
 				return nil, fmt.Errorf("saving final state: %w", err)
 			}
-			_ = os.Remove(filepath.Join(cfg.WorkDir, ".themis", "review-results.json"))
+			if rmErr := os.Remove(filepath.Join(cfg.WorkDir, ".themis", "review-results.json")); rmErr != nil && !os.IsNotExist(rmErr) {
+				fmt.Fprintf(log, "warning: removing review-results.json: %v\n", rmErr)
+			}
 			fmt.Fprintf(log, "%s: done (%dms)\n", step, time.Since(stepStart).Milliseconds())
 			return &Result{PRURL: prURL}, nil
 		}
@@ -359,9 +401,11 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			return nil, fmt.Errorf("reading template %s: %w", tmplPath, err)
 		}
 
-		branchName, err := git.CurrentBranch(ctx, cfg.WorkDir)
-		if err != nil {
-			branchName = "main"
+		branchName := "main"
+		if cfg.Git != nil {
+			if b, brErr := cfg.Git.CurrentBranch(ctx, cfg.WorkDir); brErr == nil {
+				branchName = b
+			}
 		}
 
 		allArgs := buildTemplateArgs(ctx, cfg, issue, branchName, state.ReviewCycle, codingStandards, ubiquitousLanguage, lastBlockingFindings, reviewOutput)
@@ -402,10 +446,10 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			fmt.Fprintf(log, "%s: checkpoint pass\n", step)
 		}
 
-		stepResult := deriveStepResult(step, invokeResult, cfg)
+		stepResult := deriveStepResult(ctx, step, invokeResult, cfg)
 		if step == pipeline.StepReview {
 			reviewOutput = invokeResult.Stdout
-			findings, found := readReviewResults(cfg.WorkDir)
+			findings, found := readReviewResults(ctx, cfg.WorkDir)
 			if !found {
 				fmt.Fprintf(log, "warning: review-results.json not found after review step — treating as blocking\n")
 			} else {
@@ -457,7 +501,7 @@ func blockIssue(ctx context.Context, cfg Config, reason error) error {
 	return nil
 }
 
-func deriveStepResult(step pipeline.Step, r *agent.InvokeResult, cfg Config) pipeline.StepResult {
+func deriveStepResult(ctx context.Context, step pipeline.Step, r *agent.InvokeResult, cfg Config) pipeline.StepResult {
 	switch step {
 	case pipeline.StepTestRed:
 		key := cfg.TestACKey
@@ -470,7 +514,7 @@ func deriveStepResult(step pipeline.Step, r *agent.InvokeResult, cfg Config) pip
 		return pipeline.StepResult{Success: false, TestACKey: key}
 
 	case pipeline.StepReview:
-		findings, found := readReviewResults(cfg.WorkDir)
+		findings, found := readReviewResults(ctx, cfg.WorkDir)
 		if !found {
 			// Missing JSON is the fail-safe: the review step produced no
 			// structured result, so treat it as blocking regardless of stdout.
@@ -520,12 +564,12 @@ func filterArgs(tmpl string, all map[string]string) map[string]string {
 	return out
 }
 
-func modelForStep(step pipeline.Step, prof *profile.Profile) string {
+func modelForStep(step pipeline.Step, prof ProfileData) string {
 	switch step {
 	case pipeline.StepReview:
-		return prof.Review.Agents.Security
+		return prof.ReviewModel
 	default:
-		return prof.Implement.Model
+		return prof.ImplementModel
 	}
 }
 
@@ -551,7 +595,12 @@ func buildTemplateArgs(
 ) map[string]string {
 	acs := tracker.ParseCheckboxes(issue.Body)
 	acList := formatACs(acs)
-	commitLog := git.BranchCommitLog(ctx, cfg.WorkDir)
+	var commitLog string
+	var changedFilesResult string
+	if cfg.Git != nil {
+		commitLog = cfg.Git.BranchCommitLog(ctx, cfg.WorkDir)
+		changedFilesResult = cfg.Git.ChangedFiles(ctx, cfg.WorkDir)
+	}
 	return map[string]string{
 		"ISSUE_NUMBER":        strconv.Itoa(cfg.IssueNumber),
 		"ISSUE_TITLE":         issue.Title,
@@ -560,7 +609,7 @@ func buildTemplateArgs(
 		"CODING_STANDARDS":    codingStandards,
 		"UBIQUITOUS_LANGUAGE": ubiquitousLanguage,
 		"BRANCH_NAME":         branchName,
-		"CHANGED_FILES":       git.ChangedFiles(ctx, cfg.WorkDir),
+		"CHANGED_FILES":       changedFilesResult,
 		"REVIEW_CYCLE":        strconv.Itoa(reviewCycle + 1),
 		"BLOCKING_FINDINGS":   lastBlockingFindings,
 		"REVIEW_OUTPUT":       reviewOutput,
@@ -580,7 +629,7 @@ func formatACs(acs []string) string {
 	return strings.TrimRight(sb.String(), "\n")
 }
 
-func readFileOrEmpty(path string) string {
+func readFileOrEmpty(ctx context.Context, path string) string {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return ""

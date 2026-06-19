@@ -8,8 +8,6 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
-
-	"github.com/saaga0h/themis/internal/git"
 )
 
 // InvokeResult holds the structured output of an agent invocation.
@@ -23,13 +21,14 @@ type InvokeResult struct {
 
 // InvokeOptions configures an agent invocation.
 type InvokeOptions struct {
-	Prompt       string
-	Model        string
-	MaxTurns     int
-	WorkDir      string
-	AllowedTools []string
-	IssueNumber  int
-	PipelineStep string
+	Prompt        string
+	Model         string
+	MaxTurns      int
+	WorkDir       string
+	AllowedTools  []string
+	IssueNumber   int
+	PipelineStep  string
+	CommitCountFn func(ctx context.Context, dir string) ([]string, error)
 }
 
 // Invoker is the interface for spawning an agent with a prompt and getting a result.
@@ -43,14 +42,19 @@ type ClaudeCodeInvoker struct{}
 // Invoke spawns claude with the given options, feeds the prompt via stdin,
 // captures stdout, and returns a structured result.
 func (c *ClaudeCodeInvoker) Invoke(ctx context.Context, opts InvokeOptions) (*InvokeResult, error) {
-	if ctx.Err() != nil {
-		return nil, ctx.Err()
+	workDir := opts.WorkDir
+
+	var before []string
+	if opts.CommitCountFn != nil {
+		var err error
+		before, err = opts.CommitCountFn(ctx, workDir)
+		if err != nil {
+			return nil, fmt.Errorf("snapshotting commits: %w", err)
+		}
 	}
 
-	workDir := opts.WorkDir
-	before, err := git.CommitsBefore(ctx, workDir)
-	if err != nil {
-		return nil, fmt.Errorf("snapshotting commits: %w", err)
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 
 	args := c.buildArgs(opts)
@@ -71,18 +75,38 @@ func (c *ClaudeCodeInvoker) Invoke(ctx context.Context, opts InvokeOptions) (*In
 	}
 
 	output := stdout.String()
-	newCommits, err := git.CommitsAfter(ctx, workDir, before)
-	if err != nil {
-		return nil, fmt.Errorf("detecting new commits: %w", err)
+
+	var commitsMade []string
+	if opts.CommitCountFn != nil {
+		after, err := opts.CommitCountFn(ctx, workDir)
+		if err != nil {
+			return nil, fmt.Errorf("detecting new commits: %w", err)
+		}
+		commitsMade = commitSetDiff(before, after)
 	}
 
 	return &InvokeResult{
 		ExitCode:    0,
 		Stdout:      output,
-		CommitsMade: newCommits,
+		CommitsMade: commitsMade,
 		TestsPassed: containsTestPass(output),
 		Completed:   containsCompletionMarker(output),
 	}, nil
+}
+
+// commitSetDiff returns commits in after that are not in before.
+func commitSetDiff(before, after []string) []string {
+	beforeSet := make(map[string]bool, len(before))
+	for _, sha := range before {
+		beforeSet[sha] = true
+	}
+	var added []string
+	for _, sha := range after {
+		if !beforeSet[sha] {
+			added = append(added, sha)
+		}
+	}
+	return added
 }
 
 func (c *ClaudeCodeInvoker) buildArgs(opts InvokeOptions) []string {

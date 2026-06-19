@@ -72,7 +72,7 @@ func TestDeriveStepResult_ReviewStep_ReadsJSONNotStdout(t *testing.T) {
 		WorkDir: workDir,
 	}
 
-	sr := deriveStepResult(pipeline.StepReview, result, cfg)
+	sr := deriveStepResult(context.Background(), pipeline.StepReview, result, cfg)
 	if !sr.BlockingFindings {
 		t.Error("BlockingFindings must be true when review-results.json contains a critical finding, even with empty stdout")
 	}
@@ -98,7 +98,7 @@ func TestDeriveStepResult_ReviewStep_StdoutAloneDoesNotTriggerBlocking(t *testin
 	// stdout makes blocking FALSE — proving stdout is not read.
 	writeReviewResults(t, workDir, []ReviewFinding{})
 
-	srWithEmptyJSON := deriveStepResult(pipeline.StepReview, result, cfg)
+	srWithEmptyJSON := deriveStepResult(context.Background(), pipeline.StepReview, result, cfg)
 	if srWithEmptyJSON.BlockingFindings {
 		t.Error("BlockingFindings must be false when review-results.json has no findings, even when stdout contains old BLOCKING_FINDINGS marker")
 	}

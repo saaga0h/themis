@@ -32,11 +32,38 @@ Infrastructure steps (Fetch, Scan, Branch) execute without an agent. Agent steps
 | `TemplateDir` | `string` | Directory containing `*.md` prompt templates |
 | `CheckpointFn` | `func(ctx, Step, workDir) error` | Called after every agent step; nil skips checkpoint |
 | `TestACKey` | `string` | Acceptance-criteria key for TestRed retry tracking; defaults to `"tests"` |
-| `GitBranchFn` | `func(ctx, workDir, branch) error` | Creates/checks-out the issue branch; nil skips |
-| `GitPushFn` | `func(ctx, workDir, branch) error` | Pushes branch at Ship; nil skips |
+| `Git` | `GitOps` | Git operations interface (CheckoutNewBranch, Checkout, PushBranch, CurrentBranch, BranchCommitLog, CommitsAheadOfBase, ChangedFiles); nil skips all git operations |
+| `ProfileLoader` | `func(dir string) (ProfileData, error)` | Loads per-project profile settings; nil uses zero-value `ProfileData` defaults |
 | `Logger` | `io.Writer` | Step log sink; defaults to `os.Stderr` |
 | `CodeVersion` | `string` | Binary version; compared against `state.CodeVersion` on resume |
 | `MaxTurns` | `int` | Per-agent turn limit; `DefaultMaxTurns = 250` when unset |
+
+### GitOps Interface
+
+Defined in `internal/runner/runner.go` at the point of use (consumer-side). Concrete implementations live in `cmd/themis/`; tests substitute `fakeGitOps` stubs.
+
+```go
+type GitOps interface {
+    CheckoutNewBranch(ctx context.Context, dir, name string) error
+    Checkout(ctx context.Context, dir, name string) error
+    PushBranch(ctx context.Context, dir, branch string) error
+    CurrentBranch(ctx context.Context, dir string) (string, error)
+    BranchCommitLog(ctx context.Context, dir string) string
+    CommitsAheadOfBase(ctx context.Context, dir, base string) (int, error)
+    ChangedFiles(ctx context.Context, dir string) string
+}
+```
+
+### ProfileData
+
+`ProfileData` is the subset of profile settings the runner needs. It is populated by calling `Config.ProfileLoader`; the runner does not import `internal/profile` directly.
+
+```go
+type ProfileData struct {
+    ImplementModel string
+    ReviewModel    string
+}
+```
 
 ### Result Type
 
@@ -61,9 +88,9 @@ Fetch → Scan → Branch → TestRed → Implement → Refactor → Review → 
 
 Each iteration reads `state.CurrentStep` and branches:
 
-1. **Fetch** — calls `git.Fetch`; non-fatal on error (warning logged). Always advances.
+1. **Fetch** — auto-advances (best-effort pre-run sync is handled by the caller before `Run` is invoked).
 2. **Scan** — auto-advances (no-op placeholder for future scanner integration).
-3. **Branch** — calls `GitBranchFn` with branch name `issue/<N>-<slug>`. On a fresh start, seeds `.themis/review-results.json` with `{"findings":[]}` so the Review step starts non-blocking. Advances.
+3. **Branch** — calls `cfg.Git.CheckoutNewBranch` with branch name `issue/<N>-<slug>` (skipped when `cfg.Git` is nil). On a fresh start, seeds `.themis/review-results.json` with `{"findings":[]}` so the Review step starts non-blocking. Advances.
 4. **Agent steps** (`agentSteps` map: TestRed, Implement, Refactor, Review, Fix, Docs) — template load → substitute → `Invoker.Invoke` → `CheckpointFn` → `deriveStepResult` → `state.Advance`.
 5. **Ship** — see Ship Step & Guards below.
 6. **Unknown steps** — auto-advance with a success result.
@@ -128,13 +155,13 @@ On PR creation success, `.themis/review-results.json` is deleted.
 | `{{AC_STATUS}}` | Same value as `ACCEPTANCE_CRITERIA`; `ship.md` uses this key, agent-step templates use `ACCEPTANCE_CRITERIA` |
 | `{{CODING_STANDARDS}}` | `CODING_STANDARDS.md` at `WorkDir`; empty string if absent |
 | `{{UBIQUITOUS_LANGUAGE}}` | `UBIQUITOUS_LANGUAGE.md` at `WorkDir`; empty string if absent |
-| `{{BRANCH_NAME}}` | `git.CurrentBranch`; falls back to `"main"` on error |
-| `{{CHANGED_FILES}}` | `git.ChangedFiles` |
+| `{{BRANCH_NAME}}` | `cfg.Git.CurrentBranch`; falls back to `"main"` when `cfg.Git` is nil or on error |
+| `{{CHANGED_FILES}}` | `cfg.Git.ChangedFiles`; empty string when `cfg.Git` is nil |
 | `{{REVIEW_CYCLE}}` | `state.ReviewCycle + 1` (1-based for templates) |
 | `{{BLOCKING_FINDINGS}}` | Formatted critical/high/medium findings from last Review; empty on first cycle |
 | `{{REVIEW_OUTPUT}}` | `invokeResult.Stdout` from last Review agent invocation |
-| `{{PIPELINE_SHAPE}}` | Deduplicated conventional-commit prefixes from `git.BranchCommitLog` (e.g. `feat, fix, test`) |
-| `{{COMMIT_LOG}}` | Full `git.BranchCommitLog` output |
+| `{{PIPELINE_SHAPE}}` | Deduplicated conventional-commit prefixes from `cfg.Git.BranchCommitLog` (e.g. `feat, fix, test`); empty when `cfg.Git` is nil |
+| `{{COMMIT_LOG}}` | Full `cfg.Git.BranchCommitLog` output; empty when `cfg.Git` is nil |
 
 ## How Do I Add / Diagnose / Failure Behavior
 
@@ -156,7 +183,7 @@ To add a new `Config` dependency (e.g. a new service client): add the field to `
 
 | Scenario | Behavior |
 |----------|----------|
-| `git.Fetch` fails | Warning logged; pipeline continues (non-fatal) |
+| Git fetch fails (caller-side, before `Run`) | Warning logged by caller; pipeline continues from Fetch step which auto-advances |
 | Template file missing | `Run` returns error immediately |
 | `Invoker.Invoke` fails (agent step) | `Run` returns error immediately; no `blockIssue` |
 | Checkpoint fails after agent step | `Run` returns error immediately; no `blockIssue` |
@@ -178,11 +205,11 @@ To add a new `Config` dependency (e.g. a new service client): add the field to `
 |------------|------|
 | `internal/pipeline` | `PipelineState`, `Step`, `StepResult`, `Advance` |
 | `internal/agent` | `Invoker`, `InvokeOptions`, `InvokeResult` |
-| `internal/git` | `Fetch`, `CurrentBranch`, `CommitsAheadOfBase`, `BranchCommitLog`, `ChangedFiles` |
 | `internal/prompt` | `Substitute` — placeholder substitution in templates |
 | `internal/tracker` | `Fetcher`, `IssueData`, `ParseCheckboxes` |
-| `internal/profile` | `Load` — reads model names and review agent config |
 | `internal/checkpoint` | Provides `CheckpointFn` via `NewStepCheckpoint` (wired externally) |
+
+`internal/git` and `internal/profile` are **not** imported directly. Git operations are injected via the `GitOps` interface (`Config.Git`); profile settings are injected via `Config.ProfileLoader`. Concrete implementations are provided by `cmd/themis/`.
 
 ## Related Documents
 

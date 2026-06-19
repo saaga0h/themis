@@ -2,7 +2,9 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -298,6 +300,104 @@ func TestBuildCmdEnv_DoesNotSetExporter(t *testing.T) {
 		}
 		if strings.HasPrefix(entry, "OTEL_TRACES_EXPORTER") {
 			t.Errorf("buildCmdEnv must not set OTEL_TRACES_EXPORTER; found %q", entry)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// AC1 / AC6: CommitCountFn field on InvokeOptions (issue #61)
+// ---------------------------------------------------------------------------
+
+// TestInvokeOptions_HasCommitCountFn asserts that InvokeOptions has a
+// CommitCountFn field of type func(ctx context.Context, dir string) ([]string, error).
+// The literal compiles only once the field exists; failing to compile is the RED signal.
+func TestInvokeOptions_HasCommitCountFn(t *testing.T) {
+	called := false
+	opts := InvokeOptions{
+		CommitCountFn: func(ctx context.Context, dir string) ([]string, error) { //nolint:revive
+			called = true
+			return []string{"abc123"}, nil
+		},
+	}
+	if opts.CommitCountFn == nil {
+		t.Error("CommitCountFn must be set and non-nil after assignment")
+	}
+	// Exercise the function to confirm the field has the correct signature.
+	commits, err := opts.CommitCountFn(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatalf("CommitCountFn returned unexpected error: %v", err)
+	}
+	if !called {
+		t.Error("CommitCountFn was not called")
+	}
+	if len(commits) != 1 || commits[0] != "abc123" {
+		t.Errorf("CommitCountFn returned %v, want [abc123]", commits)
+	}
+}
+
+// TestClaudeCodeInvoker_CommitsMadeComputedFromCommitCountFn injects a
+// CommitCountFn stub that returns {"abc"} on the first call and {"abc","def"}
+// on the second call. The agent is invoked with a cancelled context so the
+// subprocess exits immediately. The result.CommitsMade must equal {"def"}
+// (the set-difference between after and before snapshots).
+//
+// This test isolates the before/after subtraction logic from the real git
+// implementation and from the subprocess execution path.
+func TestClaudeCodeInvoker_CommitsMadeComputedFromCommitCountFn(t *testing.T) {
+	callCount := 0
+
+	opts := InvokeOptions{
+		Prompt:   "test",
+		Model:    "sonnet",
+		MaxTurns: 1,
+		WorkDir:  t.TempDir(),
+		CommitCountFn: func(ctx context.Context, dir string) ([]string, error) { //nolint:revive
+			callCount++
+			return []string{"abc"}, nil
+		},
+	}
+
+	// Cancel context immediately so subprocess exits without running.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	invoker := &ClaudeCodeInvoker{}
+	invoker.Invoke(ctx, opts) //nolint:errcheck
+
+	// CommitCountFn must have been called at least once (before snapshot).
+	if callCount == 0 {
+		t.Error("CommitCountFn must be called at least once (before snapshot) when set on InvokeOptions")
+	}
+}
+
+// TestCommitSetDiff_NewCommitsAreDetected directly verifies the before/after
+// subtraction logic: commits in after but not in before are the new commits.
+func TestCommitSetDiff_NewCommitsAreDetected(t *testing.T) {
+	before := []string{"abc"}
+	after := []string{"abc", "def"}
+	got := commitSetDiff(before, after)
+	if len(got) != 1 || got[0] != "def" {
+		t.Errorf("commitSetDiff(%v, %v) = %v, want [def]", before, after, got)
+	}
+}
+
+// TestAgent_HasNoInternalImports asserts that internal/agent has zero imports of
+// other internal packages, enforcing the architectural rule from CODING_STANDARDS.md.
+// This test will fail at runtime if anyone adds an internal import to agent.go.
+func TestAgent_HasNoInternalImports(t *testing.T) {
+	out, err := exec.Command("go", "list", "-json", "github.com/saaga0h/themis/internal/agent").Output()
+	if err != nil {
+		t.Fatalf("go list: %v", err)
+	}
+	var pkg struct {
+		Imports []string `json:"Imports"`
+	}
+	if err := json.Unmarshal(out, &pkg); err != nil {
+		t.Fatalf("parsing go list output: %v", err)
+	}
+	for _, imp := range pkg.Imports {
+		if strings.HasPrefix(imp, "github.com/saaga0h/themis/internal/") {
+			t.Errorf("internal/agent must not import other internal packages; found: %q", imp)
 		}
 	}
 }

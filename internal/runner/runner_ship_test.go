@@ -179,7 +179,14 @@ func TestRunner_ShipStep_BranchNameUsesGitCurrentBranch(t *testing.T) {
 		IssueWriter:  w,
 		TemplateDir:  templateDir(t),
 		CheckpointFn: noopCheckpoint,
-		GitPushFn:    nil,
+		// Git.CurrentBranch must return "HEAD" to mirror git behaviour for detached HEAD
+		// (the old .git/HEAD file reader returns "main" for this repo state, which is wrong).
+		Git: &fakeGitOps{
+			currentBranchFn: func(ctx context.Context, dir string) (string, error) {
+				return "HEAD", nil
+			},
+			commitsAhead: 1, // satisfy the ship guard: at least 1 commit on branch
+		},
 	}
 
 	if _, err := Run(context.Background(), cfg); err != nil {
@@ -237,11 +244,10 @@ func TestShipMdTemplateReferencesPRCompositionSkill(t *testing.T) {
 
 // Agent receives review output, pipeline shape, commit log, and AC status as context.
 func TestRunner_ShipPromptContainsContextualData(t *testing.T) {
-	commits := []string{
-		"test(runner): add failing tests",
-		"feat(runner): implement ship agent invocation",
-	}
-	workDir := initBranchWithCommits(t, commits)
+	fakeLog := "abc1234 test(runner): add failing tests\n" +
+		"def5678 feat(runner): implement ship agent invocation"
+
+	workDir := t.TempDir()
 
 	const reviewStdout = "Review complete: all ACs verified. No blocking findings."
 
@@ -279,6 +285,13 @@ func TestRunner_ShipPromptContainsContextualData(t *testing.T) {
 		IssueWriter:  w,
 		TemplateDir:  tDir,
 		CheckpointFn: noopCheckpoint,
+		Git: &fakeGitOps{
+			commitLog:    fakeLog,
+			commitsAhead: 2,
+			currentBranchFn: func(_ context.Context, _ string) (string, error) {
+				return "feature/work", nil
+			},
+		},
 	}
 
 	if _, err := Run(context.Background(), cfg); err != nil {
@@ -401,9 +414,7 @@ func TestRunner_ShipFallsBackToBuildPRBodyWhenAgentFails(t *testing.T) {
 // Ship step returns an error naming the branch and "nothing to ship"
 // when no commits exist on the issue branch relative to the base.
 func TestRunner_ShipGuard_RejectsWhenNoBranchCommits(t *testing.T) {
-	workDir := initRepoWithRemote(t)
-	// Feature branch with zero commits on top of main.
-	gitInDir(t, workDir, "checkout", "-b", "feature/no-commits")
+	workDir := t.TempDir()
 	saveStateAt(t, workDir, pipeline.StepShip)
 
 	w := &stubIssueWriter{prURL: "https://example.com/pr/example"}
@@ -415,6 +426,12 @@ func TestRunner_ShipGuard_RejectsWhenNoBranchCommits(t *testing.T) {
 		IssueWriter:  w,
 		TemplateDir:  templateDir(t),
 		CheckpointFn: noopCheckpoint,
+		Git: &fakeGitOps{
+			currentBranchFn: func(_ context.Context, _ string) (string, error) {
+				return "feature/no-commits", nil
+			},
+			commitsAhead: 0,
+		},
 	}
 
 	result, err := Run(context.Background(), cfg)
@@ -442,23 +459,26 @@ func TestRunner_ShipGuard_RejectsWhenNoBranchCommits(t *testing.T) {
 // Ship step returns an error when the current branch equals the base branch,
 // indicating no issue branch was created.
 func TestRunner_ShipGuard_RejectsWhenCurrentBranchIsBaseBranch(t *testing.T) {
-	dir := initLocalRepo(t)
-	// Create and stay on a branch that will also serve as the base branch.
-	gitInDir(t, dir, "checkout", "-b", "themis-2.0")
-	saveStateAt(t, dir, pipeline.StepShip)
+	workDir := t.TempDir()
+	saveStateAt(t, workDir, pipeline.StepShip)
 
 	issue := sampleIssue()
 	issue.Ref = "themis-2.0" // base == current branch
 
 	w := &stubIssueWriter{prURL: "https://example.com/pr/example"}
 	cfg := Config{
-		WorkDir:      dir,
+		WorkDir:      workDir,
 		IssueNumber:  42,
 		Fetcher:      &stubFetcher{issue: issue},
 		Invoker:      &stubInvoker{},
 		IssueWriter:  w,
 		TemplateDir:  templateDir(t),
 		CheckpointFn: noopCheckpoint,
+		Git: &fakeGitOps{
+			currentBranchFn: func(_ context.Context, _ string) (string, error) {
+				return "themis-2.0", nil
+			},
+		},
 	}
 
 	result, err := Run(context.Background(), cfg)
@@ -483,11 +503,7 @@ func TestRunner_ShipGuard_RejectsWhenCurrentBranchIsBaseBranch(t *testing.T) {
 // PR creation proceeds normally when commits exist on the branch and the
 // branch differs from the base.
 func TestRunner_ShipGuard_ProceedsWhenCommitsExistOnBranch(t *testing.T) {
-	commits := []string{
-		"test(runner): add failing tests",
-		"feat(runner): implement ship step guard",
-	}
-	workDir := initBranchWithCommits(t, commits)
+	workDir := t.TempDir()
 	saveStateAt(t, workDir, pipeline.StepShip)
 
 	const wantPRURL = "https://example.com/pr/example"
@@ -500,6 +516,12 @@ func TestRunner_ShipGuard_ProceedsWhenCommitsExistOnBranch(t *testing.T) {
 		IssueWriter:  w,
 		TemplateDir:  templateDir(t),
 		CheckpointFn: noopCheckpoint,
+		Git: &fakeGitOps{
+			currentBranchFn: func(_ context.Context, _ string) (string, error) {
+				return "feature/work", nil
+			},
+			commitsAhead: 2,
+		},
 	}
 
 	result, err := Run(context.Background(), cfg)
