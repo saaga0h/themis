@@ -18,7 +18,21 @@ PODMAN_RUN := podman run -i \
 	--dangerously-skip-permissions \
 	--max-turns $(MAX_TURNS)
 
-.PHONY: run-factory dry-run run-issue shell build-image build test lint
+.PHONY: run-factory dry-run run-issue run-v2-issue factory-cc shell build-image build test lint
+
+factory-cc: ## Materialize the curated .claude/ the factory container overlays (from factory/manifest.txt)
+	@rm -rf .themis/factory-cc/.claude
+	@mkdir -p .themis/factory-cc/.claude/skills .themis/factory-cc/.claude/agents .themis/factory-cc/.claude/commands
+	@printf '{\n  "includeCoAuthoredBy": false,\n  "disableBundledSkills": true\n}\n' > .themis/factory-cc/.claude/settings.json
+	@grep -vE '^[[:space:]]*(#|$$)' factory/manifest.txt | while read -r kind name; do \
+		case "$$kind" in \
+			skill)   cp -R "skills/$$name" ".themis/factory-cc/.claude/skills/$$name" ;; \
+			agent)   cp "agents/$$name.md" ".themis/factory-cc/.claude/agents/$$name.md" ;; \
+			command) cp "commands/$$name.md" ".themis/factory-cc/.claude/commands/$$name.md" ;; \
+			*) echo "factory-cc: unknown manifest kind '$$kind'" >&2; exit 1 ;; \
+		esac; \
+	done
+	@echo "factory-cc: curated .claude/ ready per factory/manifest.txt"
 
 run-factory: ## Run the autonomous factory loop
 	echo '/factory --provider $(PROVIDER)' | $(PODMAN_RUN)
@@ -29,10 +43,11 @@ dry-run: ## Preview which issues would be processed
 run-issue: ## Run a single issue: make run-issue ISSUE=3
 	echo '/issue $(ISSUE) --provider $(PROVIDER)' | $(PODMAN_RUN)
 
-run-v2-issue: ## Run v2.0 binary against a single issue
+run-v2-issue: factory-cc ## Run v2.0 binary against a single issue
 	podman run -i --userns=keep-id \
 		--entrypoint bash \
 		-v $(PWD):/home/agent/workspace \
+		-v $(PWD)/.themis/factory-cc/.claude:/home/agent/workspace/.claude \
 		--env-file .env \
 		-w /home/agent/workspace \
 		--memory=12g \

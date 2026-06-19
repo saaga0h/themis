@@ -1,0 +1,36 @@
+# Factory asset allowlist
+#
+# The assets (skills, subagents, commands) the v2 pipeline (`themis run` /
+# `themis issue`) actually uses. `make factory-cc` materializes a curated
+# `.claude/` from this list and the container overlays it onto the workspace,
+# so each headless per-step `claude` session indexes only what the pipeline
+# needs — not the full interactive catalog under skills/ agents/ commands/.
+#
+# Nothing here deletes anything: the full sets stay tracked in skills/, agents/,
+# and commands/ and remain available to humans via the repo's own .claude/.
+#
+# A guard test (internal/runner/factory_assets_test.go) fails the build if the
+# pipeline delegates to an asset that is missing from this list, so curation
+# can never silently starve the factory.
+#
+# Format: one entry per line — "<kind> <name>", kind in {skill, agent, command}.
+# Blank lines and lines starting with # are ignored.
+
+# Skills invoked by templates (test-red.md -> test-red, ship.md -> pr-composition)
+skill test-red
+skill pr-composition
+
+# Commands invoked by templates (review.md -> /review)
+command review
+
+# Subagents spawned by the pipeline:
+#   test-red step  -> test-architect, test-writer; test-writer -> test-runner
+agent test-architect
+agent test-writer
+agent test-runner
+#   review step (/review fans out to these five; numerical-reviewer is inline in review.md)
+agent complexity-reviewer
+agent convention-reviewer
+agent coverage-reviewer
+agent security-reviewer
+agent architecture-reviewer

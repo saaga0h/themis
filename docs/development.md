@@ -32,7 +32,8 @@
 | `run-factory` | Run the autonomous factory loop | Pipes `/factory --provider $(PROVIDER)` into the container via `claude --verbose --dangerously-skip-permissions` |
 | `dry-run` | Preview which issues would be processed | Pipes `/factory --provider $(PROVIDER) --dry-run`; no issues are executed |
 | `run-issue` | Run the pipeline against a single issue | `make run-issue ISSUE=<number>`; uses the `themis:dev` image and `/issue` CC command |
-| `run-v2-issue` | Build and run the `themis` v2 binary inside the container against a single issue | Compiles on-the-fly inside the container, then calls `themis issue <number> --provider gitea` directly (no CC command layer) |
+| `run-v2-issue` | Build and run the `themis` v2 binary inside the container against a single issue | Compiles on-the-fly inside the container, then calls `themis issue <number> --provider gitea` directly (no CC command layer). Depends on `factory-cc`; overlays the curated `.claude/` onto the workspace |
+| `factory-cc` | Materialize the curated `.claude/` the v2 container overlays | Copies only the skills/agents/commands listed in `factory/manifest.txt` into `.themis/factory-cc/.claude/` so each per-step `claude` indexes the pipeline subset, not the full interactive catalog. Regenerated from the tracked source each run |
 | `shell` | Open an interactive bash shell inside the factory container | Useful for debugging |
 
 Default values: `IMAGE=themis:dev`, `MAX_TURNS=600`, `PROVIDER=gitea`.
