@@ -67,7 +67,7 @@ func runIssue(args []string) error {
 	}
 
 	fetcher, err := tracker.NewFetcher(parsed.provider,
-		giteaOwner, giteaRepo, giteaAPIBase, os.Getenv("GITEA_TOKEN"))
+		giteaOwner, giteaRepo, giteaAPIBase, os.Getenv("GITEA_TOKEN"), giteaClientTimeout)
 	if err != nil {
 		return fmt.Errorf("creating fetcher: %w", err)
 	}
@@ -146,7 +146,7 @@ func runRun(args []string) error {
 	var fetcher tracker.Fetcher
 	switch parsed.provider {
 	case "gitea":
-		fetcher = tracker.NewGiteaFetcher(giteaOwner, giteaRepo, giteaAPIBase, os.Getenv("GITEA_TOKEN"))
+		fetcher = tracker.NewGiteaFetcher(giteaOwner, giteaRepo, giteaAPIBase, os.Getenv("GITEA_TOKEN"), giteaClientTimeout)
 	default:
 		fetcher = &tracker.GitHubFetcher{}
 	}

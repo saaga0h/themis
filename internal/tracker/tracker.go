@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // IssueData holds the data extracted from an issue tracker.
@@ -100,13 +101,13 @@ type GiteaFetcher struct {
 }
 
 // NewGiteaFetcher creates a GiteaFetcher for the given repo.
-func NewGiteaFetcher(owner, repo, apiBase, token string) *GiteaFetcher {
+func NewGiteaFetcher(owner, repo, apiBase, token string, timeout time.Duration) *GiteaFetcher {
 	return &GiteaFetcher{
 		owner:   owner,
 		repo:    repo,
 		apiBase: strings.TrimRight(apiBase, "/"),
 		token:   token,
-		client:  &http.Client{},
+		client:  &http.Client{Timeout: timeout},
 	}
 }
 
@@ -164,13 +165,13 @@ func (g *GiteaFetcher) Fetch(ctx context.Context, number int) (*IssueData, error
 }
 
 // NewFetcher returns a Fetcher for the given provider.
-// provider must be "github" or "gitea". owner and repo are required for Gitea.
-func NewFetcher(provider, owner, repo, apiBase, token string) (Fetcher, error) {
+// provider must be "github" or "gitea". owner, repo, and timeout are required for Gitea.
+func NewFetcher(provider, owner, repo, apiBase, token string, timeout time.Duration) (Fetcher, error) {
 	switch provider {
 	case "github":
 		return &GitHubFetcher{}, nil
 	case "gitea":
-		return NewGiteaFetcher(owner, repo, apiBase, token), nil
+		return NewGiteaFetcher(owner, repo, apiBase, token, timeout), nil
 	default:
 		return nil, fmt.Errorf("unknown provider %q (must be github or gitea)", provider)
 	}
