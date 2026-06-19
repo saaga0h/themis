@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"git.home.federation.fi/lavernea/themis/internal/tracker"
 )
@@ -125,21 +126,22 @@ func runLoop(ctx context.Context, cfg loopConfig) error {
 	})
 
 	for _, issue := range issues {
-		if cfg.Turns.RemainingFraction() < 0.10 {
-			fmt.Fprintf(out, "insufficient turns remaining\n")
-			return nil
-		}
-
 		if m := dependsOnRE.FindStringSubmatch(issue.Body); m != nil {
 			depNum, _ := strconv.Atoi(m[1])
 			open, err := cfg.Querier.IsOpen(ctx, depNum)
 			if err != nil {
-				return fmt.Errorf("checking dependency #%d for issue #%d: %w", depNum, issue.Number, err)
+				fmt.Fprintf(out, "skipping issue #%d: dependency check error for #%d: %v\n", issue.Number, depNum, err)
+				continue
 			}
 			if open {
 				fmt.Fprintf(out, "skipping issue #%d: depends on open issue #%d\n", issue.Number, depNum)
 				continue
 			}
+		}
+
+		if cfg.Turns.RemainingFraction() < 0.10 {
+			fmt.Fprintf(out, "insufficient turns remaining\n")
+			return nil
 		}
 
 		if cfg.DryRun {
@@ -189,7 +191,7 @@ func newGiteaQuerier(owner, repo, apiBase, token string) *GiteaQuerier {
 		repo:    repo,
 		apiBase: strings.TrimRight(apiBase, "/"),
 		token:   token,
-		client:  &http.Client{},
+		client:  &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
@@ -217,7 +219,7 @@ func (q *GiteaQuerier) ListReadyIssues(ctx context.Context) ([]*tracker.IssueDat
 		}
 		if resp.StatusCode != http.StatusOK {
 			resp.Body.Close()
-			return nil, fmt.Errorf("Gitea API returned %d", resp.StatusCode)
+			return nil, fmt.Errorf("gitea API returned %d", resp.StatusCode)
 		}
 		var items []issueItem
 		decodeErr := json.NewDecoder(resp.Body).Decode(&items)
@@ -241,7 +243,7 @@ func (q *GiteaQuerier) IsOpen(ctx context.Context, number int) (bool, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return false, fmt.Errorf("Gitea API returned %d for issue #%d", resp.StatusCode, number)
+		return false, fmt.Errorf("gitea API returned %d for issue #%d", resp.StatusCode, number)
 	}
 	var issue struct {
 		State string `json:"state"`

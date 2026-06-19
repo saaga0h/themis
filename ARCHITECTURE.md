@@ -157,7 +157,8 @@ in order. Before each issue it checks out `main`. A failure on one issue is
 logged and the loop continues. The loop stops early if `TurnTracker.RemainingFraction()`
 drops below 0.10; `TurnTracker` reads `THEMIS_TURNS_REMAINING_FRACTION` from the
 environment (defaults to 1.0 when unset). Issues with a `depends on #N` body
-pattern are skipped when issue N is still open. `--dry-run` prints the plan
+pattern are skipped when issue N is still open; if the dependency check itself fails (network error,
+API error), the issue is also skipped rather than aborting the loop. `--dry-run` prints the plan
 without executing.
 
 ### Issue Tracker Integration (`internal/tracker/`)
