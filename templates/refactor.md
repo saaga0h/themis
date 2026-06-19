@@ -1,12 +1,7 @@
 # Refactor implementation for issue #{{ISSUE_NUMBER}}
 
-## Coding standards
-
-{{CODING_STANDARDS}}
-
-## Ubiquitous language
-
-{{UBIQUITOUS_LANGUAGE}}
+Read `CODING_STANDARDS.md` and `UBIQUITOUS_LANGUAGE.md` from the workspace root
+for coding standards and terminology rules.
 
 ## Instructions
 

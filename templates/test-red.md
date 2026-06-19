@@ -4,11 +4,23 @@
 
 {{ACCEPTANCE_CRITERIA}}
 
-## Coding standards
-
-{{CODING_STANDARDS}}
+Read `CODING_STANDARDS.md` and `UBIQUITOUS_LANGUAGE.md` from the workspace root
+for coding standards and terminology rules.
 
 ## Instructions
+
+If the acceptance criteria describe specific types/functions to move, extract, or
+delete (refactoring), write the failing tests directly — do NOT delegate to
+test-architect or test-writer. The targets are already enumerated in the ACs.
+Skip to the Verification phase once the tests are written.
+
+If the acceptance criteria describe new behaviour that requires target discovery
+(feature work with "all", "every", "each" language), follow the test-red skill
+and delegate to test-architect → test-writer as described below.
+
+When reading source files, use `grep -n` to find the relevant sections first,
+then read only those sections. Do not read entire 1000+ line files — read the
+specific functions or types you need to modify.
 
 Follow the **test-red** skill (`skills/test-red/SKILL.md`). The skill defines
 the three-phase methodology: target enumeration → test implementation →

@@ -4,13 +4,16 @@
 
 {{ACCEPTANCE_CRITERIA}}
 
-## Coding standards
-
-{{CODING_STANDARDS}}
+Read `CODING_STANDARDS.md` and `UBIQUITOUS_LANGUAGE.md` from the workspace root
+for coding standards and terminology rules.
 
 ## Instructions
 
 Implement the code needed to make the failing tests pass.
+
+When reading source files, use `grep -n` to find the relevant sections first,
+then read only those sections. Do not read entire 1000+ line files — read the
+specific functions or types you need to modify.
 
 Work AC by AC — implement the minimum to pass each test, then move to the next.
 Do not implement anything not required by an AC.

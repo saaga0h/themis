@@ -233,9 +233,6 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		prof.ReviewModel = "sonnet"
 	}
 
-	codingStandards := readFileOrEmpty(ctx, filepath.Join(cfg.WorkDir, "CODING_STANDARDS.md"))
-	ubiquitousLanguage := readFileOrEmpty(ctx, filepath.Join(cfg.WorkDir, "UBIQUITOUS_LANGUAGE.md"))
-
 	var lastBlockingFindings string
 	var reviewOutput string
 
@@ -341,7 +338,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			if readErr != nil {
 				fmt.Fprintf(log, "warning: ship template read failed: %v — using fallback PR body\n", readErr)
 			} else {
-				shipArgs := buildTemplateArgs(ctx, cfg, issue, branch, state.ReviewCycle, codingStandards, ubiquitousLanguage, lastBlockingFindings, reviewOutput)
+				shipArgs := buildTemplateArgs(ctx, cfg, issue, branch, state.ReviewCycle, lastBlockingFindings, reviewOutput)
 				filteredArgs := filterArgs(string(shipTmplContent), shipArgs)
 				substituted, subErr := prompt.Substitute(string(shipTmplContent), filteredArgs)
 				if subErr != nil {
@@ -413,7 +410,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			}
 		}
 
-		allArgs := buildTemplateArgs(ctx, cfg, issue, branchName, state.ReviewCycle, codingStandards, ubiquitousLanguage, lastBlockingFindings, reviewOutput)
+		allArgs := buildTemplateArgs(ctx, cfg, issue, branchName, state.ReviewCycle, lastBlockingFindings, reviewOutput)
 
 		filteredArgs := filterArgs(string(tmplContent), allArgs)
 
@@ -599,7 +596,6 @@ func buildTemplateArgs(
 	issue *tracker.IssueData,
 	branchName string,
 	reviewCycle int,
-	codingStandards, ubiquitousLanguage string,
 	lastBlockingFindings, reviewOutput string,
 ) map[string]string {
 	acs := tracker.ParseCheckboxes(issue.Body)
@@ -615,8 +611,6 @@ func buildTemplateArgs(
 		"ISSUE_TITLE":         issue.Title,
 		"ACCEPTANCE_CRITERIA": acList,
 		"AC_STATUS":           acList,
-		"CODING_STANDARDS":    codingStandards,
-		"UBIQUITOUS_LANGUAGE": ubiquitousLanguage,
 		"BRANCH_NAME":         branchName,
 		"CHANGED_FILES":       changedFilesResult,
 		"REVIEW_CYCLE":        strconv.Itoa(reviewCycle + 1),
@@ -636,14 +630,6 @@ func formatACs(acs []string) string {
 		fmt.Fprintf(&sb, "- [ ] %s\n", ac)
 	}
 	return strings.TrimRight(sb.String(), "\n")
-}
-
-func readFileOrEmpty(ctx context.Context, path string) string {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return ""
-	}
-	return string(data)
 }
 
 // stripCodeFences removes leading/trailing code fence markers from agent output.

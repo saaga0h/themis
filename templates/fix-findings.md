@@ -8,9 +8,8 @@
 
 {{ACCEPTANCE_CRITERIA}}
 
-## Coding standards
-
-{{CODING_STANDARDS}}
+Read `CODING_STANDARDS.md` and `UBIQUITOUS_LANGUAGE.md` from the workspace root
+for coding standards and terminology rules.
 
 ## Instructions
 
