@@ -164,6 +164,37 @@ func (g *GiteaFetcher) Fetch(ctx context.Context, number int) (*IssueData, error
 	}, nil
 }
 
+// IssueItemLabel holds a label name from an issue tracker API response.
+type IssueItemLabel struct {
+	Name string `json:"name"`
+}
+
+// IssueItem is the raw API shape for a list-issues response (Gitea and GitHub).
+type IssueItem struct {
+	Number int              `json:"number"`
+	Title  string           `json:"title"`
+	Body   string           `json:"body"`
+	Labels []IssueItemLabel `json:"labels"`
+}
+
+// ParseIssueItems converts a slice of IssueItem into a slice of *IssueData.
+func ParseIssueItems(items []IssueItem) []*IssueData {
+	result := make([]*IssueData, 0, len(items))
+	for _, item := range items {
+		labels := make([]string, 0, len(item.Labels))
+		for _, l := range item.Labels {
+			labels = append(labels, l.Name)
+		}
+		result = append(result, &IssueData{
+			Number: item.Number,
+			Title:  item.Title,
+			Body:   item.Body,
+			Labels: labels,
+		})
+	}
+	return result
+}
+
 // NewFetcher returns a Fetcher for the given provider.
 // provider must be "github" or "gitea". owner, repo, and timeout are required for Gitea.
 func NewFetcher(provider, owner, repo, apiBase, token string, timeout time.Duration) (Fetcher, error) {

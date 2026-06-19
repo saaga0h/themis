@@ -84,32 +84,6 @@ type loopConfig struct {
 
 var dependsOnRE = regexp.MustCompile(`(?i)depends on #(\d+)`)
 
-type issueItem struct {
-	Number int    `json:"number"`
-	Title  string `json:"title"`
-	Body   string `json:"body"`
-	Labels []struct {
-		Name string `json:"name"`
-	} `json:"labels"`
-}
-
-func toIssueDataList(items []issueItem) []*tracker.IssueData {
-	result := make([]*tracker.IssueData, 0, len(items))
-	for _, item := range items {
-		labels := make([]string, 0, len(item.Labels))
-		for _, l := range item.Labels {
-			labels = append(labels, l.Name)
-		}
-		result = append(result, &tracker.IssueData{
-			Number: item.Number,
-			Title:  item.Title,
-			Body:   item.Body,
-			Labels: labels,
-		})
-	}
-	return result
-}
-
 func runLoop(ctx context.Context, cfg loopConfig) error {
 	out := cfg.Logger
 	if out == nil {
@@ -248,7 +222,7 @@ const (
 )
 
 func (q *GiteaQuerier) ListReadyIssues(ctx context.Context) ([]*tracker.IssueData, error) {
-	var all []issueItem
+	var all []tracker.IssueItem
 	for page := 1; ; page++ {
 		pageURL := fmt.Sprintf("%s/api/v1/repos/%s/%s/issues?state=open&type=issues&limit=%d&page=%d&labels=ready-for-agent",
 			q.apiBase, q.owner, q.repo, giteaPageSize, page)
@@ -260,7 +234,7 @@ func (q *GiteaQuerier) ListReadyIssues(ctx context.Context) ([]*tracker.IssueDat
 			resp.Body.Close()
 			return nil, fmt.Errorf("gitea API returned %d", resp.StatusCode)
 		}
-		var items []issueItem
+		var items []tracker.IssueItem
 		decodeErr := json.NewDecoder(resp.Body).Decode(&items)
 		resp.Body.Close()
 		if decodeErr != nil {
@@ -271,7 +245,7 @@ func (q *GiteaQuerier) ListReadyIssues(ctx context.Context) ([]*tracker.IssueDat
 			break
 		}
 	}
-	return toIssueDataList(all), nil
+	return tracker.ParseIssueItems(all), nil
 }
 
 func (q *GiteaQuerier) IsOpen(ctx context.Context, number int) (bool, error) {
@@ -306,11 +280,11 @@ func (q *GitHubQuerier) ListReadyIssues(ctx context.Context) ([]*tracker.IssueDa
 	if err != nil {
 		return nil, fmt.Errorf("gh issue list: %w", err)
 	}
-	var items []issueItem
+	var items []tracker.IssueItem
 	if err := json.Unmarshal(out, &items); err != nil {
 		return nil, fmt.Errorf("parsing gh output: %w", err)
 	}
-	return toIssueDataList(items), nil
+	return tracker.ParseIssueItems(items), nil
 }
 
 func (q *GitHubQuerier) IsOpen(ctx context.Context, number int) (bool, error) {
