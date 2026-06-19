@@ -22,12 +22,63 @@ import (
 
 	"github.com/saaga0h/themis/internal/agent"
 	"github.com/saaga0h/themis/internal/pipeline"
+	"github.com/saaga0h/themis/internal/profile"
 	"github.com/saaga0h/themis/internal/tracker"
 )
 
 // ---------------------------------------------------------------------------
 // Shared stubs
 // ---------------------------------------------------------------------------
+
+// fakeGitOps is a configurable stub that satisfies the runner.GitOps interface
+// (defined as part of issue #61). All methods are no-ops by default; individual
+// fields may be overridden to return specific values or record calls.
+//
+// This stub is used by:
+//   - TestGitOps_InterfaceHasRequiredMethods (compile-time assertion)
+//   - TestConfig_GitFieldAcceptsGitOpsImpl   (Config.Git field acceptance)
+//   - updated Config literals that previously set GitBranchFn/GitPushFn
+type fakeGitOps struct {
+	currentBranchFn func(ctx context.Context, dir string) (string, error)
+	checkedOut      []string
+	pushed          []string
+	commitLog       string
+	commitsAhead    int
+}
+
+func (f *fakeGitOps) CheckoutNewBranch(ctx context.Context, dir, name string) error {
+	f.checkedOut = append(f.checkedOut, name)
+	return nil
+}
+
+func (f *fakeGitOps) Checkout(ctx context.Context, dir, name string) error {
+	f.checkedOut = append(f.checkedOut, name)
+	return nil
+}
+
+func (f *fakeGitOps) PushBranch(ctx context.Context, dir, branch string) error {
+	f.pushed = append(f.pushed, branch)
+	return nil
+}
+
+func (f *fakeGitOps) CurrentBranch(ctx context.Context, dir string) (string, error) {
+	if f.currentBranchFn != nil {
+		return f.currentBranchFn(ctx, dir)
+	}
+	return "HEAD", nil
+}
+
+func (f *fakeGitOps) BranchCommitLog(ctx context.Context, dir string) string {
+	return f.commitLog
+}
+
+func (f *fakeGitOps) CommitsAheadOfBase(ctx context.Context, dir, base string) (int, error) {
+	return f.commitsAhead, nil
+}
+
+// Compile-time assertion: fakeGitOps must implement GitOps.
+// This line will fail to compile until GitOps is defined in the runner package.
+var _ GitOps = &fakeGitOps{}
 
 // stubFetcher returns a fixed IssueData.
 type stubFetcher struct {
@@ -525,7 +576,7 @@ func TestRunner_ChangedFiles_IncludesFilesChangedOnBranch(t *testing.T) {
 		IssueWriter:  w,
 		TemplateDir:  templateDir(t),
 		CheckpointFn: noopCheckpoint,
-		GitPushFn:    nil,
+		Git:          &fakeGitOps{},
 	}
 
 	if _, err := Run(context.Background(), cfg); err != nil {
@@ -575,7 +626,7 @@ func TestRunner_ChangedFiles_ReturnsEmptyStringWhenGitFails(t *testing.T) {
 		IssueWriter:  w,
 		TemplateDir:  templateDir(t),
 		CheckpointFn: noopCheckpoint,
-		GitPushFn:    nil,
+		Git:          &fakeGitOps{},
 	}
 
 	// Run must succeed even when changedFiles cannot diff against a remote
@@ -1240,5 +1291,159 @@ func TestRunner_PassesConfigMaxTurnsToShipStep(t *testing.T) {
 	shipOpts := inv.opts[pipelineAgentCallCount]
 	if shipOpts.MaxTurns != 300 {
 		t.Errorf("ship-step InvokeOptions.MaxTurns = %d, want 300", shipOpts.MaxTurns)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// AC2–AC5 / AC7–AC8: GitOps interface, Config.Git, Config.ProfileLoader (issue #61)
+// ---------------------------------------------------------------------------
+
+// TestGitOps_InterfaceHasRequiredMethods asserts that the GitOps interface
+// exists in the runner package with exactly the method signatures used by
+// runner.go. The compile-time assertion is the var _ GitOps = &fakeGitOps{}
+// line at the top of the shared stubs section; this test body provides a
+// named anchor for the mapping and verifies the stub can be created.
+func TestGitOps_InterfaceHasRequiredMethods(t *testing.T) {
+	// fakeGitOps (defined in shared stubs) implements every GitOps method.
+	// If GitOps does not exist in the runner package this file fails to compile.
+	g := &fakeGitOps{commitsAhead: 2}
+
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	// CheckoutNewBranch
+	if err := g.CheckoutNewBranch(ctx, dir, "feat/x"); err != nil {
+		t.Errorf("CheckoutNewBranch: %v", err)
+	}
+	// Checkout
+	if err := g.Checkout(ctx, dir, "main"); err != nil {
+		t.Errorf("Checkout: %v", err)
+	}
+	// PushBranch
+	if err := g.PushBranch(ctx, dir, "feat/x"); err != nil {
+		t.Errorf("PushBranch: %v", err)
+	}
+	// CurrentBranch
+	branch, err := g.CurrentBranch(ctx, dir)
+	if err != nil {
+		t.Errorf("CurrentBranch: %v", err)
+	}
+	if branch == "" {
+		t.Error("CurrentBranch must return a non-empty string")
+	}
+	// BranchCommitLog
+	_ = g.BranchCommitLog(ctx, dir)
+	// CommitsAheadOfBase
+	n, err := g.CommitsAheadOfBase(ctx, dir, "main")
+	if err != nil {
+		t.Errorf("CommitsAheadOfBase: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("CommitsAheadOfBase = %d, want 2", n)
+	}
+}
+
+// TestConfig_GitFieldAcceptsGitOpsImpl asserts that Config has a Git field of
+// type GitOps and accepts a fakeGitOps value. Fails to compile until Config.Git
+// is defined in the runner package.
+func TestConfig_GitFieldAcceptsGitOpsImpl(t *testing.T) {
+	g := &fakeGitOps{}
+	cfg := Config{
+		Git: g, // fails to compile: no Git field on Config yet
+	}
+	if cfg.Git == nil {
+		t.Error("Config.Git must be non-nil after assignment")
+	}
+}
+
+// TestConfig_HasProfileLoaderField asserts that Config has a ProfileLoader
+// field of type func(dir string) (*profile.Profile, error). This mirrors the
+// signature of profile.Load so the runner can call ProfileLoader(cfg.WorkDir)
+// instead of importing internal/profile directly.
+//
+// Fails to compile until Config.ProfileLoader is defined in the runner package.
+func TestConfig_HasProfileLoaderField(t *testing.T) {
+	called := false
+	cfg := Config{
+		ProfileLoader: func(dir string) (*profile.Profile, error) { //nolint:revive
+			called = true
+			return &profile.Profile{}, nil
+		},
+	}
+	if cfg.ProfileLoader == nil {
+		t.Error("Config.ProfileLoader must be non-nil after assignment")
+	}
+	// Call it to confirm the function signature is correct.
+	p, err := cfg.ProfileLoader(t.TempDir())
+	if err != nil {
+		t.Fatalf("ProfileLoader returned unexpected error: %v", err)
+	}
+	if p == nil {
+		t.Error("ProfileLoader must return a non-nil Profile")
+	}
+	if !called {
+		t.Error("ProfileLoader was not called")
+	}
+}
+
+// TestRunner_UsesProfileLoaderFromConfig starts the pipeline at StepTestRed and
+// injects a ProfileLoader stub that returns a known Review model name
+// ("stub-model"). It then verifies that the agent is invoked with that model
+// at the Review step, which can only happen if the runner calls
+// cfg.ProfileLoader instead of profile.Load directly.
+//
+// Fails at runtime (not compile-time) until runner.go is updated.
+func TestRunner_UsesProfileLoaderFromConfig(t *testing.T) {
+	workDir := t.TempDir()
+	saveStateAt(t, workDir, pipeline.StepTestRed)
+
+	// ReviewResults needed to mark review non-blocking after the Review step.
+	writeReviewResults(t, workDir, []ReviewFinding{})
+
+	const stubModel = "stub-model-for-review"
+
+	inv := &recordingInvoker{}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/profile-loader"}
+	cfg := Config{
+		WorkDir:     workDir,
+		IssueNumber: 42,
+		Fetcher:     &stubFetcher{issue: sampleIssue()},
+		Invoker:     inv,
+		IssueWriter: w,
+		TemplateDir: templateDir(t),
+		CheckpointFn: noopCheckpoint,
+		ProfileLoader: func(dir string) (*profile.Profile, error) {
+			p := &profile.Profile{}
+			p.Review.Agents.Security = stubModel
+			p.Implement.Model = "sonnet"
+			return p, nil
+		},
+	}
+
+	if _, err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+
+	// Find the Review step invocation and confirm the model used matches stubModel.
+	found := false
+	for _, opts := range inv.opts {
+		if opts.PipelineStep == pipeline.StepReview.String() {
+			if opts.Model != stubModel {
+				t.Errorf("Review step: model = %q, want %q — runner must use ProfileLoader, not profile.Load directly",
+					opts.Model, stubModel)
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Review step was never invoked; got %d invocations with steps: %v",
+			len(inv.opts), func() []string {
+				steps := make([]string, len(inv.opts))
+				for i, o := range inv.opts {
+					steps[i] = o.PipelineStep
+				}
+				return steps
+			}())
 	}
 }

@@ -301,3 +301,85 @@ func TestBuildCmdEnv_DoesNotSetExporter(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// AC1 / AC6: CommitCountFn field on InvokeOptions (issue #61)
+// ---------------------------------------------------------------------------
+
+// TestInvokeOptions_HasCommitCountFn asserts that InvokeOptions has a
+// CommitCountFn field of type func(ctx context.Context, dir string) ([]string, error).
+// The literal compiles only once the field exists; failing to compile is the RED signal.
+func TestInvokeOptions_HasCommitCountFn(t *testing.T) {
+	called := false
+	opts := InvokeOptions{
+		CommitCountFn: func(ctx context.Context, dir string) ([]string, error) { //nolint:revive
+			called = true
+			return []string{"abc123"}, nil
+		},
+	}
+	if opts.CommitCountFn == nil {
+		t.Error("CommitCountFn must be set and non-nil after assignment")
+	}
+	// Exercise the function to confirm the field has the correct signature.
+	commits, err := opts.CommitCountFn(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatalf("CommitCountFn returned unexpected error: %v", err)
+	}
+	if !called {
+		t.Error("CommitCountFn was not called")
+	}
+	if len(commits) != 1 || commits[0] != "abc123" {
+		t.Errorf("CommitCountFn returned %v, want [abc123]", commits)
+	}
+}
+
+// TestClaudeCodeInvoker_CommitsMadeComputedFromCommitCountFn injects a
+// CommitCountFn stub that returns {"abc"} on the first call and {"abc","def"}
+// on the second call. The agent is invoked with a cancelled context so the
+// subprocess exits immediately. The result.CommitsMade must equal {"def"}
+// (the set-difference between after and before snapshots).
+//
+// This test isolates the before/after subtraction logic from the real git
+// implementation and from the subprocess execution path.
+func TestClaudeCodeInvoker_CommitsMadeComputedFromCommitCountFn(t *testing.T) {
+	callCount := 0
+	commitSnapshots := [][]string{
+		{"abc"},        // before snapshot (first call)
+		{"abc", "def"}, // after snapshot (second call)
+	}
+
+	opts := InvokeOptions{
+		Prompt:   "test",
+		Model:    "sonnet",
+		MaxTurns: 1,
+		WorkDir:  t.TempDir(),
+		CommitCountFn: func(ctx context.Context, dir string) ([]string, error) { //nolint:revive
+			i := callCount
+			callCount++
+			if i < len(commitSnapshots) {
+				return commitSnapshots[i], nil
+			}
+			return nil, nil
+		},
+	}
+
+	// Cancel context immediately so subprocess exits without running.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	invoker := &ClaudeCodeInvoker{}
+	result, _ := invoker.Invoke(ctx, opts)
+	// The test accepts both a non-nil error (cancelled context) and a result
+	// with CommitsMade populated if the implementation captures the error path.
+	// The critical assertion is: if CommitCountFn was called twice (before + after),
+	// CommitsMade must be {"def"}.
+	if callCount >= 2 && result != nil {
+		if len(result.CommitsMade) != 1 || result.CommitsMade[0] != "def" {
+			t.Errorf("CommitsMade = %v, want [def] (set-difference of after minus before)", result.CommitsMade)
+		}
+	}
+	// CommitCountFn must have been called at least once (before snapshot).
+	if callCount == 0 {
+		t.Error("CommitCountFn must be called at least once (before snapshot) when set on InvokeOptions")
+	}
+}

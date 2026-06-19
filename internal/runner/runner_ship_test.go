@@ -179,7 +179,14 @@ func TestRunner_ShipStep_BranchNameUsesGitCurrentBranch(t *testing.T) {
 		IssueWriter:  w,
 		TemplateDir:  templateDir(t),
 		CheckpointFn: noopCheckpoint,
-		GitPushFn:    nil,
+		// Git.CurrentBranch must return "HEAD" to mirror git behaviour for detached HEAD
+		// (the old .git/HEAD file reader returns "main" for this repo state, which is wrong).
+		Git: &fakeGitOps{
+			currentBranchFn: func(ctx context.Context, dir string) (string, error) {
+				return "HEAD", nil
+			},
+			commitsAhead: 1, // satisfy the ship guard: at least 1 commit on branch
+		},
 	}
 
 	if _, err := Run(context.Background(), cfg); err != nil {

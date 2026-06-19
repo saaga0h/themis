@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/saaga0h/themis/internal/profile"
+	"github.com/saaga0h/themis/internal/runner"
 	"github.com/saaga0h/themis/internal/tracker"
 )
 
@@ -118,5 +120,33 @@ func TestGiteaQuerier_ListReadyIssues_MapsFieldsViaParseIssueItems(t *testing.T)
 		if got.Labels[i] != want.Labels[i] {
 			t.Errorf("Labels[%d]: got %q, want %q", i, got.Labels[i], want.Labels[i])
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// AC7: cmd/themis provides concrete GitOps and ProfileLoader implementations (issue #61)
+// ---------------------------------------------------------------------------
+
+// TestCmdGitOps_ImplementsRunnerGitOps asserts that cmd/themis declares a
+// concrete type (cmdGitOps or similar) that satisfies runner.GitOps.
+// Fails to compile until cmd/themis declares such a type.
+func TestCmdGitOps_ImplementsRunnerGitOps(t *testing.T) {
+	// This compile-time assertion will fail until cmd/themis defines a type
+	// named cmdGitOps (or equivalent) that implements runner.GitOps.
+	var _ runner.GitOps = &cmdGitOps{}
+}
+
+// TestCmdProfileLoader_SignatureMatchesRunnerConfig asserts that the concrete
+// profileLoader function defined in cmd/themis has the same signature as
+// Config.ProfileLoader: func(string) (*profile.Profile, error).
+//
+// The assignment compiles only when the function exists with the correct signature.
+func TestCmdProfileLoader_SignatureMatchesRunnerConfig(t *testing.T) {
+	// profileLoader must be a package-level function in cmd/themis with signature
+	// func(dir string) (*profile.Profile, error).
+	// The variable type enforces the signature at compile time.
+	var fn func(string) (*profile.Profile, error) = profileLoader
+	if fn == nil {
+		t.Error("profileLoader must be a non-nil function in cmd/themis")
 	}
 }
