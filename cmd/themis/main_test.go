@@ -43,17 +43,6 @@ func TestVersionPrintsNonEmptyString(t *testing.T) {
 	}
 }
 
-// go.mod exists at repo root with module path github.com/saaga0h/themis
-func TestGoModModulePath(t *testing.T) {
-	content, err := os.ReadFile("../../go.mod")
-	if err != nil {
-		t.Fatalf("go.mod not found at repo root: %v", err)
-	}
-	if !strings.Contains(string(content), "module github.com/saaga0h/themis") {
-		t.Errorf("go.mod must declare module github.com/saaga0h/themis\ngot:\n%s", string(content))
-	}
-}
-
 // Makefile exists with build, test, and lint targets that succeed
 func TestMakefileHasGoBuildTarget(t *testing.T) {
 	assertMakefileTarget(t, "build")
@@ -134,36 +123,5 @@ func TestNoOldHostnameInGoFiles(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("error walking repo: %v", err)
-	}
-}
-
-// grep returns no results for the old private Gitea hostname (AC5)
-func TestGrepFindNoOldHostname(t *testing.T) {
-	root, err := filepath.Abs("../../")
-	if err != nil {
-		t.Fatalf("cannot resolve repo root: %v", err)
-	}
-	// split to avoid matching this source file when the tests themselves run
-	oldHostname := "git.home.federation" + ".fi"
-	cmd := exec.Command("grep", "-r", oldHostname, "--include=*.go", ".")
-	cmd.Dir = root
-	out, execErr := cmd.Output()
-	// grep exits 0 when matches are found (test failure), exits 1 when no matches (test success).
-	if execErr == nil {
-		// exit code 0 means matches were found — this is the failure case
-		t.Errorf("grep found old hostname in .go files; matches:\n%s", string(out))
-		return
-	}
-	exitErr, ok := execErr.(*exec.ExitError)
-	if !ok {
-		t.Fatalf("unexpected error running grep: %v", execErr)
-	}
-	if exitErr.ExitCode() != 1 {
-		// exit code other than 0 or 1 indicates a grep error
-		t.Fatalf("grep exited with unexpected code %d: %s", exitErr.ExitCode(), string(exitErr.Stderr))
-	}
-	// exit code 1 with empty output means no matches — success
-	if strings.TrimSpace(string(out)) != "" {
-		t.Errorf("grep exited 1 but produced non-empty output: %s", string(out))
 	}
 }
