@@ -121,40 +121,75 @@ func runLoop(ctx context.Context, cfg loopConfig) error {
 		return fmt.Errorf("listing ready issues: %w", err)
 	}
 
+	if len(issues) == 0 {
+		fmt.Fprintf(out, "no ready-for-agent issues found\n")
+		return nil
+	}
+
 	sort.Slice(issues, func(i, j int) bool {
 		return issues[i].Number < issues[j].Number
 	})
 
-	for _, issue := range issues {
+	var processed, blocked, skippedDep, skippedTurns int
+
+	for i, issue := range issues {
 		if m := dependsOnRE.FindStringSubmatch(issue.Body); m != nil {
 			depNum, _ := strconv.Atoi(m[1])
 			open, err := cfg.Querier.IsOpen(ctx, depNum)
 			if err != nil {
 				fmt.Fprintf(out, "skipping issue #%d: dependency check error for #%d: %v\n", issue.Number, depNum, err)
+				skippedDep++
 				continue
 			}
 			if open {
 				fmt.Fprintf(out, "skipping issue #%d: depends on open issue #%d\n", issue.Number, depNum)
+				skippedDep++
 				continue
 			}
 		}
 
 		if cfg.Turns.RemainingFraction() < 0.10 {
 			fmt.Fprintf(out, "insufficient turns remaining\n")
-			return nil
+			skippedTurns = len(issues) - i
+			break
 		}
 
 		if cfg.DryRun {
 			fmt.Fprintf(out, "would process issue #%d: %s\n", issue.Number, issue.Title)
+			processed++
 			continue
 		}
 
 		if err := cfg.RunFn(ctx, issue); err != nil {
 			fmt.Fprintf(out, "issue #%d blocked: %v\n", issue.Number, err)
+			blocked++
+		} else {
+			processed++
 		}
 	}
 
+	printRunSummary(out, processed, blocked, skippedDep, skippedTurns)
 	return nil
+}
+
+// printRunSummary writes end-of-run counts to out.
+// Non-processed counts appear first so the "N processed" line is always last,
+// ensuring it appears after any per-issue "blocked" log lines (AC6).
+func printRunSummary(out io.Writer, processed, blocked, skippedDep, skippedTurns int) {
+	var parts []string
+	if blocked > 0 {
+		parts = append(parts, fmt.Sprintf("%d blocked", blocked))
+	}
+	if skippedDep > 0 {
+		parts = append(parts, fmt.Sprintf("%d skipped (dependency)", skippedDep))
+	}
+	if skippedTurns > 0 {
+		parts = append(parts, fmt.Sprintf("%d skipped (turns)", skippedTurns))
+	}
+	if len(parts) > 0 {
+		fmt.Fprintf(out, "run summary: %s\n", strings.Join(parts, ", "))
+	}
+	fmt.Fprintf(out, "run summary: %d processed\n", processed)
 }
 
 // envTurns reads the remaining turn fraction from THEMIS_TURNS_REMAINING_FRACTION.
