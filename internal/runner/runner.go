@@ -209,19 +209,13 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		return nil, fmt.Errorf("fetching issue #%d: %w", cfg.IssueNumber, err)
 	}
 
-	var prof *profile.Profile
-	if cfg.ProfileLoader != nil {
-		var loadErr error
-		prof, loadErr = cfg.ProfileLoader(cfg.WorkDir)
-		if loadErr != nil {
-			return nil, fmt.Errorf("loading profile: %w", loadErr)
-		}
-	} else {
-		var loadErr error
-		prof, loadErr = profile.Load(cfg.WorkDir)
-		if loadErr != nil {
-			return nil, fmt.Errorf("loading profile: %w", loadErr)
-		}
+	loader := cfg.ProfileLoader
+	if loader == nil {
+		loader = profile.Load
+	}
+	prof, err := loader(cfg.WorkDir)
+	if err != nil {
+		return nil, fmt.Errorf("loading profile: %w", err)
 	}
 	if prof == nil {
 		prof = &profile.Profile{}
@@ -404,15 +398,11 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			return nil, fmt.Errorf("reading template %s: %w", tmplPath, err)
 		}
 
-		var branchName string
+		branchName := "main"
 		if cfg.Git != nil {
 			if b, brErr := cfg.Git.CurrentBranch(ctx, cfg.WorkDir); brErr == nil {
 				branchName = b
-			} else {
-				branchName = "main"
 			}
-		} else {
-			branchName = "main"
 		}
 
 		allArgs := buildTemplateArgs(ctx, cfg, issue, branchName, state.ReviewCycle, codingStandards, ubiquitousLanguage, lastBlockingFindings, reviewOutput)
