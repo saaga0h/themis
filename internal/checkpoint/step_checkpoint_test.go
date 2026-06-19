@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"git.home.federation.fi/lavernea/themis/internal/checkpoint"
-	"git.home.federation.fi/lavernea/themis/internal/pipeline"
+	"github.com/saaga0h/themis/internal/checkpoint"
+	"github.com/saaga0h/themis/internal/pipeline"
 )
 
 // initGitRepo and makeCommit helpers are defined in checkpoint_test.go (same package).

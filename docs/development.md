@@ -12,7 +12,7 @@
 
 | Prerequisite | Notes |
 |---|---|
-| Go 1.22 | Module: `git.home.federation.fi/lavernea/themis` |
+| Go 1.22 | Module: `github.com/saaga0h/themis` |
 | Podman (rootless) or Docker | `--userns=keep-id` required for rootless Podman |
 | `gh` CLI | Required when `--provider github` (default) |
 | `CLAUDE_CODE_OAUTH_TOKEN` | Headless Claude Code auth; generated via `claude setup-token` on the host |

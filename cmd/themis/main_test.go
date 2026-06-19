@@ -1,6 +1,7 @@
 package main_test
 
 import (
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -42,17 +43,6 @@ func TestVersionPrintsNonEmptyString(t *testing.T) {
 	}
 }
 
-// go.mod exists at repo root with module path git.home.federation.fi/lavernea/themis
-func TestGoModModulePath(t *testing.T) {
-	content, err := os.ReadFile("../../go.mod")
-	if err != nil {
-		t.Fatalf("go.mod not found at repo root: %v", err)
-	}
-	if !strings.Contains(string(content), "module git.home.federation.fi/lavernea/themis") {
-		t.Errorf("go.mod must declare module git.home.federation.fi/lavernea/themis\ngot:\n%s", string(content))
-	}
-}
-
 // Makefile exists with build, test, and lint targets that succeed
 func TestMakefileHasGoBuildTarget(t *testing.T) {
 	assertMakefileTarget(t, "build")
@@ -75,5 +65,63 @@ func assertMakefileTarget(t *testing.T, target string) {
 	needle := target + ":"
 	if !strings.Contains(string(content), needle) {
 		t.Errorf("Makefile must contain target %q", needle)
+	}
+}
+
+// go.mod declares module github.com/saaga0h/themis (AC1)
+func TestGoModDeclaredPath(t *testing.T) {
+	content, err := os.ReadFile("../../go.mod")
+	if err != nil {
+		t.Fatalf("go.mod not found at repo root: %v", err)
+	}
+	const want = "module github.com/saaga0h/themis"
+	for _, line := range strings.Split(string(content), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "module ") {
+			got := strings.TrimSpace(line)
+			if got != want {
+				t.Errorf("go.mod module directive: got %q, want %q", got, want)
+			}
+			return
+		}
+	}
+	t.Errorf("go.mod has no module directive")
+}
+
+// No .go file contains the old private Gitea hostname in any import path (AC2)
+func TestNoOldHostnameInGoFiles(t *testing.T) {
+	// split to avoid matching this source file when the tests themselves run
+	const oldHostname = "git.home.federation" + ".fi"
+	root, err := filepath.Abs("../../")
+	if err != nil {
+		t.Fatalf("cannot resolve repo root: %v", err)
+	}
+	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			// Skip hidden and vendor directories
+			name := d.Name()
+			if name == ".git" || name == "vendor" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		content, readErr := os.ReadFile(path)
+		if readErr != nil {
+			t.Errorf("cannot read file %s: %v", path, readErr)
+			return nil
+		}
+		if strings.Contains(string(content), oldHostname) {
+			rel, _ := filepath.Rel(root, path)
+			t.Errorf("file %s still contains old hostname %q", rel, oldHostname)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("error walking repo: %v", err)
 	}
 }

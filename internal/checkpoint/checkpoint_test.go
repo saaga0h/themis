@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"git.home.federation.fi/lavernea/themis/internal/checkpoint"
+	"github.com/saaga0h/themis/internal/checkpoint"
 )
 
 // initGitRepo creates a temp git repo with an initial commit and a remote whose

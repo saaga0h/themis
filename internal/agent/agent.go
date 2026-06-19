@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"git.home.federation.fi/lavernea/themis/internal/git"
+	"github.com/saaga0h/themis/internal/git"
 )
 
 // InvokeResult holds the structured output of an agent invocation.

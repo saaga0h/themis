@@ -205,7 +205,7 @@ persisted after each step so interrupted runs can resume.
 
 | Property | Value |
 |----------|-------|
-| Module path | `git.home.federation.fi/lavernea/themis` |
+| Module path | `github.com/saaga0h/themis` |
 | Go version | 1.22 |
 | Entry point | `cmd/themis/main.go` |
 

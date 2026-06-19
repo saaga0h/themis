@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"git.home.federation.fi/lavernea/themis/internal/tracker"
+	"github.com/saaga0h/themis/internal/tracker"
 )
 
 type runArgs struct {

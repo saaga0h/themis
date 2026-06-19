@@ -17,8 +17,8 @@ import (
 	"strings"
 	"testing"
 
-	"git.home.federation.fi/lavernea/themis/internal/agent"
-	"git.home.federation.fi/lavernea/themis/internal/pipeline"
+	"github.com/saaga0h/themis/internal/agent"
+	"github.com/saaga0h/themis/internal/pipeline"
 )
 
 // fileCheckInvoker checks whether jsonPath exists before the first invocation

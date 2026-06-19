@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"git.home.federation.fi/lavernea/themis/internal/runner"
-	"git.home.federation.fi/lavernea/themis/internal/tracker"
+	"github.com/saaga0h/themis/internal/runner"
+	"github.com/saaga0h/themis/internal/tracker"
 )
 
 type stubMainFetcher struct{}

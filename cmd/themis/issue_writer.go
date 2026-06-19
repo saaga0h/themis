@@ -10,7 +10,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"git.home.federation.fi/lavernea/themis/internal/runner"
+	"github.com/saaga0h/themis/internal/runner"
 )
 
 // ghIssueWriter implements runner.IssueWriter using the gh CLI (GitHub).

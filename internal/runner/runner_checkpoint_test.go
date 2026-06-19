@@ -16,9 +16,9 @@ import (
 	"strings"
 	"testing"
 
-	"git.home.federation.fi/lavernea/themis/internal/agent"
-	"git.home.federation.fi/lavernea/themis/internal/checkpoint"
-	"git.home.federation.fi/lavernea/themis/internal/pipeline"
+	"github.com/saaga0h/themis/internal/agent"
+	"github.com/saaga0h/themis/internal/checkpoint"
+	"github.com/saaga0h/themis/internal/pipeline"
 )
 
 func initGitRepoForRunner(t *testing.T) string {

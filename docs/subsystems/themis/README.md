@@ -74,7 +74,7 @@ make test    # go test ./...
 make lint    # go vet ./...
 ```
 
-Module: `git.home.federation.fi/lavernea/themis`, Go 1.22.
+Module: `github.com/saaga0h/themis`, Go 1.22.
 
 ## Key Files
 

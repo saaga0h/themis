@@ -17,8 +17,8 @@ import (
 	"strings"
 	"testing"
 
-	"git.home.federation.fi/lavernea/themis/internal/agent"
-	"git.home.federation.fi/lavernea/themis/internal/pipeline"
+	"github.com/saaga0h/themis/internal/agent"
+	"github.com/saaga0h/themis/internal/pipeline"
 )
 
 // pipelineAgentCallCount is the number of agent steps that run before Ship in the

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"git.home.federation.fi/lavernea/themis/internal/git"
+	"github.com/saaga0h/themis/internal/git"
 )
 
 // VerifyCommitPrefix checks that the last commit message starts with prefix.

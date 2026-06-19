@@ -6,11 +6,11 @@ import (
 	"os"
 	"path/filepath"
 
-	"git.home.federation.fi/lavernea/themis/internal/agent"
-	"git.home.federation.fi/lavernea/themis/internal/checkpoint"
-	"git.home.federation.fi/lavernea/themis/internal/git"
-	"git.home.federation.fi/lavernea/themis/internal/runner"
-	"git.home.federation.fi/lavernea/themis/internal/tracker"
+	"github.com/saaga0h/themis/internal/agent"
+	"github.com/saaga0h/themis/internal/checkpoint"
+	"github.com/saaga0h/themis/internal/git"
+	"github.com/saaga0h/themis/internal/runner"
+	"github.com/saaga0h/themis/internal/tracker"
 )
 
 const version = "0.1.0"
