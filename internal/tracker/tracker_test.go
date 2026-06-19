@@ -285,3 +285,111 @@ func TestGiteaFetcher_ReturnsErrorOnTimeout(t *testing.T) {
 		t.Error("GiteaFetcher.Fetch: expected non-nil error when server does not respond, got nil")
 	}
 }
+
+// ParseIssueItems converts a slice of IssueItem into a slice of *IssueData,
+// populating all fields (Number, Title, Body, Labels) from the source struct.
+// AC5: tracker.ParseIssueItems populates all fields from source struct.
+
+func TestParseIssueItems_EmptySlice(t *testing.T) {
+	// TARGET 5a: empty input yields zero-length output without panic.
+	result := tracker.ParseIssueItems([]tracker.IssueItem{})
+	if len(result) != 0 {
+		t.Errorf("ParseIssueItems(empty): got len %d, want 0", len(result))
+	}
+}
+
+func TestParseIssueItems_SingleItem_AllFieldsPopulated(t *testing.T) {
+	// TARGET 5b: all fields (Number, Title, Body, Labels) are set correctly.
+	items := []tracker.IssueItem{
+		{
+			Number: 7,
+			Title:  "foo",
+			Body:   "bar",
+			Labels: []tracker.IssueItemLabel{{Name: "lbl1"}, {Name: "lbl2"}},
+		},
+	}
+	result := tracker.ParseIssueItems(items)
+	if len(result) != 1 {
+		t.Fatalf("ParseIssueItems: got len %d, want 1", len(result))
+	}
+	got := result[0]
+	if got.Number != 7 {
+		t.Errorf("Number: got %d, want 7", got.Number)
+	}
+	if got.Title != "foo" {
+		t.Errorf("Title: got %q, want %q", got.Title, "foo")
+	}
+	if got.Body != "bar" {
+		t.Errorf("Body: got %q, want %q", got.Body, "bar")
+	}
+	if len(got.Labels) != 2 {
+		t.Fatalf("Labels: got %v (len %d), want 2 items", got.Labels, len(got.Labels))
+	}
+	if got.Labels[0] != "lbl1" {
+		t.Errorf("Labels[0]: got %q, want %q", got.Labels[0], "lbl1")
+	}
+	if got.Labels[1] != "lbl2" {
+		t.Errorf("Labels[1]: got %q, want %q", got.Labels[1], "lbl2")
+	}
+}
+
+func TestParseIssueItems_MultipleItems_PreservesOrder(t *testing.T) {
+	// TARGET 5c: output order matches input order.
+	items := []tracker.IssueItem{
+		{Number: 3, Title: "first"},
+		{Number: 1, Title: "second"},
+	}
+	result := tracker.ParseIssueItems(items)
+	if len(result) != 2 {
+		t.Fatalf("ParseIssueItems: got len %d, want 2", len(result))
+	}
+	if result[0].Number != 3 {
+		t.Errorf("result[0].Number: got %d, want 3", result[0].Number)
+	}
+	if result[1].Number != 1 {
+		t.Errorf("result[1].Number: got %d, want 1", result[1].Number)
+	}
+}
+
+func TestParseIssueItems_ItemWithNoLabels_LabelsIsEmpty(t *testing.T) {
+	// TARGET 5d: item with empty Labels slice yields IssueData with empty Labels.
+	items := []tracker.IssueItem{
+		{Number: 5, Title: "no labels", Body: "body text", Labels: []tracker.IssueItemLabel{}},
+	}
+	result := tracker.ParseIssueItems(items)
+	if len(result) != 1 {
+		t.Fatalf("ParseIssueItems: got len %d, want 1", len(result))
+	}
+	if len(result[0].Labels) != 0 {
+		t.Errorf("Labels: got %v, want empty", result[0].Labels)
+	}
+}
+
+func TestParseIssueItems_ItemWithMultipleLabels(t *testing.T) {
+	// TARGET 5e: all label names are extracted in order.
+	items := []tracker.IssueItem{
+		{
+			Number: 10,
+			Title:  "multi-label",
+			Labels: []tracker.IssueItemLabel{
+				{Name: "alpha"},
+				{Name: "beta"},
+				{Name: "gamma"},
+			},
+		},
+	}
+	result := tracker.ParseIssueItems(items)
+	if len(result) != 1 {
+		t.Fatalf("ParseIssueItems: got len %d, want 1", len(result))
+	}
+	wantLabels := []string{"alpha", "beta", "gamma"}
+	gotLabels := result[0].Labels
+	if len(gotLabels) != len(wantLabels) {
+		t.Fatalf("Labels: got %v (len %d), want %v (len %d)", gotLabels, len(gotLabels), wantLabels, len(wantLabels))
+	}
+	for i, want := range wantLabels {
+		if gotLabels[i] != want {
+			t.Errorf("Labels[%d]: got %q, want %q", i, gotLabels[i], want)
+		}
+	}
+}
