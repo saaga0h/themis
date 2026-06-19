@@ -60,19 +60,20 @@ type PROptions struct {
 
 // Config holds all dependencies for a pipeline run.
 type Config struct {
-	WorkDir       string
-	IssueNumber   int
-	Fetcher       tracker.Fetcher
-	Invoker       agent.Invoker
-	IssueWriter   IssueWriter
-	TemplateDir   string
-	CheckpointFn  func(ctx context.Context, step pipeline.Step, workDir string) error
-	TestACKey     string
-	Git           GitOps
-	ProfileLoader func(dir string) (ProfileData, error)
-	Logger        io.Writer
-	CodeVersion   string
-	MaxTurns      int
+	WorkDir              string
+	IssueNumber          int
+	Fetcher              tracker.Fetcher
+	Invoker              agent.Invoker
+	IssueWriter          IssueWriter
+	TemplateDir          string
+	CheckpointFn         func(ctx context.Context, step pipeline.Step, workDir string) error
+	TestACKey            string
+	Git                  GitOps
+	ProfileLoader        func(dir string) (ProfileData, error)
+	ReviewResultsLoader  func(ctx context.Context, workDir string) ([]review.ReviewFinding, bool)
+	Logger               io.Writer
+	CodeVersion          string
+	MaxTurns             int
 }
 
 // Result holds the outcome of a successful pipeline run.
@@ -392,7 +393,11 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 
 		stepResult := deriveStepResult(ctx, step, invokeResult, cfg)
 		if step == pipeline.StepReview {
-			findings, found := review.ReadReviewResults(ctx, cfg.WorkDir)
+			loadResults := cfg.ReviewResultsLoader
+			if loadResults == nil {
+				loadResults = review.ReadReviewResults
+			}
+			findings, found := loadResults(ctx, cfg.WorkDir)
 			if !found {
 				fmt.Fprintf(log, "warning: review-results.json not found after review step — treating as blocking\n")
 			} else {
@@ -454,7 +459,11 @@ func deriveStepResult(ctx context.Context, step pipeline.Step, r *agent.InvokeRe
 		return pipeline.StepResult{Success: false, TestACKey: key}
 
 	case pipeline.StepReview:
-		findings, found := review.ReadReviewResults(ctx, cfg.WorkDir)
+		loadResults := cfg.ReviewResultsLoader
+		if loadResults == nil {
+			loadResults = review.ReadReviewResults
+		}
+		findings, found := loadResults(ctx, cfg.WorkDir)
 		if !found {
 			// Missing JSON is the fail-safe: the review step produced no
 			// structured result, so treat it as blocking regardless of stdout.

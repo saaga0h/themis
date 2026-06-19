@@ -303,6 +303,21 @@ func TestReview_FormatBlockingFindings_IncludesFileAndLine(t *testing.T) {
 	}
 }
 
+func TestReview_FormatBlockingFindings_FileWithoutLine(t *testing.T) {
+	findings := []review.ReviewFinding{
+		{Severity: "high", Description: "bad call", File: "server.go"},
+	}
+
+	out := review.FormatBlockingFindings(findings)
+
+	if !strings.Contains(out, "server.go") {
+		t.Errorf("FormatBlockingFindings must include File when set; got: %s", out)
+	}
+	if strings.Contains(out, ":0") {
+		t.Errorf("FormatBlockingFindings must omit ':0' when Line=0; got: %s", out)
+	}
+}
+
 func TestReview_FormatBlockingFindings_IsHumanReadableNotJSON(t *testing.T) {
 	findings := []review.ReviewFinding{
 		{Severity: "critical", Description: "bad call"},

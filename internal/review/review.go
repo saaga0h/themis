@@ -24,7 +24,9 @@ type ReviewResults struct {
 	Findings []ReviewFinding `json:"findings"`
 }
 
-func ReadReviewResults(ctx context.Context, workDir string) ([]ReviewFinding, bool) {
+// ctx is accepted per convention for I/O functions but is not passed to
+// os.ReadFile, which has no context-aware variant.
+func ReadReviewResults(_ context.Context, workDir string) ([]ReviewFinding, bool) {
 	path := filepath.Join(workDir, ".themis", "review-results.json")
 	data, err := os.ReadFile(path)
 	if err != nil {

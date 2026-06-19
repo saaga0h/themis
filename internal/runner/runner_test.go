@@ -22,6 +22,7 @@ import (
 
 	"github.com/saaga0h/themis/internal/agent"
 	"github.com/saaga0h/themis/internal/pipeline"
+	"github.com/saaga0h/themis/internal/review"
 	"github.com/saaga0h/themis/internal/tracker"
 )
 
@@ -273,13 +274,13 @@ func logConfig(t *testing.T, buf *bytes.Buffer, w *stubIssueWriter, inv agent.In
 }
 
 // writeReviewResults marshals findings to .themis/review-results.json in workDir.
-func writeReviewResults(t *testing.T, workDir string, findings []ReviewFinding) {
+func writeReviewResults(t *testing.T, workDir string, findings []review.ReviewFinding) {
 	t.Helper()
 	themisDir := filepath.Join(workDir, ".themis")
 	if err := os.MkdirAll(themisDir, 0o755); err != nil {
 		t.Fatalf("mkdir .themis: %v", err)
 	}
-	data, err := json.Marshal(ReviewResults{Findings: findings})
+	data, err := json.Marshal(review.ReviewResults{Findings: findings})
 	if err != nil {
 		t.Fatalf("marshal review results: %v", err)
 	}
@@ -1547,7 +1548,7 @@ func TestRunner_UsesProfileLoaderFromConfig(t *testing.T) {
 	saveStateAt(t, workDir, pipeline.StepTestRed)
 
 	// ReviewResults needed to mark review non-blocking after the Review step.
-	writeReviewResults(t, workDir, []ReviewFinding{})
+	writeReviewResults(t, workDir, []review.ReviewFinding{})
 
 	const stubModel = "stub-model-for-review"
 

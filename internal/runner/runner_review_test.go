@@ -19,6 +19,7 @@ import (
 
 	"github.com/saaga0h/themis/internal/agent"
 	"github.com/saaga0h/themis/internal/pipeline"
+	"github.com/saaga0h/themis/internal/review"
 )
 
 // fileCheckInvoker checks whether jsonPath exists before the first invocation
@@ -44,12 +45,12 @@ func (f *fileCheckInvoker) Invoke(ctx context.Context, opts agent.InvokeOptions)
 // Blocking detection: severity thresholds and JSON-not-stdout signal
 // ---------------------------------------------------------------------------
 
-// TestBlockingThreshold_ValueIsMedium asserts the package-level constant
-// blockingThreshold has the exact string value "medium".
+// TestBlockingThreshold_ValueIsMedium asserts the BlockingThreshold constant
+// in the review package has the exact string value "medium".
 func TestBlockingThreshold_ValueIsMedium(t *testing.T) {
 	const want = "medium"
-	if blockingThreshold != want {
-		t.Errorf("blockingThreshold = %q, want %q", blockingThreshold, want)
+	if review.BlockingThreshold != want {
+		t.Errorf("review.BlockingThreshold = %q, want %q", review.BlockingThreshold, want)
 	}
 }
 
@@ -58,7 +59,7 @@ func TestBlockingThreshold_ValueIsMedium(t *testing.T) {
 // the runner detects blocking findings from the JSON file.
 func TestDeriveStepResult_ReviewStep_ReadsJSONNotStdout(t *testing.T) {
 	workDir := t.TempDir()
-	writeReviewResults(t, workDir, []ReviewFinding{
+	writeReviewResults(t, workDir, []review.ReviewFinding{
 		{Severity: "critical", Description: "SQL injection vulnerability", File: "db.go", Line: 42},
 	})
 
@@ -96,7 +97,7 @@ func TestDeriveStepResult_ReviewStep_StdoutAloneDoesNotTriggerBlocking(t *testin
 
 	// Writing an EMPTY findings JSON (no critical entries) alongside the same
 	// stdout makes blocking FALSE — proving stdout is not read.
-	writeReviewResults(t, workDir, []ReviewFinding{})
+	writeReviewResults(t, workDir, []review.ReviewFinding{})
 
 	srWithEmptyJSON := deriveStepResult(context.Background(), pipeline.StepReview, result, cfg)
 	if srWithEmptyJSON.BlockingFindings {
@@ -120,12 +121,12 @@ func TestDetermineBlockingStatus_SeverityTable(t *testing.T) {
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.severity, func(t *testing.T) {
-			findings := []ReviewFinding{
+			findings := []review.ReviewFinding{
 				{Severity: tc.severity, Description: "test finding"},
 			}
-			got := determineBlockingStatus(findings)
+			got := review.DetermineBlockingStatus(findings)
 			if got != tc.want {
-				t.Errorf("determineBlockingStatus([{severity:%q}]) = %v, want %v", tc.severity, got, tc.want)
+				t.Errorf("review.DetermineBlockingStatus([{severity:%q}]) = %v, want %v", tc.severity, got, tc.want)
 			}
 		})
 	}
@@ -202,14 +203,14 @@ func TestRunner_ReviewStep_MissingJSONIsBlocking(t *testing.T) {
 // ReviewResults with mixed-severity findings, the formatted output lists
 // critical before high before medium, omits low, and is human-readable (not JSON).
 func TestExtractBlockingFindings_FormatsOrderedBySeverity(t *testing.T) {
-	findings := []ReviewFinding{
+	findings := []review.ReviewFinding{
 		{Severity: "low", Description: "minor style nit"},
 		{Severity: "medium", Description: "medium risk issue"},
 		{Severity: "critical", Description: "critical security hole"},
 		{Severity: "high", Description: "high risk bug"},
 	}
 
-	formatted := formatBlockingFindings(findings)
+	formatted := review.FormatBlockingFindings(findings)
 
 	// Must not contain low-severity finding.
 	if strings.Contains(formatted, "minor style nit") {
@@ -254,7 +255,7 @@ func TestRunner_FixTemplate_BlockingFindingsPlaceholderIsFormattedList(t *testin
 	saveStateAt(t, workDir, pipeline.StepReview)
 
 	// Write two blocking findings to review-results.json.
-	writeReviewResults(t, workDir, []ReviewFinding{
+	writeReviewResults(t, workDir, []review.ReviewFinding{
 		{Severity: "critical", Description: "SQL injection in login handler", File: "auth.go", Line: 55},
 		{Severity: "high", Description: "Missing input validation", File: "api.go", Line: 120},
 	})
@@ -324,7 +325,7 @@ func TestRunner_FreshStart_DeletesReviewResultsJSON(t *testing.T) {
 	// No state file — fresh start.
 
 	// Write a stale review-results.json.
-	writeReviewResults(t, workDir, []ReviewFinding{
+	writeReviewResults(t, workDir, []review.ReviewFinding{
 		{Severity: "critical", Description: "stale finding from previous run"},
 	})
 	jsonPath := filepath.Join(workDir, ".themis", "review-results.json")
@@ -372,7 +373,7 @@ func TestRunner_IssueMismatch_DeletesReviewResultsJSON(t *testing.T) {
 	}
 
 	// Write review-results.json that belongs to the old run.
-	writeReviewResults(t, workDir, []ReviewFinding{
+	writeReviewResults(t, workDir, []review.ReviewFinding{
 		{Severity: "high", Description: "finding from issue 99"},
 	})
 	jsonPath := filepath.Join(workDir, ".themis", "review-results.json")
@@ -405,7 +406,7 @@ func TestRunner_Resume_PreservesReviewResultsJSON(t *testing.T) {
 	saveStateAt(t, workDir, pipeline.StepFix)
 
 	// Write review-results.json that should be preserved.
-	writeReviewResults(t, workDir, []ReviewFinding{
+	writeReviewResults(t, workDir, []review.ReviewFinding{
 		{Severity: "high", Description: "finding preserved from review"},
 	})
 	jsonPath := filepath.Join(workDir, ".themis", "review-results.json")
@@ -528,7 +529,7 @@ func TestRunner_StopsOnReviewCycleLimit_WithJSONFixture(t *testing.T) {
 	}
 
 	// Write a critical finding so the review step returns blocking=true.
-	writeReviewResults(t, workDir, []ReviewFinding{
+	writeReviewResults(t, workDir, []review.ReviewFinding{
 		{Severity: "critical", Description: "Security issue found.", File: "main.go", Line: 10},
 	})
 
@@ -592,7 +593,7 @@ func TestRunner_LogsReviewFindingsSummaryWithCounts_WithJSONFixture(t *testing.T
 	// Start at the Review step via saved state, then write a JSON fixture with
 	// 1 blocking + 2 non-blocking findings so the runner logs the counts.
 	saveStateAt(t, workDir, pipeline.StepReview)
-	writeReviewResults(t, workDir, []ReviewFinding{
+	writeReviewResults(t, workDir, []review.ReviewFinding{
 		{Severity: "high", Description: "missing test for Ship step"},
 		{Severity: "low", Description: "variable name could be more descriptive"},
 		{Severity: "low", Description: "consider extracting helper function"},
@@ -645,7 +646,7 @@ func TestRunner_LogsReviewFindingsSummaryWhenNoFindings_WithJSONFixture(t *testi
 
 	// Start at Review step; write empty findings (no blocking).
 	saveStateAt(t, workDir, pipeline.StepReview)
-	writeReviewResults(t, workDir, []ReviewFinding{}) // empty — 0 blocking
+	writeReviewResults(t, workDir, []review.ReviewFinding{}) // empty — 0 blocking
 
 	inv := &stubInvoker{
 		results: []*agent.InvokeResult{
