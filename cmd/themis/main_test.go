@@ -43,14 +43,14 @@ func TestVersionPrintsNonEmptyString(t *testing.T) {
 	}
 }
 
-// go.mod exists at repo root with module path git.home.federation.fi/lavernea/themis
+// go.mod exists at repo root with module path github.com/saaga0h/themis
 func TestGoModModulePath(t *testing.T) {
 	content, err := os.ReadFile("../../go.mod")
 	if err != nil {
 		t.Fatalf("go.mod not found at repo root: %v", err)
 	}
-	if !strings.Contains(string(content), "module git.home.federation.fi/lavernea/themis") {
-		t.Errorf("go.mod must declare module git.home.federation.fi/lavernea/themis\ngot:\n%s", string(content))
+	if !strings.Contains(string(content), "module github.com/saaga0h/themis") {
+		t.Errorf("go.mod must declare module github.com/saaga0h/themis\ngot:\n%s", string(content))
 	}
 }
 

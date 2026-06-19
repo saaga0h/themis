@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"git.home.federation.fi/lavernea/themis/internal/git"
+	"github.com/saaga0h/themis/internal/git"
 )
 
 // resolveGiteaConfig determines owner, repo, and apiBase by inferring from the

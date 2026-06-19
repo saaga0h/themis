@@ -1,4 +1,4 @@
-module git.home.federation.fi/lavernea/themis
+module github.com/saaga0h/themis
 
 go 1.22
 

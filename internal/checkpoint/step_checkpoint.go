@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"git.home.federation.fi/lavernea/themis/internal/git"
-	"git.home.federation.fi/lavernea/themis/internal/pipeline"
+	"github.com/saaga0h/themis/internal/git"
+	"github.com/saaga0h/themis/internal/pipeline"
 )
 
 var stepPrefix = map[pipeline.Step]string{

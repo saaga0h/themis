@@ -20,9 +20,9 @@ import (
 	"strings"
 	"testing"
 
-	"git.home.federation.fi/lavernea/themis/internal/agent"
-	"git.home.federation.fi/lavernea/themis/internal/pipeline"
-	"git.home.federation.fi/lavernea/themis/internal/tracker"
+	"github.com/saaga0h/themis/internal/agent"
+	"github.com/saaga0h/themis/internal/pipeline"
+	"github.com/saaga0h/themis/internal/tracker"
 )
 
 // ---------------------------------------------------------------------------

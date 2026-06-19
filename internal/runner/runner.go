@@ -12,12 +12,12 @@ import (
 	"strings"
 	"time"
 
-	"git.home.federation.fi/lavernea/themis/internal/agent"
-	"git.home.federation.fi/lavernea/themis/internal/git"
-	"git.home.federation.fi/lavernea/themis/internal/pipeline"
-	"git.home.federation.fi/lavernea/themis/internal/profile"
-	"git.home.federation.fi/lavernea/themis/internal/prompt"
-	"git.home.federation.fi/lavernea/themis/internal/tracker"
+	"github.com/saaga0h/themis/internal/agent"
+	"github.com/saaga0h/themis/internal/git"
+	"github.com/saaga0h/themis/internal/pipeline"
+	"github.com/saaga0h/themis/internal/profile"
+	"github.com/saaga0h/themis/internal/prompt"
+	"github.com/saaga0h/themis/internal/tracker"
 )
 
 const blockingThreshold = "medium"

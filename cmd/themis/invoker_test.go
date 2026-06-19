@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"git.home.federation.fi/lavernea/themis/internal/agent"
+	"github.com/saaga0h/themis/internal/agent"
 )
 
 // claudeInvoker wrapper in invoker.go is removed; newIssueConfig wires *agent.ClaudeCodeInvoker directly.

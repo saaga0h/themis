@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"git.home.federation.fi/lavernea/themis/internal/tracker"
+	"github.com/saaga0h/themis/internal/tracker"
 )
 
 func TestNewGiteaQuerier_ClientTimeoutIsGiteaClientTimeout(t *testing.T) {
