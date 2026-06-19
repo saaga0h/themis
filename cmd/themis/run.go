@@ -121,40 +121,76 @@ func runLoop(ctx context.Context, cfg loopConfig) error {
 		return fmt.Errorf("listing ready issues: %w", err)
 	}
 
+	if len(issues) == 0 {
+		fmt.Fprintf(out, "no ready-for-agent issues found\n")
+		return nil
+	}
+
 	sort.Slice(issues, func(i, j int) bool {
 		return issues[i].Number < issues[j].Number
 	})
 
-	for _, issue := range issues {
+	var processed, blocked, skippedDep, skippedTurns int
+
+	for i, issue := range issues {
 		if m := dependsOnRE.FindStringSubmatch(issue.Body); m != nil {
 			depNum, _ := strconv.Atoi(m[1])
 			open, err := cfg.Querier.IsOpen(ctx, depNum)
 			if err != nil {
 				fmt.Fprintf(out, "skipping issue #%d: dependency check error for #%d: %v\n", issue.Number, depNum, err)
+				skippedDep++
 				continue
 			}
 			if open {
 				fmt.Fprintf(out, "skipping issue #%d: depends on open issue #%d\n", issue.Number, depNum)
+				skippedDep++
 				continue
 			}
 		}
 
 		if cfg.Turns.RemainingFraction() < 0.10 {
 			fmt.Fprintf(out, "insufficient turns remaining\n")
-			return nil
+			skippedTurns = len(issues) - i
+			break
 		}
 
 		if cfg.DryRun {
 			fmt.Fprintf(out, "would process issue #%d: %s\n", issue.Number, issue.Title)
+			processed++
 			continue
 		}
 
 		if err := cfg.RunFn(ctx, issue); err != nil {
 			fmt.Fprintf(out, "issue #%d blocked: %v\n", issue.Number, err)
+			blocked++
+		} else {
+			processed++
 		}
 	}
 
+	printRunSummary(out, processed, blocked, skippedDep, skippedTurns, cfg.DryRun)
 	return nil
+}
+
+// printRunSummary writes a single end-of-run summary line to out, combining all
+// non-zero counts. The processed count is always emitted first; in dry-run mode it
+// is labelled "would process" since no issues were actually processed.
+func printRunSummary(out io.Writer, processed, blocked, skippedDep, skippedTurns int, dryRun bool) {
+	processedLabel := "processed"
+	if dryRun {
+		processedLabel = "would process"
+	}
+	parts := []string{fmt.Sprintf("%d %s", processed, processedLabel)}
+	if blocked > 0 {
+		parts = append(parts, fmt.Sprintf("%d blocked", blocked))
+	}
+	if skippedDep > 0 {
+		parts = append(parts, fmt.Sprintf("%d skipped (dependency)", skippedDep))
+	}
+	if skippedTurns > 0 {
+		parts = append(parts, fmt.Sprintf("%d skipped (turns)", skippedTurns))
+	}
+	fmt.Fprintf(out, "run summary: %s\n", strings.Join(parts, ", "))
 }
 
 // envTurns reads the remaining turn fraction from THEMIS_TURNS_REMAINING_FRACTION.
