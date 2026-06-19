@@ -43,20 +43,34 @@ Proceed?"
 
 Wait for confirmation.
 
-## Step 2: Gather context
+## Step 2: Gather context once
 
-Before running reviewers:
-- Read CLAUDE.md (needed by architecture-reviewer and convention-reviewer)
-- Read CODING_STANDARDS.md if it exists (pass to convention-reviewer and coverage-reviewer)
-- Read UBIQUITOUS_LANGUAGE.md if it exists (pass to convention-reviewer and architecture-reviewer)
-- If scoped to a plan, read the plan file to know which files changed
-- If scoped to a directory, verify the directory exists
+Gather everything the reviewers need a single time, here — so the agents don't
+each re-read the same standards files or re-scan the whole repository:
+
+- Read CLAUDE.md, and CODING_STANDARDS.md and UBIQUITOUS_LANGUAGE.md if they exist.
+- Determine the changed files and the diff for the scope:
+  - `--last-plan`: read the most recent `.claude/plans/*.md` for the file list.
+  - a directory or package: `git diff --name-only main...HEAD -- <scope>` (fall
+    back to listing the directory if it is not a git range).
+  - otherwise: `git diff --name-only main...HEAD` plus `git diff main...HEAD`.
+- If the scope resolves to no changed files, say so and stop — nothing to review.
 
 ## Step 3: Run reviewers
 
-Delegate to each selected review agent using Task. Pass them:
-- The scope (directory, file list from plan, or "full project")
-- CLAUDE.md content summary (for architecture and convention reviewers)
+Delegate to each selected review agent using Task. Put the context gathered in
+Step 2 directly into every delegation prompt, so each agent works from it instead
+of re-deriving it:
+
+- The changed-file list and the diff — **review only these files; do not grep or
+  scan the whole repository.**
+- The standards already read in Step 2 (the relevant parts of CODING_STANDARDS.md,
+  UBIQUITOUS_LANGUAGE.md, CLAUDE.md) — **use the text provided; do not re-read
+  these files from disk.**
+
+This keeps each reviewer's context to the diff plus the standards, instead of
+every agent independently loading ~34KB of standards and scanning the full tree
+(five agents × up to two review cycles).
 
 Run the haiku agents first (they're faster), then sonnet agents.
 
