@@ -25,7 +25,7 @@ coordinate agent execution, enforce cycle limits, and manage pipeline state.
 | Project profile | `internal/profile/` | Per-project YAML configuration schema and loader |
 | Agent invoker | `internal/agent/` | `Invoker` interface and `ClaudeCodeInvoker` for spawning Claude Code |
 | Git helpers | `internal/git/` | Context-aware git subprocess helpers for commit snapshot and branch queries |
-| Issue tracker integration | `internal/tracker/` | Fetcher interface and implementations for GitHub (gh CLI) and Gitea (REST API); AC checkbox parser |
+| Issue tracker integration | `internal/tracker/` | Fetcher interface and implementations for GitHub (gh CLI) and Gitea (REST API); AC checkbox parser; list-issue item types and converter |
 | Checkpoint verification | `internal/checkpoint/` | Verifies commit message prefixes and working-tree cleanliness after each agent step |
 | Pipeline runner | `internal/runner/` | Orchestrates the full pipeline: loads profile, fetches issue, invokes agents per step, enforces limits, creates PR |
 
@@ -163,7 +163,7 @@ without executing. After all issues are processed, a single `run summary:` line 
 
 ### Issue Tracker Integration (`internal/tracker/`)
 
-`Fetcher` interface with `Fetch(ctx context.Context, number int) (*IssueData, error)` as the seam between pipeline orchestration and the issue tracker. `IssueData` carries `Number`, `Title`, `Body`, `Labels`, `URL`, and `Ref` — the target branch specified on the issue (populated from Gitea's `ref` field or GitHub's `ref` field when present; empty string when absent). `GitHubFetcher` implements the interface using `gh issue view --json`; `GiteaFetcher` uses the Gitea REST API via `NewGiteaFetcher(owner, repo, apiBase, token string, timeout time.Duration)` — the caller must supply a non-zero timeout to prevent unbounded blocking under network partition. `ParseCheckboxes(body string) []string` extracts both checked and unchecked `- [ ]`/`- [x]` items from markdown. `NewFetcher(provider, owner, repo, apiBase, token string, timeout time.Duration) (Fetcher, error)` is the factory; `provider` must be `"github"` or `"gitea"`.
+`Fetcher` interface with `Fetch(ctx context.Context, number int) (*IssueData, error)` as the seam between pipeline orchestration and the issue tracker. `IssueData` carries `Number`, `Title`, `Body`, `Labels`, `URL`, and `Ref` — the target branch specified on the issue (populated from Gitea's `ref` field or GitHub's `ref` field when present; empty string when absent). `GitHubFetcher` implements the interface using `gh issue view --json`; `GiteaFetcher` uses the Gitea REST API via `NewGiteaFetcher(owner, repo, apiBase, token string, timeout time.Duration)` — the caller must supply a non-zero timeout to prevent unbounded blocking under network partition. `ParseCheckboxes(body string) []string` extracts both checked and unchecked `- [ ]`/`- [x]` items from markdown. `NewFetcher(provider, owner, repo, apiBase, token string, timeout time.Duration) (Fetcher, error)` is the factory; `provider` must be `"github"` or `"gitea"`. `IssueItemLabel` and `IssueItem` are the raw API shapes for list-issues responses (`IssueItem` carries `Number`, `Title`, `Body`, and `Labels []IssueItemLabel`). `ParseIssueItems(items []IssueItem) []*IssueData` converts a slice of raw list-issue items into `[]*IssueData`, extracting label names internally — callers in `cmd/themis` use this to convert paginated API results without duplicating label-extraction logic.
 
 ### Checkpoint Verification (`internal/checkpoint/`)
 
