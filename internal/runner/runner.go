@@ -515,6 +515,14 @@ func deriveStepResult(ctx context.Context, step pipeline.Step, r *agent.InvokeRe
 		if len(r.CommitsMade) > 0 || r.Completed {
 			return pipeline.StepResult{Success: true}
 		}
+		// A resumed or rebased run can reach TestRed with the failing tests
+		// already committed on the branch. The agent then correctly makes no new
+		// commit, but TestRed's goal — failing tests present before Implement —
+		// is already met. Treat that as success rather than scoring a failed
+		// attempt, which would otherwise stall the pipeline on the retry ceiling.
+		if cfg.Git != nil && branchHasTestFiles(cfg.Git.ChangedFiles(ctx, cfg.WorkDir)) {
+			return pipeline.StepResult{Success: true}
+		}
 		return pipeline.StepResult{Success: false, TestACKey: key}
 
 	case pipeline.StepReview:
@@ -533,6 +541,18 @@ func deriveStepResult(ctx context.Context, step pipeline.Step, r *agent.InvokeRe
 	default:
 		return pipeline.StepResult{Success: true}
 	}
+}
+
+// branchHasTestFiles reports whether the branch's changed-files list (relative to
+// the base) contains at least one Go test file. Used to recognise that TestRed's
+// failing tests are already present on a resumed or rebased branch.
+func branchHasTestFiles(changedFiles string) bool {
+	for _, f := range strings.Split(changedFiles, "\n") {
+		if strings.HasSuffix(strings.TrimSpace(f), "_test.go") {
+			return true
+		}
+	}
+	return false
 }
 
 var placeholderRE = regexp.MustCompile(`\{\{([A-Z0-9_]+)\}\}`)

@@ -105,6 +105,36 @@ func TestAdvanceHappyPath(t *testing.T) {
 	}
 }
 
+// A successful TestRed result advances to Implement even when the retry counter
+// is already at the maximum — success short-circuits the attempt check, so a
+// resumed or rebased branch whose failing tests already exist does not stall on
+// the ceiling.
+func TestAdvanceTestRedSuccessAdvancesAtMaxAttempts(t *testing.T) {
+	ps := &PipelineState{
+		CurrentStep:     StepTestRed,
+		TestFixAttempts: map[string]int{"tests": 3},
+	}
+	next, err := ps.Advance(StepResult{Success: true})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if next != StepImplement {
+		t.Errorf("got %v, want %v", next, StepImplement)
+	}
+}
+
+// A failed TestRed result at the maximum attempt count still returns the ceiling
+// error — the fix only changes how success is derived, not the retry limit.
+func TestAdvanceTestRedFailureAtMaxAttemptsErrors(t *testing.T) {
+	ps := &PipelineState{
+		CurrentStep:     StepTestRed,
+		TestFixAttempts: map[string]int{"tests": 3},
+	}
+	if _, err := ps.Advance(StepResult{Success: false, TestACKey: "tests"}); err == nil {
+		t.Fatal("expected error when TestRed fails at the maximum attempt count")
+	}
+}
+
 // --- Review cycle logic ---
 
 func TestAdvanceReviewBlockingReturnsFix(t *testing.T) {
