@@ -34,7 +34,7 @@ Unknown subcommands print `unknown command: <name>` to stderr and exit 1. Invoca
 Fetches issue `<number>` from the configured tracker, loads (or resumes) pipeline state, and runs the pipeline to completion. Creates a PR on success; adds the `blocked` label and comments on the issue when a cycle limit is reached.
 
 - `--provider github` (default): fetches via `gh issue view --json`
-- `--provider gitea`: fetches from Gitea REST API; `owner`, `repo`, and `apiBase` are inferred from the `origin` git remote (`GITEA_OWNER`, `GITEA_REPO`, `GITEA_API_URL` override individual fields); `GITEA_TOKEN` is required
+- `--provider gitea`: fetches from Gitea REST API; `owner`, `repo`, and `apiBase` are inferred from the `origin` git remote (`GITEA_OWNER`, `GITEA_REPO`, `GITEA_API_URL` override individual fields); `GITEA_TOKEN` is required; all Gitea HTTP clients (fetcher, querier, issue writer) use a 30-second timeout (`giteaClientTimeout`) to prevent unbounded blocking under network partition
 
 ### `themis run [--provider github|gitea] [--dry-run]`
 
