@@ -11,9 +11,6 @@ import (
 	"git.home.federation.fi/lavernea/themis/internal/tracker"
 )
 
-// TestNewGiteaQuerier_ClientTimeoutIsGiteaClientTimeout asserts that the HTTP
-// client created by newGiteaQuerier uses the named constant giteaClientTimeout
-// as its Timeout value (AC1, AC3).
 func TestNewGiteaQuerier_ClientTimeoutIsGiteaClientTimeout(t *testing.T) {
 	q := newGiteaQuerier("owner", "repo", "http://localhost", "token")
 	if q.client.Timeout != giteaClientTimeout {
@@ -21,12 +18,7 @@ func TestNewGiteaQuerier_ClientTimeoutIsGiteaClientTimeout(t *testing.T) {
 	}
 }
 
-// TestGiteaQuerier_ListReadyIssues_ReturnsErrorOnTimeout asserts that
-// ListReadyIssues returns a non-nil error when the server does not respond
-// within the client timeout (AC4).
 func TestGiteaQuerier_ListReadyIssues_ReturnsErrorOnTimeout(t *testing.T) {
-	_ = giteaClientTimeout // compile-time assertion: constant must be defined
-
 	block := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-block // block forever until cleanup
@@ -48,11 +40,7 @@ func TestGiteaQuerier_ListReadyIssues_ReturnsErrorOnTimeout(t *testing.T) {
 	}
 }
 
-// TestGiteaQuerier_IsOpen_ReturnsErrorOnTimeout asserts that IsOpen returns a
-// non-nil error when the server does not respond within the client timeout (AC5).
 func TestGiteaQuerier_IsOpen_ReturnsErrorOnTimeout(t *testing.T) {
-	_ = giteaClientTimeout // compile-time assertion: constant must be defined
-
 	block := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-block // block forever until cleanup
@@ -74,12 +62,9 @@ func TestGiteaQuerier_IsOpen_ReturnsErrorOnTimeout(t *testing.T) {
 	}
 }
 
-// TestGiteaQuerier_ListReadyIssues_MapsFieldsViaParseIssueItems asserts that
-// GiteaQuerier.ListReadyIssues returns correctly mapped IssueData (Number, Title,
-// Body, Labels) when the server returns a valid JSON issue list. This verifies
-// that the querier uses tracker.ParseIssueItems (AC3): uses tracker.IssueItem and
-// tracker.ParseIssueItems directly so this test fails to compile until those types
-// are defined, and asserts the querier's output matches ParseIssueItems' output.
+// TestGiteaQuerier_ListReadyIssues_MapsFieldsViaParseIssueItems uses
+// tracker.IssueItem and tracker.ParseIssueItems directly — this test fails to
+// compile if those types are removed, and asserts output matches ParseIssueItems.
 func TestGiteaQuerier_ListReadyIssues_MapsFieldsViaParseIssueItems(t *testing.T) {
 	payload := []tracker.IssueItem{
 		{

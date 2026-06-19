@@ -11,8 +11,6 @@ import (
 	"git.home.federation.fi/lavernea/themis/internal/tracker"
 )
 
-// AC parser extracts checkbox items from issue body into a structured list of strings
-
 func TestParseCheckboxes_ExtractsBothCheckedAndUnchecked(t *testing.T) {
 	body := "## Summary\n\nSome text.\n\n## Acceptance Criteria\n\n- [ ] First item\n- [x] Second item already done\n- [ ] Third item\n\n## Notes\n\nSome notes."
 	got := tracker.ParseCheckboxes(body)
@@ -41,8 +39,6 @@ func TestParseCheckboxes_NoCheckboxes(t *testing.T) {
 		t.Errorf("ParseCheckboxes (no checkboxes) = %v, want empty", got)
 	}
 }
-
-// Issue tracker integration fetches issue data from GitHub via gh issue view --json
 
 func TestParseGitHubJSON_ExtractsIssueData(t *testing.T) {
 	input := `{
@@ -77,8 +73,6 @@ func TestParseGitHubJSON_InvalidJSON(t *testing.T) {
 		t.Error("ParseGitHubJSON(invalid JSON) should return error")
 	}
 }
-
-// Issue tracker integration fetches issue data from Gitea API
 
 func TestGiteaFetcher_FetchesFromAPI(t *testing.T) {
 	issue := map[string]interface{}{
@@ -128,8 +122,6 @@ func TestGiteaFetcher_ReturnsErrorOn404(t *testing.T) {
 	}
 }
 
-// NewFetcher factory
-
 func TestNewFetcher_GitHub(t *testing.T) {
 	f, err := tracker.NewFetcher("github", "", "", "", "", 5*time.Second)
 	if err != nil {
@@ -157,8 +149,6 @@ func TestNewFetcher_InvalidProvider(t *testing.T) {
 	}
 }
 
-// tracker.IssueData includes a Ref field populated from the issue's ref/branch metadata
-
 func TestIssueData_HasRefField(t *testing.T) {
 	issue := &tracker.IssueData{
 		Number: 21,
@@ -169,8 +159,6 @@ func TestIssueData_HasRefField(t *testing.T) {
 		t.Errorf("IssueData.Ref: got %q, want %q", issue.Ref, "feature-branch")
 	}
 }
-
-// GiteaFetcher populates Ref from the Gitea API response
 
 func TestGiteaFetcher_PopulatesRefFromAPIResponse(t *testing.T) {
 	issue := map[string]interface{}{
@@ -225,8 +213,6 @@ func TestGiteaFetcher_RefIsEmptyWhenAbsentFromAPI(t *testing.T) {
 	}
 }
 
-// GitHubFetcher populates Ref from gh CLI output (or defaults to "main" if not set)
-
 func TestParseGitHubJSON_PopulatesRefWhenPresent(t *testing.T) {
 	input := `{
 		"number": 21,
@@ -264,8 +250,6 @@ func TestParseGitHubJSON_RefIsEmptyWhenAbsent(t *testing.T) {
 	}
 }
 
-// GiteaFetcher.Fetch returns an error when the server does not respond within the timeout.
-
 func TestGiteaFetcher_ReturnsErrorOnTimeout(t *testing.T) {
 	block := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -286,12 +270,7 @@ func TestGiteaFetcher_ReturnsErrorOnTimeout(t *testing.T) {
 	}
 }
 
-// ParseIssueItems converts a slice of IssueItem into a slice of *IssueData,
-// populating all fields (Number, Title, Body, Labels) from the source struct.
-// AC5: tracker.ParseIssueItems populates all fields from source struct.
-
 func TestParseIssueItems_EmptySlice(t *testing.T) {
-	// TARGET 5a: empty input yields zero-length output without panic.
 	result := tracker.ParseIssueItems([]tracker.IssueItem{})
 	if len(result) != 0 {
 		t.Errorf("ParseIssueItems(empty): got len %d, want 0", len(result))
@@ -299,7 +278,6 @@ func TestParseIssueItems_EmptySlice(t *testing.T) {
 }
 
 func TestParseIssueItems_SingleItem_AllFieldsPopulated(t *testing.T) {
-	// TARGET 5b: all fields (Number, Title, Body, Labels) are set correctly.
 	items := []tracker.IssueItem{
 		{
 			Number: 7,
@@ -334,7 +312,6 @@ func TestParseIssueItems_SingleItem_AllFieldsPopulated(t *testing.T) {
 }
 
 func TestParseIssueItems_MultipleItems_PreservesOrder(t *testing.T) {
-	// TARGET 5c: output order matches input order.
 	items := []tracker.IssueItem{
 		{Number: 3, Title: "first"},
 		{Number: 1, Title: "second"},
@@ -352,7 +329,6 @@ func TestParseIssueItems_MultipleItems_PreservesOrder(t *testing.T) {
 }
 
 func TestParseIssueItems_ItemWithNoLabels_LabelsIsEmpty(t *testing.T) {
-	// TARGET 5d: item with empty Labels slice yields IssueData with empty Labels.
 	items := []tracker.IssueItem{
 		{Number: 5, Title: "no labels", Body: "body text", Labels: []tracker.IssueItemLabel{}},
 	}
@@ -366,7 +342,6 @@ func TestParseIssueItems_ItemWithNoLabels_LabelsIsEmpty(t *testing.T) {
 }
 
 func TestParseIssueItems_ItemWithMultipleLabels(t *testing.T) {
-	// TARGET 5e: all label names are extracted in order.
 	items := []tracker.IssueItem{
 		{
 			Number: 10,
