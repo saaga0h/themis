@@ -22,7 +22,6 @@ import (
 
 	"github.com/saaga0h/themis/internal/agent"
 	"github.com/saaga0h/themis/internal/pipeline"
-	"github.com/saaga0h/themis/internal/profile"
 	"github.com/saaga0h/themis/internal/tracker"
 )
 
@@ -44,6 +43,7 @@ type fakeGitOps struct {
 	pushed          []string
 	commitLog       string
 	commitsAhead    int
+	changedFiles    string
 }
 
 func (f *fakeGitOps) CheckoutNewBranch(ctx context.Context, dir, name string) error {
@@ -74,6 +74,10 @@ func (f *fakeGitOps) BranchCommitLog(ctx context.Context, dir string) string {
 
 func (f *fakeGitOps) CommitsAheadOfBase(ctx context.Context, dir, base string) (int, error) {
 	return f.commitsAhead, nil
+}
+
+func (f *fakeGitOps) ChangedFiles(_ context.Context, _ string) string {
+	return f.changedFiles
 }
 
 // Compile-time assertion: fakeGitOps must implement GitOps.
@@ -576,7 +580,7 @@ func TestRunner_ChangedFiles_IncludesFilesChangedOnBranch(t *testing.T) {
 		IssueWriter:  w,
 		TemplateDir:  templateDir(t),
 		CheckpointFn: noopCheckpoint,
-		Git:          &fakeGitOps{},
+		Git: &fakeGitOps{changedFiles: "newfeature.go", commitsAhead: 1},
 	}
 
 	if _, err := Run(context.Background(), cfg); err != nil {
@@ -626,7 +630,7 @@ func TestRunner_ChangedFiles_ReturnsEmptyStringWhenGitFails(t *testing.T) {
 		IssueWriter:  w,
 		TemplateDir:  templateDir(t),
 		CheckpointFn: noopCheckpoint,
-		Git:          &fakeGitOps{},
+		Git: &fakeGitOps{commitsAhead: 1},
 	}
 
 	// Run must succeed even when changedFiles cannot diff against a remote
@@ -646,11 +650,10 @@ func TestRunner_ChangedFiles_ReturnsEmptyStringWhenGitFails(t *testing.T) {
 // {{PIPELINE_SHAPE}} is a one-line summary computed from commit message prefixes
 // for commits on the issue branch that are not on the base branch.
 func TestRunner_PipelineShapeFromCommitPrefixes(t *testing.T) {
-	commits := []string{
-		"test(runner): add failing tests",
-		"feat(runner): implement review output capture",
-	}
-	workDir := initBranchWithCommits(t, commits)
+	fakeLog := "abc1234 test(runner): add failing tests\n" +
+		"def5678 feat(runner): implement review output capture"
+
+	workDir := t.TempDir()
 	saveStateAt(t, workDir, pipeline.StepDocs)
 
 	tDir := makeTemplateDir(t, map[string]string{
@@ -667,6 +670,7 @@ func TestRunner_PipelineShapeFromCommitPrefixes(t *testing.T) {
 		IssueWriter:  w,
 		TemplateDir:  tDir,
 		CheckpointFn: noopCheckpoint,
+		Git: &fakeGitOps{commitLog: fakeLog, commitsAhead: 1},
 	}
 
 	if _, err := Run(context.Background(), cfg); err != nil {
@@ -696,7 +700,9 @@ func TestRunner_CommitLogContainsBranchCommits(t *testing.T) {
 		"test(runner): add failing tests",
 		"feat(runner): implement feature",
 	}
-	workDir := initBranchWithCommits(t, commits)
+	fakeLog := "abc1234 " + commits[0] + "\ndef5678 " + commits[1]
+
+	workDir := t.TempDir()
 	saveStateAt(t, workDir, pipeline.StepDocs)
 
 	tDir := makeTemplateDir(t, map[string]string{
@@ -713,6 +719,7 @@ func TestRunner_CommitLogContainsBranchCommits(t *testing.T) {
 		IssueWriter:  w,
 		TemplateDir:  tDir,
 		CheckpointFn: noopCheckpoint,
+		Git: &fakeGitOps{commitLog: fakeLog, commitsAhead: 1},
 	}
 
 	if _, err := Run(context.Background(), cfg); err != nil {
@@ -1365,9 +1372,9 @@ func TestConfig_GitFieldAcceptsGitOpsImpl(t *testing.T) {
 func TestConfig_HasProfileLoaderField(t *testing.T) {
 	called := false
 	cfg := Config{
-		ProfileLoader: func(dir string) (*profile.Profile, error) { //nolint:revive
+		ProfileLoader: func(dir string) (ProfileData, error) {
 			called = true
-			return &profile.Profile{}, nil
+			return ProfileData{ImplementModel: "sonnet", ReviewModel: "sonnet"}, nil
 		},
 	}
 	if cfg.ProfileLoader == nil {
@@ -1378,8 +1385,8 @@ func TestConfig_HasProfileLoaderField(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ProfileLoader returned unexpected error: %v", err)
 	}
-	if p == nil {
-		t.Error("ProfileLoader must return a non-nil Profile")
+	if p.ImplementModel == "" {
+		t.Error("ProfileLoader must return a ProfileData with ImplementModel set")
 	}
 	if !called {
 		t.Error("ProfileLoader was not called")
@@ -1412,11 +1419,11 @@ func TestRunner_UsesProfileLoaderFromConfig(t *testing.T) {
 		IssueWriter: w,
 		TemplateDir: templateDir(t),
 		CheckpointFn: noopCheckpoint,
-		ProfileLoader: func(dir string) (*profile.Profile, error) {
-			p := &profile.Profile{}
-			p.Review.Agents.Security = stubModel
-			p.Implement.Model = "sonnet"
-			return p, nil
+		ProfileLoader: func(dir string) (ProfileData, error) {
+			return ProfileData{
+				ReviewModel:    stubModel,
+				ImplementModel: "sonnet",
+			}, nil
 		},
 	}
 

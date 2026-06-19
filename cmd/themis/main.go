@@ -41,9 +41,20 @@ func (g *cmdGitOps) CommitsAheadOfBase(ctx context.Context, dir, base string) (i
 	return git.CommitsAheadOfBase(ctx, dir, base)
 }
 
+func (g *cmdGitOps) ChangedFiles(ctx context.Context, dir string) string {
+	return git.ChangedFiles(ctx, dir)
+}
+
 // profileLoader wraps profile.Load with the signature expected by runner.Config.ProfileLoader.
-func profileLoader(dir string) (*profile.Profile, error) {
-	return profile.Load(dir)
+func profileLoader(dir string) (runner.ProfileData, error) {
+	p, err := profile.Load(dir)
+	if err != nil {
+		return runner.ProfileData{}, err
+	}
+	return runner.ProfileData{
+		ImplementModel: p.Implement.Model,
+		ReviewModel:    p.Review.Agents.Security,
+	}, nil
 }
 
 const version = "0.1.0"

@@ -2,7 +2,9 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -343,10 +345,6 @@ func TestInvokeOptions_HasCommitCountFn(t *testing.T) {
 // implementation and from the subprocess execution path.
 func TestClaudeCodeInvoker_CommitsMadeComputedFromCommitCountFn(t *testing.T) {
 	callCount := 0
-	commitSnapshots := [][]string{
-		{"abc"},        // before snapshot (first call)
-		{"abc", "def"}, // after snapshot (second call)
-	}
 
 	opts := InvokeOptions{
 		Prompt:   "test",
@@ -354,12 +352,8 @@ func TestClaudeCodeInvoker_CommitsMadeComputedFromCommitCountFn(t *testing.T) {
 		MaxTurns: 1,
 		WorkDir:  t.TempDir(),
 		CommitCountFn: func(ctx context.Context, dir string) ([]string, error) { //nolint:revive
-			i := callCount
 			callCount++
-			if i < len(commitSnapshots) {
-				return commitSnapshots[i], nil
-			}
-			return nil, nil
+			return []string{"abc"}, nil
 		},
 	}
 
@@ -368,18 +362,42 @@ func TestClaudeCodeInvoker_CommitsMadeComputedFromCommitCountFn(t *testing.T) {
 	cancel()
 
 	invoker := &ClaudeCodeInvoker{}
-	result, _ := invoker.Invoke(ctx, opts)
-	// The test accepts both a non-nil error (cancelled context) and a result
-	// with CommitsMade populated if the implementation captures the error path.
-	// The critical assertion is: if CommitCountFn was called twice (before + after),
-	// CommitsMade must be {"def"}.
-	if callCount >= 2 && result != nil {
-		if len(result.CommitsMade) != 1 || result.CommitsMade[0] != "def" {
-			t.Errorf("CommitsMade = %v, want [def] (set-difference of after minus before)", result.CommitsMade)
-		}
-	}
+	invoker.Invoke(ctx, opts) //nolint:errcheck
+
 	// CommitCountFn must have been called at least once (before snapshot).
 	if callCount == 0 {
 		t.Error("CommitCountFn must be called at least once (before snapshot) when set on InvokeOptions")
+	}
+}
+
+// TestCommitSetDiff_NewCommitsAreDetected directly verifies the before/after
+// subtraction logic: commits in after but not in before are the new commits.
+func TestCommitSetDiff_NewCommitsAreDetected(t *testing.T) {
+	before := []string{"abc"}
+	after := []string{"abc", "def"}
+	got := commitSetDiff(before, after)
+	if len(got) != 1 || got[0] != "def" {
+		t.Errorf("commitSetDiff(%v, %v) = %v, want [def]", before, after, got)
+	}
+}
+
+// TestAgent_HasNoInternalImports asserts that internal/agent has zero imports of
+// other internal packages, enforcing the architectural rule from CODING_STANDARDS.md.
+// This test will fail at runtime if anyone adds an internal import to agent.go.
+func TestAgent_HasNoInternalImports(t *testing.T) {
+	out, err := exec.Command("go", "list", "-json", "github.com/saaga0h/themis/internal/agent").Output()
+	if err != nil {
+		t.Fatalf("go list: %v", err)
+	}
+	var pkg struct {
+		Imports []string `json:"Imports"`
+	}
+	if err := json.Unmarshal(out, &pkg); err != nil {
+		t.Fatalf("parsing go list output: %v", err)
+	}
+	for _, imp := range pkg.Imports {
+		if strings.HasPrefix(imp, "github.com/saaga0h/themis/internal/") {
+			t.Errorf("internal/agent must not import other internal packages; found: %q", imp)
+		}
 	}
 }
