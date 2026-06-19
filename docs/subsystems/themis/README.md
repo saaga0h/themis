@@ -82,7 +82,7 @@ Module: `git.home.federation.fi/lavernea/themis`, Go 1.22.
 |------|------|
 | `cmd/themis/main.go` | Subcommand dispatch and `runIssue` wiring |
 | `cmd/themis/issue.go` | `parseIssueArgs` — parses `<number>` and `--provider` |
-| `cmd/themis/invoker.go` | `claudeInvoker` — bridges `agent.Invoker` for the binary |
+| `cmd/themis/run.go` | `parseRunArgs` and the `run` loop — sequential backlog processing |
 | `cmd/themis/issue_writer.go` | `ghIssueWriter` and `giteaIssueWriter` — label, comment, PR creation |
 | `cmd/themis/gitea_config.go` | `resolveGiteaConfig` — infers Gitea owner/repo/apiBase from git remote, overridable via env vars |
 
