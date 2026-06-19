@@ -551,7 +551,7 @@ func TestRunner_StopsOnTestFixLimit(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Core: template arguments (CHANGED_FILES, PIPELINE_SHAPE, COMMIT_LOG, REVIEW_OUTPUT)
+// Core: template arguments (CHANGED_FILES, PIPELINE_SHAPE, COMMIT_LOG)
 // ---------------------------------------------------------------------------
 
 // changedFiles returns the list of files changed on the current branch vs the base branch,
@@ -801,15 +801,15 @@ func TestRunner_CommitLogContainsBranchCommits(t *testing.T) {
 	}
 }
 
-// All three new args (REVIEW_OUTPUT, PIPELINE_SHAPE, COMMIT_LOG) must be present
-// in masterArgs so filterArgs can pass them to templates that reference them.
+// Both context args (PIPELINE_SHAPE, COMMIT_LOG) must be present in masterArgs
+// so filterArgs can pass them to templates that reference them.
 func TestRunner_AllNewTemplateArgsAvailableInMasterArgs(t *testing.T) {
 	workDir := t.TempDir()
 	saveStateAt(t, workDir, pipeline.StepDocs)
 
-	// Template references all three new args — verifies each is in masterArgs
+	// Template references both context args — verifies each is in masterArgs
 	tDir := makeTemplateDir(t, map[string]string{
-		"update-docs.md": "{{ISSUE_NUMBER}} {{REVIEW_OUTPUT}} {{PIPELINE_SHAPE}} {{COMMIT_LOG}}",
+		"update-docs.md": "{{ISSUE_NUMBER}} {{PIPELINE_SHAPE}} {{COMMIT_LOG}}",
 	})
 
 	inv := &recordingInvoker{}

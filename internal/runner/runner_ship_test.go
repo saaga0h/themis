@@ -249,8 +249,6 @@ func TestRunner_ShipPromptContainsContextualData(t *testing.T) {
 
 	workDir := t.TempDir()
 
-	const reviewStdout = "Review complete: all ACs verified. No blocking findings."
-
 	// Custom ship.md uses all required new context placeholders.
 	tDir := makeTemplateDir(t, map[string]string{
 		"test-red.md":     "Test red {{ISSUE_NUMBER}}",
@@ -260,7 +258,6 @@ func TestRunner_ShipPromptContainsContextualData(t *testing.T) {
 		"fix-findings.md": "Fix {{ISSUE_NUMBER}}",
 		"update-docs.md":  "Docs {{ISSUE_NUMBER}}",
 		"ship.md": "Ship {{ISSUE_NUMBER}}\n" +
-			"REVIEW:{{REVIEW_OUTPUT}}\n" +
 			"SHAPE:{{PIPELINE_SHAPE}}\n" +
 			"LOG:{{COMMIT_LOG}}\n" +
 			"STATUS:{{AC_STATUS}}",
@@ -271,7 +268,7 @@ func TestRunner_ShipPromptContainsContextualData(t *testing.T) {
 			{ExitCode: 0, Completed: true},                           // TestRed
 			{ExitCode: 0, Completed: true},                           // Implement
 			{ExitCode: 0, Completed: true},                           // Refactor
-			{ExitCode: 0, Completed: true, Stdout: reviewStdout},     // Review (non-blocking)
+			{ExitCode: 0, Completed: true},                           // Review (non-blocking)
 			{ExitCode: 0, Completed: true},                           // Docs
 			{ExitCode: 0, Completed: true, Stdout: "All ACs passed"}, // Ship
 		},
@@ -304,12 +301,6 @@ func TestRunner_ShipPromptContainsContextualData(t *testing.T) {
 	}
 
 	shipPrompt := inv.opts[pipelineAgentCallCount].Prompt
-
-	// Must contain review output.
-	if !strings.Contains(shipPrompt, reviewStdout) {
-		t.Errorf("ship prompt missing review output\nwant substring: %q\ngot prompt:\n%s",
-			reviewStdout, shipPrompt)
-	}
 
 	// Must contain pipeline shape (commit type prefixes from branch commits).
 	if !strings.Contains(shipPrompt, "test") {

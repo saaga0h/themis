@@ -234,7 +234,6 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 	}
 
 	var lastBlockingFindings string
-	var reviewOutput string
 
 	for {
 		step := state.CurrentStep
@@ -338,7 +337,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			if readErr != nil {
 				fmt.Fprintf(log, "warning: ship template read failed: %v — using fallback PR body\n", readErr)
 			} else {
-				shipArgs := buildTemplateArgs(ctx, cfg, issue, branch, state.ReviewCycle, lastBlockingFindings, reviewOutput)
+				shipArgs := buildTemplateArgs(ctx, cfg, issue, branch, state.ReviewCycle, lastBlockingFindings)
 				filteredArgs := filterArgs(string(shipTmplContent), shipArgs)
 				substituted, subErr := prompt.Substitute(string(shipTmplContent), filteredArgs)
 				if subErr != nil {
@@ -410,7 +409,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			}
 		}
 
-		allArgs := buildTemplateArgs(ctx, cfg, issue, branchName, state.ReviewCycle, lastBlockingFindings, reviewOutput)
+		allArgs := buildTemplateArgs(ctx, cfg, issue, branchName, state.ReviewCycle, lastBlockingFindings)
 
 		filteredArgs := filterArgs(string(tmplContent), allArgs)
 
@@ -454,7 +453,6 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 
 		stepResult := deriveStepResult(ctx, step, invokeResult, cfg)
 		if step == pipeline.StepReview {
-			reviewOutput = invokeResult.Stdout
 			findings, found := readReviewResults(ctx, cfg.WorkDir)
 			if !found {
 				fmt.Fprintf(log, "warning: review-results.json not found after review step — treating as blocking\n")
@@ -596,7 +594,7 @@ func buildTemplateArgs(
 	issue *tracker.IssueData,
 	branchName string,
 	reviewCycle int,
-	lastBlockingFindings, reviewOutput string,
+	lastBlockingFindings string,
 ) map[string]string {
 	acs := tracker.ParseCheckboxes(issue.Body)
 	acList := formatACs(acs)
@@ -615,7 +613,6 @@ func buildTemplateArgs(
 		"CHANGED_FILES":       changedFilesResult,
 		"REVIEW_CYCLE":        strconv.Itoa(reviewCycle + 1),
 		"BLOCKING_FINDINGS":   lastBlockingFindings,
-		"REVIEW_OUTPUT":       reviewOutput,
 		"PIPELINE_SHAPE":      pipelineShape(commitLog),
 		"COMMIT_LOG":          commitLog,
 	}

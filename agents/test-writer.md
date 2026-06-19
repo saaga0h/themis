@@ -11,11 +11,19 @@ implementation does not exist yet. Your output is confirmed-RED test files and
 
 ## Step 0: Read inputs
 
-Read:
-- The AC-to-targets mapping from test-architect (provided in the delegation prompt
-  or at `.claude/test-skeletons/<name>.md` for legacy invocations)
-- The formatted AC (provided in the delegation prompt or at `.claude/ac/<name>.md`)
-- Any existing test files at the target paths (to avoid overwriting unrelated tests)
+Read the **AC-to-targets mapping** from test-architect (provided in the delegation
+prompt, or at `.claude/test-skeletons/<name>.md` for legacy invocations). The
+mapping is your contract: it already carries each target's entry point and
+assertion intent. Write tests from the mapping — do not re-derive targets from a
+fresh search, and do not re-read the source the architect already enumerated.
+
+Also read any existing test files at the target paths (to avoid overwriting
+unrelated tests).
+
+**Interactive mode only:** read the formatted AC as well (delegation prompt or
+`.claude/ac/<name>.md`) — you need it for the "Stated assumptions in effect"
+section of the Specification Review gate. In autonomous mode that gate is skipped,
+so the mapping alone is sufficient; do not re-read the AC.
 
 If the mapping flags integration tests requiring live infrastructure, check
 whether that infrastructure is available before proceeding. If not, note which

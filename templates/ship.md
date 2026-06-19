@@ -18,10 +18,6 @@
 
 {{AC_STATUS}}
 
-### Review Output
-
-{{REVIEW_OUTPUT}}
-
 ### Pipeline Shape
 
 {{PIPELINE_SHAPE}}

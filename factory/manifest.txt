@@ -34,3 +34,5 @@ agent convention-reviewer
 agent coverage-reviewer
 agent security-reviewer
 agent architecture-reviewer
+#   review can auto-detect numerical diffs and spawn numerical-reviewer even in autonomous mode
+agent numerical-reviewer
