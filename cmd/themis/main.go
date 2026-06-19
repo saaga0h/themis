@@ -9,9 +9,42 @@ import (
 	"github.com/saaga0h/themis/internal/agent"
 	"github.com/saaga0h/themis/internal/checkpoint"
 	"github.com/saaga0h/themis/internal/git"
+	"github.com/saaga0h/themis/internal/profile"
 	"github.com/saaga0h/themis/internal/runner"
 	"github.com/saaga0h/themis/internal/tracker"
 )
+
+// cmdGitOps wraps internal/git functions and satisfies runner.GitOps.
+type cmdGitOps struct{}
+
+func (g *cmdGitOps) CheckoutNewBranch(ctx context.Context, dir, name string) error {
+	return git.CheckoutNewBranch(ctx, dir, name)
+}
+
+func (g *cmdGitOps) Checkout(ctx context.Context, dir, name string) error {
+	return git.Checkout(ctx, dir, name)
+}
+
+func (g *cmdGitOps) PushBranch(ctx context.Context, dir, branch string) error {
+	return git.PushBranch(ctx, dir, branch)
+}
+
+func (g *cmdGitOps) CurrentBranch(ctx context.Context, dir string) (string, error) {
+	return git.CurrentBranch(ctx, dir)
+}
+
+func (g *cmdGitOps) BranchCommitLog(ctx context.Context, dir string) string {
+	return git.BranchCommitLog(ctx, dir)
+}
+
+func (g *cmdGitOps) CommitsAheadOfBase(ctx context.Context, dir, base string) (int, error) {
+	return git.CommitsAheadOfBase(ctx, dir, base)
+}
+
+// profileLoader wraps profile.Load with the signature expected by runner.Config.ProfileLoader.
+func profileLoader(dir string) (*profile.Profile, error) {
+	return profile.Load(dir)
+}
 
 const version = "0.1.0"
 
@@ -93,25 +126,17 @@ func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir strin
 		return runner.Config{}, fmt.Errorf("creating checkpoint: %w", err)
 	}
 	return runner.Config{
-		WorkDir:      workDir,
-		IssueNumber:  issueNumber,
-		Fetcher:      fetcher,
-		Invoker:      &agent.ClaudeCodeInvoker{},
-		IssueWriter:  issueWriter,
-		TemplateDir:  tmplDir,
-		CheckpointFn: checkpointFn,
-		CodeVersion:  version,
-		MaxTurns:     maxTurns,
-		GitBranchFn: func(ctx context.Context, wd, branch string) error {
-			if err := git.CheckoutNewBranch(ctx, wd, branch); err != nil {
-				if checkoutErr := git.Checkout(ctx, wd, branch); checkoutErr != nil {
-					return fmt.Errorf("create failed (%v), checkout failed (%v)", err, checkoutErr)
-				}
-				fmt.Fprintf(os.Stderr, "note: branch %s already exists, checked out existing\n", branch)
-			}
-			return nil
-		},
-		GitPushFn: git.PushBranch,
+		WorkDir:       workDir,
+		IssueNumber:   issueNumber,
+		Fetcher:       fetcher,
+		Invoker:       &agent.ClaudeCodeInvoker{},
+		IssueWriter:   issueWriter,
+		TemplateDir:   tmplDir,
+		CheckpointFn:  checkpointFn,
+		CodeVersion:   version,
+		MaxTurns:      maxTurns,
+		Git:           &cmdGitOps{},
+		ProfileLoader: profileLoader,
 	}, nil
 }
 

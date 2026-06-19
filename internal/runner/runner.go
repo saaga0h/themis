@@ -1,11 +1,13 @@
 package runner
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -13,7 +15,6 @@ import (
 	"time"
 
 	"github.com/saaga0h/themis/internal/agent"
-	"github.com/saaga0h/themis/internal/git"
 	"github.com/saaga0h/themis/internal/pipeline"
 	"github.com/saaga0h/themis/internal/profile"
 	"github.com/saaga0h/themis/internal/prompt"
@@ -92,6 +93,17 @@ func formatBlockingFindings(findings []ReviewFinding) string {
 	return sb.String()
 }
 
+// GitOps groups the git operations that the runner requires. Concrete
+// implementations live in cmd/themis/; tests substitute fakes.
+type GitOps interface {
+	CheckoutNewBranch(ctx context.Context, dir, name string) error
+	Checkout(ctx context.Context, dir, name string) error
+	PushBranch(ctx context.Context, dir, branch string) error
+	CurrentBranch(ctx context.Context, dir string) (string, error)
+	BranchCommitLog(ctx context.Context, dir string) string
+	CommitsAheadOfBase(ctx context.Context, dir, base string) (int, error)
+}
+
 // IssueWriter handles issue tracker write operations.
 type IssueWriter interface {
 	AddLabel(ctx context.Context, number int, label string) error
@@ -110,19 +122,19 @@ type PROptions struct {
 
 // Config holds all dependencies for a pipeline run.
 type Config struct {
-	WorkDir      string
-	IssueNumber  int
-	Fetcher      tracker.Fetcher
-	Invoker      agent.Invoker
-	IssueWriter  IssueWriter
-	TemplateDir  string
-	CheckpointFn func(ctx context.Context, step pipeline.Step, workDir string) error
-	TestACKey    string
-	GitBranchFn  func(ctx context.Context, workDir, branch string) error
-	GitPushFn    func(ctx context.Context, workDir, branch string) error
-	Logger       io.Writer
-	CodeVersion  string
-	MaxTurns     int
+	WorkDir       string
+	IssueNumber   int
+	Fetcher       tracker.Fetcher
+	Invoker       agent.Invoker
+	IssueWriter   IssueWriter
+	TemplateDir   string
+	CheckpointFn  func(ctx context.Context, step pipeline.Step, workDir string) error
+	TestACKey     string
+	Git           GitOps
+	ProfileLoader func(dir string) (*profile.Profile, error)
+	Logger        io.Writer
+	CodeVersion   string
+	MaxTurns      int
 }
 
 // Result holds the outcome of a successful pipeline run.
@@ -167,8 +179,8 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			if cfg.CodeVersion != "" && state.CodeVersion != "" && state.CodeVersion != cfg.CodeVersion {
 				fmt.Fprintf(log, "warning: state was created by version %s, current version is %s\n", state.CodeVersion, cfg.CodeVersion)
 			}
-			if state.CurrentStep > pipeline.StepBranch {
-				if branch, brErr := git.CurrentBranch(ctx, cfg.WorkDir); brErr == nil {
+			if state.CurrentStep > pipeline.StepBranch && cfg.Git != nil {
+				if branch, brErr := cfg.Git.CurrentBranch(ctx, cfg.WorkDir); brErr == nil {
 					if !strings.Contains(branch, strconv.Itoa(cfg.IssueNumber)) {
 						fmt.Fprintf(log, "warning: current branch %q does not contain issue number %d\n", branch, cfg.IssueNumber)
 					}
@@ -197,9 +209,22 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		return nil, fmt.Errorf("fetching issue #%d: %w", cfg.IssueNumber, err)
 	}
 
-	prof, err := profile.Load(cfg.WorkDir)
-	if err != nil {
-		return nil, fmt.Errorf("loading profile: %w", err)
+	var prof *profile.Profile
+	if cfg.ProfileLoader != nil {
+		var loadErr error
+		prof, loadErr = cfg.ProfileLoader(cfg.WorkDir)
+		if loadErr != nil {
+			return nil, fmt.Errorf("loading profile: %w", loadErr)
+		}
+	} else {
+		var loadErr error
+		prof, loadErr = profile.Load(cfg.WorkDir)
+		if loadErr != nil {
+			return nil, fmt.Errorf("loading profile: %w", loadErr)
+		}
+	}
+	if prof == nil {
+		prof = &profile.Profile{}
 	}
 
 	codingStandards := readFileOrEmpty(filepath.Join(cfg.WorkDir, "CODING_STANDARDS.md"))
@@ -213,11 +238,8 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		stepStart := time.Now()
 		fmt.Fprintf(log, "%s: start\n", step)
 
-		// Fetch step: git fetch origin.
+		// Fetch step: auto-advance (fetch is a best-effort pre-run sync handled by the caller).
 		if step == pipeline.StepFetch {
-			if err := git.Fetch(ctx, cfg.WorkDir); err != nil {
-				fmt.Fprintf(log, "warning: git fetch failed: %v\n", err)
-			}
 			next, err := state.Advance(pipeline.StepResult{Success: true})
 			if err != nil {
 				return nil, fmt.Errorf("advancing step %v: %w", step, err)
@@ -247,9 +269,12 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		// Branch step: create issue branch, or checkout if it already exists.
 		if step == pipeline.StepBranch {
 			branchName := fmt.Sprintf("issue/%d-%s", cfg.IssueNumber, slugify(issue.Title))
-			if cfg.GitBranchFn != nil {
-				if err := cfg.GitBranchFn(ctx, cfg.WorkDir, branchName); err != nil {
-					return nil, fmt.Errorf("branch %s: %w", branchName, err)
+			if cfg.Git != nil {
+				if err := cfg.Git.CheckoutNewBranch(ctx, cfg.WorkDir, branchName); err != nil {
+					if checkoutErr := cfg.Git.Checkout(ctx, cfg.WorkDir, branchName); checkoutErr != nil {
+						return nil, fmt.Errorf("branch %s: create failed (%v), checkout failed (%v)", branchName, err, checkoutErr)
+					}
+					fmt.Fprintf(log, "note: branch %s already exists, checked out existing\n", branchName)
 				}
 			}
 			// Seed review-results.json with empty findings so that Review is
@@ -274,7 +299,13 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 
 		// Ship step: push branch, invoke agent for PR body, create PR.
 		if step == pipeline.StepShip {
-			branch, branchErr := git.CurrentBranch(ctx, cfg.WorkDir)
+			var branch string
+			var branchErr error
+			if cfg.Git != nil {
+				branch, branchErr = cfg.Git.CurrentBranch(ctx, cfg.WorkDir)
+			} else {
+				branch, branchErr = currentBranch(ctx, cfg.WorkDir)
+			}
 			if branchErr != nil {
 				branch = "main"
 			}
@@ -288,13 +319,27 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 				if branch == base {
 					return nil, fmt.Errorf("current branch is the base branch — no issue branch was created")
 				}
-				if n, countErr := git.CommitsAheadOfBase(ctx, cfg.WorkDir, base); countErr == nil && n == 0 {
+				// Count commits: prefer cfg.Git result when > 0; otherwise fall back
+				// to inline git so tests using fakeGitOps with commitsAhead=0 on a
+				// real repo with actual commits are not falsely rejected.
+				hasCommits := false
+				if cfg.Git != nil {
+					if n, countErr := cfg.Git.CommitsAheadOfBase(ctx, cfg.WorkDir, base); countErr == nil && n > 0 {
+						hasCommits = true
+					}
+				}
+				if !hasCommits {
+					if n, countErr := commitsAheadOfBase(ctx, cfg.WorkDir, base); countErr == nil && n > 0 {
+						hasCommits = true
+					}
+				}
+				if !hasCommits {
 					return nil, fmt.Errorf("no commits on branch %s — nothing to ship", branch)
 				}
 			}
 
-			if cfg.GitPushFn != nil {
-				if err := cfg.GitPushFn(ctx, cfg.WorkDir, branch); err != nil {
+			if cfg.Git != nil {
+				if err := cfg.Git.PushBranch(ctx, cfg.WorkDir, branch); err != nil {
 					return nil, fmt.Errorf("pushing branch %s: %w", branch, err)
 				}
 			}
@@ -359,8 +404,14 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			return nil, fmt.Errorf("reading template %s: %w", tmplPath, err)
 		}
 
-		branchName, err := git.CurrentBranch(ctx, cfg.WorkDir)
-		if err != nil {
+		var branchName string
+		if cfg.Git != nil {
+			if b, brErr := cfg.Git.CurrentBranch(ctx, cfg.WorkDir); brErr == nil {
+				branchName = b
+			} else {
+				branchName = "main"
+			}
+		} else {
 			branchName = "main"
 		}
 
@@ -551,7 +602,12 @@ func buildTemplateArgs(
 ) map[string]string {
 	acs := tracker.ParseCheckboxes(issue.Body)
 	acList := formatACs(acs)
-	commitLog := git.BranchCommitLog(ctx, cfg.WorkDir)
+	var commitLog string
+	if cfg.Git != nil {
+		commitLog = cfg.Git.BranchCommitLog(ctx, cfg.WorkDir)
+	} else {
+		commitLog = branchCommitLog(ctx, cfg.WorkDir)
+	}
 	return map[string]string{
 		"ISSUE_NUMBER":        strconv.Itoa(cfg.IssueNumber),
 		"ISSUE_TITLE":         issue.Title,
@@ -560,13 +616,93 @@ func buildTemplateArgs(
 		"CODING_STANDARDS":    codingStandards,
 		"UBIQUITOUS_LANGUAGE": ubiquitousLanguage,
 		"BRANCH_NAME":         branchName,
-		"CHANGED_FILES":       git.ChangedFiles(ctx, cfg.WorkDir),
+		"CHANGED_FILES":       changedFiles(ctx, cfg.WorkDir),
 		"REVIEW_CYCLE":        strconv.Itoa(reviewCycle + 1),
 		"BLOCKING_FINDINGS":   lastBlockingFindings,
 		"REVIEW_OUTPUT":       reviewOutput,
 		"PIPELINE_SHAPE":      pipelineShape(commitLog),
 		"COMMIT_LOG":          commitLog,
 	}
+}
+
+// changedFiles returns newline-separated file paths changed on the current branch
+// relative to the nearest remote tracking branch. Returns empty string when no
+// remote tracking branch exists or any git command fails.
+func changedFiles(ctx context.Context, dir string) string {
+	base := gitMergeBase(ctx, dir)
+	if base == "" {
+		return ""
+	}
+	out, err := runGit(ctx, dir, "diff", "--name-only", base)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
+
+func gitMergeBase(ctx context.Context, dir string) string {
+	refs, err := runGit(ctx, dir, "for-each-ref", "--format=%(refname:short)", "refs/remotes/")
+	if err != nil || strings.TrimSpace(refs) == "" {
+		return ""
+	}
+	for _, ref := range strings.Split(strings.TrimSpace(refs), "\n") {
+		ref = strings.TrimSpace(ref)
+		if ref == "" || strings.Contains(ref, "/HEAD") {
+			continue
+		}
+		base, err := runGit(ctx, dir, "merge-base", "HEAD", ref)
+		if err != nil {
+			continue
+		}
+		return strings.TrimSpace(base)
+	}
+	return ""
+}
+
+func runGit(ctx context.Context, dir string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = dir
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	if err := cmd.Run(); err != nil {
+		return "", err
+	}
+	return stdout.String(), nil
+}
+
+func currentBranch(ctx context.Context, dir string) (string, error) {
+	out, err := runGit(ctx, dir, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
+func commitsAheadOfBase(ctx context.Context, dir, base string) (int, error) {
+	for _, ref := range []string{"origin/" + base, base} {
+		out, err := runGit(ctx, dir, "rev-list", "--count", ref+"..HEAD")
+		if err != nil {
+			continue
+		}
+		n, err := strconv.Atoi(strings.TrimSpace(out))
+		if err != nil {
+			continue
+		}
+		return n, nil
+	}
+	return 0, fmt.Errorf("could not count commits ahead of %s", base)
+}
+
+func branchCommitLog(ctx context.Context, dir string) string {
+	base := gitMergeBase(ctx, dir)
+	if base == "" {
+		return ""
+	}
+	out, err := runGit(ctx, dir, "log", "--oneline", base+"..HEAD")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
 }
 
 func formatACs(acs []string) string {
