@@ -25,12 +25,11 @@ func TestGiteaQuerier_ListReadyIssues_ReturnsErrorOnTimeout(t *testing.T) {
 	_ = giteaClientTimeout // compile-time assertion: constant must be defined
 
 	block := make(chan struct{})
-	t.Cleanup(func() { close(block) })
-
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-block // block forever until cleanup
 	}))
 	t.Cleanup(srv.Close)
+	t.Cleanup(func() { close(block) })
 
 	q := &GiteaQuerier{
 		owner:   "owner",
@@ -52,12 +51,11 @@ func TestGiteaQuerier_IsOpen_ReturnsErrorOnTimeout(t *testing.T) {
 	_ = giteaClientTimeout // compile-time assertion: constant must be defined
 
 	block := make(chan struct{})
-	t.Cleanup(func() { close(block) })
-
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-block // block forever until cleanup
 	}))
 	t.Cleanup(srv.Close)
+	t.Cleanup(func() { close(block) })
 
 	q := &GiteaQuerier{
 		owner:   "owner",

@@ -191,7 +191,7 @@ func newGiteaQuerier(owner, repo, apiBase, token string) *GiteaQuerier {
 		repo:    repo,
 		apiBase: strings.TrimRight(apiBase, "/"),
 		token:   token,
-		client:  &http.Client{Timeout: 30 * time.Second},
+		client:  &http.Client{Timeout: giteaClientTimeout},
 	}
 }
 
@@ -206,7 +206,10 @@ func (q *GiteaQuerier) get(ctx context.Context, url string) (*http.Response, err
 	return q.client.Do(req)
 }
 
-const giteaPageSize = 50
+const (
+	giteaClientTimeout = 30 * time.Second
+	giteaPageSize      = 50
+)
 
 func (q *GiteaQuerier) ListReadyIssues(ctx context.Context) ([]*tracker.IssueData, error) {
 	var all []issueItem
