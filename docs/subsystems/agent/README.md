@@ -29,6 +29,7 @@ type Invoker interface {
 | `AllowedTools` | `[]string` | Reserved. Declared on the struct but not currently read by `buildArgs` — no `--allowedTools` flag is emitted. No caller sets it. |
 | `IssueNumber` | `int` | Issue number injected into `OTEL_RESOURCE_ATTRIBUTES` |
 | `PipelineStep` | `string` | Pipeline step name injected into `OTEL_RESOURCE_ATTRIBUTES` |
+| `CommitCountFn` | `func(ctx context.Context, dir string) ([]string, error)` | Returns all current commit SHAs in `dir`; called before and after invocation to detect new commits. When nil, `CommitsMade` is always empty and no snapshot is taken |
 
 ## InvokeResult
 
@@ -81,24 +82,24 @@ This means every `claude` invocation is tagged with the issue number and pipelin
 
 ## Commit Detection
 
-Commit detection uses `internal/git` to snapshot the repository state before and after the invocation:
+Commit detection uses the injected `CommitCountFn` to snapshot the repository state before and after the invocation. The agent package has no git imports — the caller provides the implementation (typically wrapping `internal/git`):
 
-1. `git.CommitsBefore(ctx, workDir)` is called before spawning `claude`. If this fails, `Invoke` returns an error immediately — the subprocess is never started.
-2. After `cmd.Run()` returns successfully, `git.CommitsAfter(ctx, workDir, before)` computes the set of new commits.
-3. The resulting `[]string` (commit SHAs) is stored in `InvokeResult.CommitsMade`.
+1. If `opts.CommitCountFn` is non-nil, it is called with `(ctx, workDir)` before spawning `claude`. If this fails, `Invoke` returns an error immediately — the subprocess is never started.
+2. After `cmd.Run()` returns successfully, `CommitCountFn` is called again to get the current set of commit SHAs.
+3. `commitSetDiff(before, after)` computes the new SHAs; the result is stored in `InvokeResult.CommitsMade`.
 
-If `CommitsAfter` fails, `Invoke` returns an error even though the subprocess succeeded.
+If `CommitCountFn` is nil, `CommitsMade` is always empty and no snapshot is taken. If the post-run call fails, `Invoke` returns an error even though the subprocess succeeded.
 
 ## Failure Behavior
 
 | Scenario | Behavior |
 |---|---|
 | Context already cancelled on entry | Returns `ctx.Err()` immediately; subprocess never spawned |
-| `git.CommitsBefore` fails | Returns wrapped error; subprocess never spawned |
+| `CommitCountFn` non-nil and fails before spawn | Returns wrapped error (`"snapshotting commits: …"`); subprocess never spawned |
 | `claude` not found on PATH | `exec.CommandContext` call succeeds but `cmd.Run()` returns an `exec.ErrNotFound`-wrapped error; `Invoke` returns `fmt.Errorf("claude exited with error: %w", err)` |
 | `claude` exits non-zero | `cmd.Run()` returns error; `Invoke` returns `fmt.Errorf("claude exited with error: %w", err)` |
 | Context cancelled during run | `Invoke` returns `fmt.Errorf("agent killed by context: %w", ctx.Err())` |
-| `git.CommitsAfter` fails | Returns wrapped error; `InvokeResult` is discarded |
+| `CommitCountFn` non-nil and fails after run | Returns wrapped error (`"detecting new commits: …"`); `InvokeResult` is discarded |
 | All clean | Returns `*InvokeResult` with `ExitCode: 0` |
 
 On any error path, `Invoke` returns `(nil, error)` — callers must always check the error before dereferencing the result.
@@ -147,9 +148,10 @@ Return a `*InvokeResult` on success and `nil, error` on failure. There are no re
 
 | Package | Role |
 |---|---|
-| `internal/git` | `CommitsBefore` / `CommitsAfter` for commit detection snapshot |
 | `os/exec` | Spawns the `claude` subprocess via `exec.CommandContext` |
 | `os` | Reads the parent environment via `os.Environ()` |
+
+The agent package has no infrastructure imports. Commit detection is injected via `CommitCountFn` on `InvokeOptions`; the caller provides the implementation.
 
 ## Related Documents
 
