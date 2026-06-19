@@ -22,6 +22,19 @@ type IssueData struct {
 	Ref    string
 }
 
+// IssueItemLabel is a label entry in a list-issues API response.
+type IssueItemLabel struct {
+	Name string `json:"name"`
+}
+
+// IssueItem is the raw API shape for a list-issues response.
+type IssueItem struct {
+	Number int              `json:"number"`
+	Title  string           `json:"title"`
+	Body   string           `json:"body"`
+	Labels []IssueItemLabel `json:"labels"`
+}
+
 // Fetcher retrieves a single issue from an issue tracker.
 type Fetcher interface {
 	Fetch(ctx context.Context, number int) (*IssueData, error)
@@ -45,15 +58,13 @@ func ParseCheckboxes(body string) []string {
 
 // ghIssue mirrors the JSON shape returned by `gh issue view --json`.
 type ghIssue struct {
-	Number int    `json:"number"`
-	Title  string `json:"title"`
-	Body   string `json:"body"`
-	State  string `json:"state"`
-	URL    string `json:"url"`
-	Ref    string `json:"ref"`
-	Labels []struct {
-		Name string `json:"name"`
-	} `json:"labels"`
+	Number int              `json:"number"`
+	Title  string           `json:"title"`
+	Body   string           `json:"body"`
+	State  string           `json:"state"`
+	URL    string           `json:"url"`
+	Ref    string           `json:"ref"`
+	Labels []IssueItemLabel `json:"labels"`
 }
 
 // ParseGitHubJSON parses the JSON output of `gh issue view --json`.
@@ -62,15 +73,11 @@ func ParseGitHubJSON(data []byte) (*IssueData, error) {
 	if err := json.Unmarshal(data, &gh); err != nil {
 		return nil, fmt.Errorf("parsing gh JSON: %w", err)
 	}
-	labels := make([]string, 0, len(gh.Labels))
-	for _, l := range gh.Labels {
-		labels = append(labels, l.Name)
-	}
 	return &IssueData{
 		Number: gh.Number,
 		Title:  gh.Title,
 		Body:   gh.Body,
-		Labels: labels,
+		Labels: extractLabelNames(gh.Labels),
 		URL:    gh.URL,
 		Ref:    gh.Ref,
 	}, nil
@@ -113,14 +120,12 @@ func NewGiteaFetcher(owner, repo, apiBase, token string, timeout time.Duration) 
 
 // giteaIssue mirrors the Gitea API issue shape.
 type giteaIssue struct {
-	Number  int    `json:"number"`
-	Title   string `json:"title"`
-	Body    string `json:"body"`
-	HTMLURL string `json:"html_url"`
-	Ref     string `json:"ref"`
-	Labels  []struct {
-		Name string `json:"name"`
-	} `json:"labels"`
+	Number  int              `json:"number"`
+	Title   string           `json:"title"`
+	Body    string           `json:"body"`
+	HTMLURL string           `json:"html_url"`
+	Ref     string           `json:"ref"`
+	Labels  []IssueItemLabel `json:"labels"`
 }
 
 // Fetch retrieves issue number from Gitea.
@@ -150,18 +155,36 @@ func (g *GiteaFetcher) Fetch(ctx context.Context, number int) (*IssueData, error
 		return nil, fmt.Errorf("decoding Gitea response: %w", err)
 	}
 
-	labels := make([]string, 0, len(gi.Labels))
-	for _, l := range gi.Labels {
-		labels = append(labels, l.Name)
-	}
 	return &IssueData{
 		Number: gi.Number,
 		Title:  gi.Title,
 		Body:   gi.Body,
-		Labels: labels,
+		Labels: extractLabelNames(gi.Labels),
 		URL:    gi.HTMLURL,
 		Ref:    gi.Ref,
 	}, nil
+}
+
+// ParseIssueItems converts a slice of IssueItem into a slice of *IssueData.
+func ParseIssueItems(items []IssueItem) []*IssueData {
+	result := make([]*IssueData, 0, len(items))
+	for _, item := range items {
+		result = append(result, &IssueData{
+			Number: item.Number,
+			Title:  item.Title,
+			Body:   item.Body,
+			Labels: extractLabelNames(item.Labels),
+		})
+	}
+	return result
+}
+
+func extractLabelNames(labels []IssueItemLabel) []string {
+	names := make([]string, 0, len(labels))
+	for _, l := range labels {
+		names = append(names, l.Name)
+	}
+	return names
 }
 
 // NewFetcher returns a Fetcher for the given provider.

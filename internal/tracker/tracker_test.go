@@ -11,8 +11,6 @@ import (
 	"git.home.federation.fi/lavernea/themis/internal/tracker"
 )
 
-// AC parser extracts checkbox items from issue body into a structured list of strings
-
 func TestParseCheckboxes_ExtractsBothCheckedAndUnchecked(t *testing.T) {
 	body := "## Summary\n\nSome text.\n\n## Acceptance Criteria\n\n- [ ] First item\n- [x] Second item already done\n- [ ] Third item\n\n## Notes\n\nSome notes."
 	got := tracker.ParseCheckboxes(body)
@@ -41,8 +39,6 @@ func TestParseCheckboxes_NoCheckboxes(t *testing.T) {
 		t.Errorf("ParseCheckboxes (no checkboxes) = %v, want empty", got)
 	}
 }
-
-// Issue tracker integration fetches issue data from GitHub via gh issue view --json
 
 func TestParseGitHubJSON_ExtractsIssueData(t *testing.T) {
 	input := `{
@@ -77,8 +73,6 @@ func TestParseGitHubJSON_InvalidJSON(t *testing.T) {
 		t.Error("ParseGitHubJSON(invalid JSON) should return error")
 	}
 }
-
-// Issue tracker integration fetches issue data from Gitea API
 
 func TestGiteaFetcher_FetchesFromAPI(t *testing.T) {
 	issue := map[string]interface{}{
@@ -128,8 +122,6 @@ func TestGiteaFetcher_ReturnsErrorOn404(t *testing.T) {
 	}
 }
 
-// NewFetcher factory
-
 func TestNewFetcher_GitHub(t *testing.T) {
 	f, err := tracker.NewFetcher("github", "", "", "", "", 5*time.Second)
 	if err != nil {
@@ -157,8 +149,6 @@ func TestNewFetcher_InvalidProvider(t *testing.T) {
 	}
 }
 
-// tracker.IssueData includes a Ref field populated from the issue's ref/branch metadata
-
 func TestIssueData_HasRefField(t *testing.T) {
 	issue := &tracker.IssueData{
 		Number: 21,
@@ -169,8 +159,6 @@ func TestIssueData_HasRefField(t *testing.T) {
 		t.Errorf("IssueData.Ref: got %q, want %q", issue.Ref, "feature-branch")
 	}
 }
-
-// GiteaFetcher populates Ref from the Gitea API response
 
 func TestGiteaFetcher_PopulatesRefFromAPIResponse(t *testing.T) {
 	issue := map[string]interface{}{
@@ -225,8 +213,6 @@ func TestGiteaFetcher_RefIsEmptyWhenAbsentFromAPI(t *testing.T) {
 	}
 }
 
-// GitHubFetcher populates Ref from gh CLI output (or defaults to "main" if not set)
-
 func TestParseGitHubJSON_PopulatesRefWhenPresent(t *testing.T) {
 	input := `{
 		"number": 21,
@@ -264,8 +250,6 @@ func TestParseGitHubJSON_RefIsEmptyWhenAbsent(t *testing.T) {
 	}
 }
 
-// GiteaFetcher.Fetch returns an error when the server does not respond within the timeout.
-
 func TestGiteaFetcher_ReturnsErrorOnTimeout(t *testing.T) {
 	block := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -283,5 +267,104 @@ func TestGiteaFetcher_ReturnsErrorOnTimeout(t *testing.T) {
 	_, err := f.Fetch(context.Background(), 1)
 	if err == nil {
 		t.Error("GiteaFetcher.Fetch: expected non-nil error when server does not respond, got nil")
+	}
+}
+
+func TestParseIssueItems_EmptySlice(t *testing.T) {
+	result := tracker.ParseIssueItems([]tracker.IssueItem{})
+	if len(result) != 0 {
+		t.Errorf("ParseIssueItems(empty): got len %d, want 0", len(result))
+	}
+}
+
+func TestParseIssueItems_SingleItem_AllFieldsPopulated(t *testing.T) {
+	items := []tracker.IssueItem{
+		{
+			Number: 7,
+			Title:  "foo",
+			Body:   "bar",
+			Labels: []tracker.IssueItemLabel{{Name: "lbl1"}, {Name: "lbl2"}},
+		},
+	}
+	result := tracker.ParseIssueItems(items)
+	if len(result) != 1 {
+		t.Fatalf("ParseIssueItems: got len %d, want 1", len(result))
+	}
+	got := result[0]
+	if got.Number != 7 {
+		t.Errorf("Number: got %d, want 7", got.Number)
+	}
+	if got.Title != "foo" {
+		t.Errorf("Title: got %q, want %q", got.Title, "foo")
+	}
+	if got.Body != "bar" {
+		t.Errorf("Body: got %q, want %q", got.Body, "bar")
+	}
+	if len(got.Labels) != 2 {
+		t.Fatalf("Labels: got %v (len %d), want 2 items", got.Labels, len(got.Labels))
+	}
+	if got.Labels[0] != "lbl1" {
+		t.Errorf("Labels[0]: got %q, want %q", got.Labels[0], "lbl1")
+	}
+	if got.Labels[1] != "lbl2" {
+		t.Errorf("Labels[1]: got %q, want %q", got.Labels[1], "lbl2")
+	}
+}
+
+func TestParseIssueItems_MultipleItems_PreservesOrder(t *testing.T) {
+	items := []tracker.IssueItem{
+		{Number: 3, Title: "first"},
+		{Number: 1, Title: "second"},
+	}
+	result := tracker.ParseIssueItems(items)
+	if len(result) != 2 {
+		t.Fatalf("ParseIssueItems: got len %d, want 2", len(result))
+	}
+	if result[0].Number != 3 {
+		t.Errorf("result[0].Number: got %d, want 3", result[0].Number)
+	}
+	if result[1].Number != 1 {
+		t.Errorf("result[1].Number: got %d, want 1", result[1].Number)
+	}
+}
+
+func TestParseIssueItems_ItemWithNoLabels_LabelsIsEmpty(t *testing.T) {
+	items := []tracker.IssueItem{
+		{Number: 5, Title: "no labels", Body: "body text", Labels: []tracker.IssueItemLabel{}},
+	}
+	result := tracker.ParseIssueItems(items)
+	if len(result) != 1 {
+		t.Fatalf("ParseIssueItems: got len %d, want 1", len(result))
+	}
+	if len(result[0].Labels) != 0 {
+		t.Errorf("Labels: got %v, want empty", result[0].Labels)
+	}
+}
+
+func TestParseIssueItems_ItemWithMultipleLabels(t *testing.T) {
+	items := []tracker.IssueItem{
+		{
+			Number: 10,
+			Title:  "multi-label",
+			Labels: []tracker.IssueItemLabel{
+				{Name: "alpha"},
+				{Name: "beta"},
+				{Name: "gamma"},
+			},
+		},
+	}
+	result := tracker.ParseIssueItems(items)
+	if len(result) != 1 {
+		t.Fatalf("ParseIssueItems: got len %d, want 1", len(result))
+	}
+	wantLabels := []string{"alpha", "beta", "gamma"}
+	gotLabels := result[0].Labels
+	if len(gotLabels) != len(wantLabels) {
+		t.Fatalf("Labels: got %v (len %d), want %v (len %d)", gotLabels, len(gotLabels), wantLabels, len(wantLabels))
+	}
+	for i, want := range wantLabels {
+		if gotLabels[i] != want {
+			t.Errorf("Labels[%d]: got %q, want %q", i, gotLabels[i], want)
+		}
 	}
 }
