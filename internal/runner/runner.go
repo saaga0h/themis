@@ -37,7 +37,7 @@ type ReviewResults struct {
 	Findings []ReviewFinding `json:"findings"`
 }
 
-func readReviewResults(workDir string) ([]ReviewFinding, bool) {
+func readReviewResults(ctx context.Context, workDir string) ([]ReviewFinding, bool) {
 	path := filepath.Join(workDir, ".themis", "review-results.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -232,8 +232,8 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		prof.ReviewModel = "sonnet"
 	}
 
-	codingStandards := readFileOrEmpty(filepath.Join(cfg.WorkDir, "CODING_STANDARDS.md"))
-	ubiquitousLanguage := readFileOrEmpty(filepath.Join(cfg.WorkDir, "UBIQUITOUS_LANGUAGE.md"))
+	codingStandards := readFileOrEmpty(ctx, filepath.Join(cfg.WorkDir, "CODING_STANDARDS.md"))
+	ubiquitousLanguage := readFileOrEmpty(ctx, filepath.Join(cfg.WorkDir, "UBIQUITOUS_LANGUAGE.md"))
 
 	var lastBlockingFindings string
 	var reviewOutput string
@@ -446,10 +446,10 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			fmt.Fprintf(log, "%s: checkpoint pass\n", step)
 		}
 
-		stepResult := deriveStepResult(step, invokeResult, cfg)
+		stepResult := deriveStepResult(ctx, step, invokeResult, cfg)
 		if step == pipeline.StepReview {
 			reviewOutput = invokeResult.Stdout
-			findings, found := readReviewResults(cfg.WorkDir)
+			findings, found := readReviewResults(ctx, cfg.WorkDir)
 			if !found {
 				fmt.Fprintf(log, "warning: review-results.json not found after review step — treating as blocking\n")
 			} else {
@@ -501,7 +501,7 @@ func blockIssue(ctx context.Context, cfg Config, reason error) error {
 	return nil
 }
 
-func deriveStepResult(step pipeline.Step, r *agent.InvokeResult, cfg Config) pipeline.StepResult {
+func deriveStepResult(ctx context.Context, step pipeline.Step, r *agent.InvokeResult, cfg Config) pipeline.StepResult {
 	switch step {
 	case pipeline.StepTestRed:
 		key := cfg.TestACKey
@@ -514,7 +514,7 @@ func deriveStepResult(step pipeline.Step, r *agent.InvokeResult, cfg Config) pip
 		return pipeline.StepResult{Success: false, TestACKey: key}
 
 	case pipeline.StepReview:
-		findings, found := readReviewResults(cfg.WorkDir)
+		findings, found := readReviewResults(ctx, cfg.WorkDir)
 		if !found {
 			// Missing JSON is the fail-safe: the review step produced no
 			// structured result, so treat it as blocking regardless of stdout.
@@ -629,7 +629,7 @@ func formatACs(acs []string) string {
 	return strings.TrimRight(sb.String(), "\n")
 }
 
-func readFileOrEmpty(path string) string {
+func readFileOrEmpty(ctx context.Context, path string) string {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return ""
