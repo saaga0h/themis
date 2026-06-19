@@ -168,15 +168,19 @@ func runLoop(ctx context.Context, cfg loopConfig) error {
 		}
 	}
 
-	printRunSummary(out, processed, blocked, skippedDep, skippedTurns)
+	printRunSummary(out, processed, blocked, skippedDep, skippedTurns, cfg.DryRun)
 	return nil
 }
 
-// printRunSummary writes end-of-run counts to out.
-// Non-processed counts appear first so the "N processed" line is always last,
-// ensuring it appears after any per-issue "blocked" log lines.
-func printRunSummary(out io.Writer, processed, blocked, skippedDep, skippedTurns int) {
-	var parts []string
+// printRunSummary writes a single end-of-run summary line to out, combining all
+// non-zero counts. The processed count is always emitted first; in dry-run mode it
+// is labelled "would process" since no issues were actually processed.
+func printRunSummary(out io.Writer, processed, blocked, skippedDep, skippedTurns int, dryRun bool) {
+	processedLabel := "processed"
+	if dryRun {
+		processedLabel = "would process"
+	}
+	parts := []string{fmt.Sprintf("%d %s", processed, processedLabel)}
 	if blocked > 0 {
 		parts = append(parts, fmt.Sprintf("%d blocked", blocked))
 	}
@@ -186,10 +190,7 @@ func printRunSummary(out io.Writer, processed, blocked, skippedDep, skippedTurns
 	if skippedTurns > 0 {
 		parts = append(parts, fmt.Sprintf("%d skipped (turns)", skippedTurns))
 	}
-	if len(parts) > 0 {
-		fmt.Fprintf(out, "run summary: %s\n", strings.Join(parts, ", "))
-	}
-	fmt.Fprintf(out, "run summary: %d processed\n", processed)
+	fmt.Fprintf(out, "run summary: %s\n", strings.Join(parts, ", "))
 }
 
 // envTurns reads the remaining turn fraction from THEMIS_TURNS_REMAINING_FRACTION.

@@ -662,11 +662,8 @@ func TestRunLoop_Summary_ProcessedAndBlocked(t *testing.T) {
 	}
 
 	logStr := log.String()
-	if !strings.Contains(logStr, "2 processed") {
-		t.Errorf("summary must contain '2 processed'; got: %s", logStr)
-	}
-	if !strings.Contains(logStr, "1 blocked") {
-		t.Errorf("summary must contain '1 blocked'; got: %s", logStr)
+	if !strings.Contains(logStr, "2 processed, 1 blocked") {
+		t.Errorf("summary must contain '2 processed, 1 blocked'; got: %s", logStr)
 	}
 }
 
@@ -771,7 +768,7 @@ func TestRunLoop_Summary_AppearsAfterPerIssueLines(t *testing.T) {
 	// Find the last per-issue "blocked:" line index.
 	blockedIdx := -1
 	for i, l := range lines {
-		if strings.Contains(l, "blocked") {
+		if strings.Contains(l, "issue #") && strings.Contains(l, "blocked") {
 			blockedIdx = i
 		}
 	}
@@ -801,9 +798,14 @@ func TestRunLoop_Summary_AppearsExactlyOnce(t *testing.T) {
 
 	cfg := loopConfig{
 		Querier: &stubQuerier{issues: makeReadyIssues(1, 2, 3)},
-		RunFn:   func(_ context.Context, _ *tracker.IssueData) error { return nil },
-		Turns:   &stubTurns{fractions: []float64{1.0}},
-		Logger:  &log,
+		RunFn: func(_ context.Context, issue *tracker.IssueData) error {
+			if issue.Number == 2 {
+				return fmt.Errorf("cycle limit exceeded")
+			}
+			return nil
+		},
+		Turns:  &stubTurns{fractions: []float64{1.0}},
+		Logger: &log,
 	}
 
 	if err := runLoop(context.Background(), cfg); err != nil {
@@ -812,11 +814,11 @@ func TestRunLoop_Summary_AppearsExactlyOnce(t *testing.T) {
 
 	logStr := log.String()
 
-	// Count occurrences of a summary-specific marker. The summary line is the
-	// only line that should contain "3 processed" — per-issue lines do not.
-	count := strings.Count(logStr, "3 processed")
+	// Mixed case (2 processed, 1 blocked) would have produced two summary lines
+	// before the fix. There must now be exactly one "run summary:" line.
+	count := strings.Count(logStr, "run summary:")
 	if count != 1 {
-		t.Errorf("'3 processed' must appear exactly once in log (got %d); log:\n%s", count, logStr)
+		t.Errorf("'run summary:' must appear exactly once (got %d); log:\n%s", count, logStr)
 	}
 }
 
@@ -837,10 +839,9 @@ func TestRunLoop_Summary_DryRunCountsWouldProcess(t *testing.T) {
 
 	logStr := log.String()
 
-	// Summary must reflect 3 issues as processed (or "would process").
-	hasCount := strings.Contains(logStr, "3 processed") || strings.Contains(logStr, "3 would process")
-	if !hasCount {
-		t.Errorf("dry-run summary must contain '3 processed' or '3 would process'; got: %s", logStr)
+	// Summary must reflect 3 issues as "would process" in dry-run mode.
+	if !strings.Contains(logStr, "3 would process") {
+		t.Errorf("dry-run summary must contain '3 would process'; got: %s", logStr)
 	}
 
 	// No issues were actually blocked in dry-run, so "blocked" must not appear in the summary.

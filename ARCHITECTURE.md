@@ -159,7 +159,7 @@ drops below 0.10; `TurnTracker` reads `THEMIS_TURNS_REMAINING_FRACTION` from the
 environment (defaults to 1.0 when unset). Issues with a `depends on #N` body
 pattern are skipped when issue N is still open; if the dependency check itself fails (network error,
 API error), the issue is also skipped rather than aborting the loop. `--dry-run` prints the plan
-without executing. After all issues are processed, a summary is written to stderr: non-zero blocked and skipped counts appear first on one line (`run summary: N blocked, N skipped (dependency), N skipped (turns)`), followed by `run summary: N processed` (always printed, even when zero). When the issue list is empty, `no ready-for-agent issues found` is printed instead.
+without executing. After all issues are processed, a single `run summary:` line is emitted with all non-zero counts: `run summary: N processed, N blocked, N skipped (dependency), N skipped (turns)` (the processed count is always present and first; in `--dry-run` mode it is labelled `N would process`). When the issue list is empty, `no ready-for-agent issues found` is printed instead.
 
 ### Issue Tracker Integration (`internal/tracker/`)
 
