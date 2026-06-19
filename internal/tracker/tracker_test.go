@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"git.home.federation.fi/lavernea/themis/internal/tracker"
 )
@@ -96,7 +97,7 @@ func TestGiteaFetcher_FetchesFromAPI(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	f := tracker.NewGiteaFetcher("owner", "repo", srv.URL, "test-token")
+	f := tracker.NewGiteaFetcher("owner", "repo", srv.URL, "test-token", 5*time.Second)
 	ctx := context.Background()
 	got, err := f.Fetch(ctx, 11)
 	if err != nil {
@@ -120,7 +121,7 @@ func TestGiteaFetcher_ReturnsErrorOn404(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	f := tracker.NewGiteaFetcher("owner", "repo", srv.URL, "token")
+	f := tracker.NewGiteaFetcher("owner", "repo", srv.URL, "token", 5*time.Second)
 	_, err := f.Fetch(context.Background(), 999)
 	if err == nil {
 		t.Error("GiteaFetcher.Fetch on 404 should return error")
@@ -130,7 +131,7 @@ func TestGiteaFetcher_ReturnsErrorOn404(t *testing.T) {
 // NewFetcher factory
 
 func TestNewFetcher_GitHub(t *testing.T) {
-	f, err := tracker.NewFetcher("github", "", "", "", "")
+	f, err := tracker.NewFetcher("github", "", "", "", "", 5*time.Second)
 	if err != nil {
 		t.Fatalf("NewFetcher(github) error: %v", err)
 	}
@@ -140,7 +141,7 @@ func TestNewFetcher_GitHub(t *testing.T) {
 }
 
 func TestNewFetcher_Gitea(t *testing.T) {
-	f, err := tracker.NewFetcher("gitea", "owner", "repo", "https://example.com", "token")
+	f, err := tracker.NewFetcher("gitea", "owner", "repo", "https://example.com", "token", 5*time.Second)
 	if err != nil {
 		t.Fatalf("NewFetcher(gitea) error: %v", err)
 	}
@@ -150,7 +151,7 @@ func TestNewFetcher_Gitea(t *testing.T) {
 }
 
 func TestNewFetcher_InvalidProvider(t *testing.T) {
-	_, err := tracker.NewFetcher("invalid", "", "", "", "")
+	_, err := tracker.NewFetcher("invalid", "", "", "", "", 5*time.Second)
 	if err == nil {
 		t.Error("NewFetcher(invalid) should return error")
 	}
@@ -188,7 +189,7 @@ func TestGiteaFetcher_PopulatesRefFromAPIResponse(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	f := tracker.NewGiteaFetcher("owner", "repo", srv.URL, "token")
+	f := tracker.NewGiteaFetcher("owner", "repo", srv.URL, "token", 5*time.Second)
 	got, err := f.Fetch(context.Background(), 21)
 	if err != nil {
 		t.Fatalf("GiteaFetcher.Fetch error: %v", err)
@@ -214,7 +215,7 @@ func TestGiteaFetcher_RefIsEmptyWhenAbsentFromAPI(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	f := tracker.NewGiteaFetcher("owner", "repo", srv.URL, "token")
+	f := tracker.NewGiteaFetcher("owner", "repo", srv.URL, "token", 5*time.Second)
 	got, err := f.Fetch(context.Background(), 22)
 	if err != nil {
 		t.Fatalf("GiteaFetcher.Fetch error: %v", err)
@@ -260,5 +261,27 @@ func TestParseGitHubJSON_RefIsEmptyWhenAbsent(t *testing.T) {
 	}
 	if got.Ref != "" {
 		t.Errorf("ParseGitHubJSON Ref: got %q, want empty when absent", got.Ref)
+	}
+}
+
+// GiteaFetcher.Fetch returns an error when the server does not respond within the timeout.
+
+func TestGiteaFetcher_ReturnsErrorOnTimeout(t *testing.T) {
+	block := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-block:
+		}
+	}))
+	t.Cleanup(func() {
+		close(block)
+		srv.Close()
+	})
+
+	f := tracker.NewGiteaFetcher("owner", "repo", srv.URL, "", time.Millisecond)
+	_, err := f.Fetch(context.Background(), 1)
+	if err == nil {
+		t.Error("GiteaFetcher.Fetch: expected non-nil error when server does not respond, got nil")
 	}
 }
