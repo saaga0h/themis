@@ -620,12 +620,6 @@ func TestRunLoop_ListReadyIssuesError_ReturnsWrappedError(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Issue #45: observability — end-of-run summary logging for runLoop
-// ---------------------------------------------------------------------------
-
-// AC1 (target 1): 3 issues, all succeed — summary must contain "3 processed" and
-// some form of "0 blocked" (or omit blocked entirely if zero-omitted).
 func TestRunLoop_Summary_AllProcessedNoBlocked(t *testing.T) {
 	var log bytes.Buffer
 
@@ -648,7 +642,6 @@ func TestRunLoop_Summary_AllProcessedNoBlocked(t *testing.T) {
 	// The test asserts the summary exists by requiring "3 processed".
 }
 
-// AC1 (target 2): 3 issues, 1 fails — summary must contain "2 processed" and "1 blocked".
 func TestRunLoop_Summary_ProcessedAndBlocked(t *testing.T) {
 	var log bytes.Buffer
 
@@ -677,8 +670,6 @@ func TestRunLoop_Summary_ProcessedAndBlocked(t *testing.T) {
 	}
 }
 
-// AC1 (target 3): 2 issues, 1 has an open dependency — summary must contain
-// "1 skipped (dependency)".
 func TestRunLoop_Summary_SkippedDependency(t *testing.T) {
 	var log bytes.Buffer
 
@@ -712,8 +703,6 @@ func TestRunLoop_Summary_SkippedDependency(t *testing.T) {
 	}
 }
 
-// AC1 (target 4): 3 issues, turns drop to 5% before issue 2 — summary must contain
-// "2 skipped (turns)".
 func TestRunLoop_Summary_SkippedTurns(t *testing.T) {
 	var log bytes.Buffer
 
@@ -738,93 +727,6 @@ func TestRunLoop_Summary_SkippedTurns(t *testing.T) {
 	}
 }
 
-// AC2: When 2 of 3 issues succeed and 1 blocks, summary must contain the exact
-// substring "2 processed, 1 blocked".
-func TestRunLoop_Summary_TwoProcessedOneBlocked(t *testing.T) {
-	var log bytes.Buffer
-
-	cfg := loopConfig{
-		Querier: &stubQuerier{issues: makeReadyIssues(1, 2, 3)},
-		RunFn: func(_ context.Context, issue *tracker.IssueData) error {
-			if issue.Number == 2 {
-				return fmt.Errorf("test-fix limit")
-			}
-			return nil
-		},
-		Turns:  &stubTurns{fractions: []float64{1.0}},
-		Logger: &log,
-	}
-
-	if err := runLoop(context.Background(), cfg); err != nil {
-		t.Fatalf("runLoop error: %v", err)
-	}
-
-	logStr := log.String()
-	if !strings.Contains(logStr, "2 processed") {
-		t.Errorf("summary must contain '2 processed'; got: %s", logStr)
-	}
-	if !strings.Contains(logStr, "1 blocked") {
-		t.Errorf("summary must contain '1 blocked'; got: %s", logStr)
-	}
-}
-
-// AC3: When an issue is skipped due to an open dependency, summary must contain
-// "1 skipped (dependency)".
-func TestRunLoop_Summary_OneSkippedDependency(t *testing.T) {
-	var log bytes.Buffer
-
-	issue2 := &tracker.IssueData{
-		Number: 2,
-		Title:  "Issue 2",
-		Body:   "depends on #5\n## AC\n- [ ] Something",
-		Labels: []string{"ready-for-agent"},
-	}
-
-	cfg := loopConfig{
-		Querier: &stubQuerier{
-			issues:  []*tracker.IssueData{makeReadyIssues(1)[0], issue2},
-			openMap: map[int]bool{5: true},
-		},
-		RunFn:  func(_ context.Context, _ *tracker.IssueData) error { return nil },
-		Turns:  &stubTurns{fractions: []float64{1.0}},
-		Logger: &log,
-	}
-
-	if err := runLoop(context.Background(), cfg); err != nil {
-		t.Fatalf("runLoop error: %v", err)
-	}
-
-	logStr := log.String()
-	if !strings.Contains(logStr, "1 skipped (dependency)") {
-		t.Errorf("summary must contain '1 skipped (dependency)'; got: %s", logStr)
-	}
-}
-
-// AC4: When the turn budget causes early exit with 2 remaining issues, summary must
-// contain "2 skipped (turns)".
-func TestRunLoop_Summary_TwoSkippedTurns(t *testing.T) {
-	var log bytes.Buffer
-
-	cfg := loopConfig{
-		Querier: &stubQuerier{issues: makeReadyIssues(1, 2, 3)},
-		RunFn:   func(_ context.Context, _ *tracker.IssueData) error { return nil },
-		// Issue 1 sees 50%, then budget drops to 5% — issues 2 and 3 are skipped.
-		Turns:  &stubTurns{fractions: []float64{0.5, 0.05}},
-		Logger: &log,
-	}
-
-	if err := runLoop(context.Background(), cfg); err != nil {
-		t.Fatalf("runLoop error: %v", err)
-	}
-
-	logStr := log.String()
-	if !strings.Contains(logStr, "2 skipped (turns)") {
-		t.Errorf("summary must contain '2 skipped (turns)'; got: %s", logStr)
-	}
-}
-
-// AC5: When ListReadyIssues returns an empty list, summary must say
-// "no ready-for-agent issues found".
 func TestRunLoop_Summary_EmptyIssueList(t *testing.T) {
 	var log bytes.Buffer
 
@@ -845,9 +747,6 @@ func TestRunLoop_Summary_EmptyIssueList(t *testing.T) {
 	}
 }
 
-// AC6 (target 1): The summary line must appear after all per-issue log lines.
-// With 2 issues where 1 is blocked, the "blocked:" per-issue line must appear
-// before the summary line.
 func TestRunLoop_Summary_AppearsAfterPerIssueLines(t *testing.T) {
 	var log bytes.Buffer
 
@@ -897,9 +796,6 @@ func TestRunLoop_Summary_AppearsAfterPerIssueLines(t *testing.T) {
 	}
 }
 
-// AC6 (target 2): The summary line must appear exactly once. With 3 issues all
-// succeeding, the summary-specific token "run summary:" (or an equivalent
-// summary-only marker) must appear exactly once in the log.
 func TestRunLoop_Summary_AppearsExactlyOnce(t *testing.T) {
 	var log bytes.Buffer
 
@@ -924,8 +820,6 @@ func TestRunLoop_Summary_AppearsExactlyOnce(t *testing.T) {
 	}
 }
 
-// AC7: --dry-run mode must also print a summary. All 3 issues must be counted as
-// processed (or "would process") and "blocked" must not appear.
 func TestRunLoop_Summary_DryRunCountsWouldProcess(t *testing.T) {
 	var log bytes.Buffer
 
@@ -958,11 +852,6 @@ func TestRunLoop_Summary_DryRunCountsWouldProcess(t *testing.T) {
 		}
 	}
 }
-
-// ---------------------------------------------------------------------------
-// (AC8 is a build-gate requirement enforced by running `go test ./cmd/themis/...`
-// with the existing tests; no additional test function is needed.)
-// ---------------------------------------------------------------------------
 
 // TestRunRun_MaxTurnsIsPassedFromRunArgsToRunnerConfig verifies that the maxTurns
 // field on runArgs (populated by --max-turns) is forwarded into the runner.Config.MaxTurns

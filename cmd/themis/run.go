@@ -174,7 +174,7 @@ func runLoop(ctx context.Context, cfg loopConfig) error {
 
 // printRunSummary writes end-of-run counts to out.
 // Non-processed counts appear first so the "N processed" line is always last,
-// ensuring it appears after any per-issue "blocked" log lines (AC6).
+// ensuring it appears after any per-issue "blocked" log lines.
 func printRunSummary(out io.Writer, processed, blocked, skippedDep, skippedTurns int) {
 	var parts []string
 	if blocked > 0 {
