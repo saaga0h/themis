@@ -50,29 +50,66 @@ skills/               # Reusable skill prompts composed into agents and commands
 commands/             # Slash command prompts for Claude Code sessions
 ```
 
-### Dependency direction
-- `cmd/themis/` depends on `internal/` — never the reverse
-- `internal/agent/` has no dependencies on other internal packages
-- `internal/checkpoint/` depends on `internal/git/` and `internal/pipeline/` — this is the
-  only permitted cross-internal dependency (checkpoint needs git operations and step types)
-- `internal/git/` has no dependencies on other internal packages
-- `internal/pipeline/` has no dependencies on other internal packages (stdlib only:
-  `errors`, `fmt`, `time`, `encoding/json`, `os`, `path/filepath`)
-- `internal/profile/` has no dependencies on other internal packages
-- `internal/prompt/` has no dependencies on other internal packages
-- `internal/runner/` depends on `internal/pipeline/`, `internal/prompt/`, and `internal/tracker/`
-  — it orchestrates these packages but does not expose their types in its public API beyond
-  what `Config` requires
-- `internal/tracker/` has no dependencies on other internal packages
-- Each `cmd/` binary composes from `internal/` packages — packages do not compose each other
-  except where explicitly listed above
+### Dependency injection pattern
 
-New cross-internal dependencies require justification. The default is leaf packages
-wired together in `cmd/`.
+Internal packages fall into two categories:
+
+**Domain type packages** provide types and functions the runner orchestrates:
+`pipeline` (step types, state machine), `prompt` (template rendering), `tracker`
+(issue data). These are imported directly by packages that need their types.
+
+**Infrastructure operation packages** provide capabilities that touch external
+systems: `git` (subprocess calls), `profile` (filesystem reads), `agent` (subprocess
+spawning). These are NOT imported directly by consuming packages. Instead, their
+operations are injected via interfaces or function fields on `Config` structs.
+
+The rule: **import domain types, inject infrastructure operations.**
+
+- **Grouped operations** (3+ related operations from one domain) → define a
+  consumer-side interface. Example: git operations (branch, push, checkout,
+  commit count, current branch, commit log) → a `GitOps` interface defined in
+  `internal/runner/`.
+- **Single operations** → inject as a function type field on `Config`. Example:
+  `CheckpointFn func(ctx, dir, step) error` on `runner.Config`.
+- **The Invoker interface** is the boundary between deterministic orchestration and
+  LLM creative work. It is a domain boundary, not an infrastructure injection —
+  importing the `Invoker` type is correct.
+
+Concrete implementations live in `cmd/themis/`, which wires them into `Config`
+at construction time. Tests substitute stubs or fakes for every injected dependency.
+
+### Dependency direction
+
+- `cmd/themis/` depends on `internal/` — never the reverse. `cmd/themis/` is
+  the wiring layer: it imports concrete implementations from infrastructure
+  packages (`git`, `agent`, `profile`) and injects them into `runner.Config`.
+- `internal/agent/` has **no dependencies** on other internal packages. Commit
+  snapshotting and other git operations are injected via function fields on
+  `InvokeOptions`. The agent package is a pure subprocess spawner.
+- `internal/checkpoint/` depends on `internal/git/` and `internal/pipeline/` —
+  checkpoint needs git operations and step types. This is an accepted
+  cross-internal dependency.
+- `internal/git/` has no dependencies on other internal packages (leaf package)
+- `internal/pipeline/` has no dependencies on other internal packages (leaf package,
+  stdlib only: `errors`, `fmt`, `time`, `encoding/json`, `os`, `path/filepath`)
+- `internal/profile/` has no dependencies on other internal packages (leaf package)
+- `internal/prompt/` has no dependencies on other internal packages (leaf package)
+- `internal/runner/` imports domain type packages: `internal/pipeline/`,
+  `internal/prompt/`, `internal/tracker/`. It does NOT import infrastructure
+  packages (`git`, `agent`, `profile`) directly — those capabilities are injected
+  via interfaces and function fields on `runner.Config`.
+- `internal/tracker/` has no dependencies on other internal packages (leaf package)
+
+New cross-internal dependencies are a **blocking review finding**. If a package
+needs a capability from an infrastructure package, inject it. If it needs a type
+from a domain package, check whether the import is listed above. Unlisted imports
+require justification and a CODING_STANDARDS update.
 
 ### Interfaces
 - Define interfaces at the point of use (consumer), not the point of implementation
 - Keep interfaces small — prefer single-method interfaces where possible
+- For grouped infrastructure operations, define an interface at the consumer:
+  the interface lists what the consumer needs, not everything the provider offers
 - `Invoker` is the abstraction boundary between deterministic pipeline control and
   LLM creative work — nothing in `internal/runner/` should know about Claude Code,
   subprocess flags, or model names
@@ -82,7 +119,8 @@ wired together in `cmd/`.
   comments, PR creation) — the runner calls the interface, `cmd/themis/` provides the
   implementation
 - `CheckpointFn` is a function type, not an interface — injectable via `Config`
-  so the runner can be tested without a real git repository
+  so the runner can be tested without a real git repository. Use function types
+  for single operations; use interfaces for grouped operations (3+)
 
 ### Error handling
 - Never ignore errors — every `err` must be checked
@@ -260,6 +298,9 @@ or through the `runner.Config` struct — not through a direct import.
 - Any cross-internal dependency not listed in the dependency direction section above
 - Any per-issue test file (`<package>_issue<N>_test.go`)
 - Any duplicated test stub that clones an existing stub with a different prefix
+- Any direct import of an infrastructure package (`git`, `agent`, `profile`) from
+  a package other than `cmd/themis/` or `internal/checkpoint/` — use interface
+  injection instead
 
 Contract violations are always blocking — never downgrade one for convenience.
 
@@ -293,6 +334,7 @@ The reviewer must verify all of the following before approving:
 - [ ] Context is threaded through all I/O-performing functions
 - [ ] HTTP clients have a `Timeout` set
 - [ ] Interfaces are used at abstraction boundaries — no concrete type leakage across packages
+- [ ] No direct imports of infrastructure packages outside `cmd/themis/` — use injection
 - [ ] No new cross-internal dependencies beyond those listed in the dependency direction section
 - [ ] Pipeline step templates use only documented `{{KEY}}` placeholders
 - [ ] PR review notes document all non-blocking findings — sparse notes on a non-trivial diff are suspect
