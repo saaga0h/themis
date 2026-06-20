@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/saaga0h/themis/internal/agent"
 	"github.com/saaga0h/themis/internal/checkpoint"
@@ -14,17 +15,34 @@ import (
 	"github.com/saaga0h/themis/internal/review"
 	"github.com/saaga0h/themis/internal/runner"
 	"github.com/saaga0h/themis/internal/tracker"
+	"github.com/saaga0h/themis/internal/workflow"
 )
 
-// goTestRunner runs the Go test suite in dir and reports whether it passed,
-// along with the combined output for diagnostics. A non-zero exit (test failure
-// or build error) counts as not green. It satisfies runner.Config.TestRunner and
-// is the GREEN gate for the Implement and Fix steps.
-func goTestRunner(ctx context.Context, dir string) (bool, string) {
-	cmd := exec.CommandContext(ctx, "go", "test", "./...")
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	return err == nil, string(out)
+// verifyRunner returns a runner.Config.TestRunner that runs the project's
+// declared verify commands (the Green Gate) in order, each via `bash -c`, in
+// dir. The first non-zero exit fails the gate. With no commands declared it
+// no-ops to passing — the warning is emitted once at config time, not here.
+// The factory stays stack-agnostic: these commands come from
+// .themis/workflow.yaml, never hardcoded.
+func verifyRunner(verify []string) func(ctx context.Context, dir string) (bool, string) {
+	return func(ctx context.Context, dir string) (bool, string) {
+		if len(verify) == 0 {
+			return true, "no verify commands declared; green gate is a no-op"
+		}
+		var out strings.Builder
+		for _, cmd := range verify {
+			fmt.Fprintf(&out, "$ %s\n", cmd)
+			c := exec.CommandContext(ctx, "bash", "-c", cmd)
+			c.Dir = dir
+			o, err := c.CombinedOutput()
+			out.Write(o)
+			if err != nil {
+				fmt.Fprintf(&out, "\nverify command failed (%s): %v\n", cmd, err)
+				return false, out.String()
+			}
+		}
+		return true, out.String()
+	}
 }
 
 // cmdGitOps wraps internal/git functions and satisfies runner.GitOps.
@@ -157,6 +175,13 @@ func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir strin
 	if err != nil {
 		return runner.Config{}, fmt.Errorf("creating checkpoint: %w", err)
 	}
+	desc, err := workflow.Load(workDir)
+	if err != nil {
+		return runner.Config{}, fmt.Errorf("loading workflow descriptor: %w", err)
+	}
+	if len(desc.Verify) == 0 {
+		fmt.Fprintf(os.Stderr, "warning: no verify commands declared in .themis/workflow.yaml; green gate will be a no-op\n")
+	}
 	return runner.Config{
 		WorkDir:             workDir,
 		IssueNumber:         issueNumber,
@@ -170,7 +195,8 @@ func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir strin
 		Git:                 &cmdGitOps{},
 		ProfileLoader:       profileLoader,
 		ReviewResultsLoader: review.ReadReviewResults,
-		TestRunner:          goTestRunner,
+		TestRunner:          verifyRunner(desc.Verify),
+		StandardsDocs:       desc.StandardsDocs(),
 	}, nil
 }
 

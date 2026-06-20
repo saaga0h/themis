@@ -237,11 +237,26 @@ func buildTemplateArgs(
 		"CHANGED_FILES":       changedFilesResult,
 		"TEST_FILES":          filterTestFiles(changedFilesResult),
 		"DIFF_LINES":          strconv.Itoa(diffLines),
+		"STANDARDS_DOCS":      formatStandardsDocs(cfg.StandardsDocs),
 		"REVIEW_CYCLE":        strconv.Itoa(reviewCycle + 1),
 		"BLOCKING_FINDINGS":   lastBlockingFindings,
 		"PIPELINE_SHAPE":      pipelineShape(commitLog),
 		"COMMIT_LOG":          commitLog,
 	}
+}
+
+// formatStandardsDocs renders the project's declared authoritative docs as a
+// bullet list for the {{STANDARDS_DOCS}} placeholder. When a project declares
+// none, it says so plainly rather than implying a (Go-specific) default.
+func formatStandardsDocs(docs []string) string {
+	if len(docs) == 0 {
+		return "(none declared for this project — follow the conventions visible in the surrounding code)"
+	}
+	var sb strings.Builder
+	for _, d := range docs {
+		fmt.Fprintf(&sb, "- `%s`\n", d)
+	}
+	return strings.TrimRight(sb.String(), "\n")
 }
 
 func formatACs(acs []string) string {

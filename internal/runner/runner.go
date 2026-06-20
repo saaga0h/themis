@@ -77,10 +77,15 @@ type Config struct {
 	// the Implement and Fix steps: a step that committed but left tests red is
 	// retried rather than advanced. When nil, those steps advance on commit alone
 	// (legacy behaviour; used by tests that do not exercise the gate).
-	TestRunner  func(ctx context.Context, dir string) (passed bool, output string)
-	Logger      io.Writer
-	CodeVersion string
-	MaxTurns    int
+	TestRunner func(ctx context.Context, dir string) (passed bool, output string)
+	// StandardsDocs are the project's authoritative doc paths (relative to
+	// WorkDir) that agents read for coding standards, terminology, and
+	// architecture. Declared per-project in .themis/workflow.yaml; the factory is
+	// stack-agnostic and hardcodes none of these. Surfaced as {{STANDARDS_DOCS}}.
+	StandardsDocs []string
+	Logger        io.Writer
+	CodeVersion   string
+	MaxTurns      int
 }
 
 // Result holds the outcome of a successful pipeline run.

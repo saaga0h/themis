@@ -1,0 +1,23 @@
+# Themis's own factory workflow descriptor.
+#
+# This is how a project tells the stack-agnostic factory how its work flows.
+# The themis binary hardcodes none of the below — for themis, "Go" is just what
+# this file declares. A node or Julia repo ships its own descriptor instead.
+#
+# Slice 1 wires `verify` (the Green Gate) and `docs` (authoritative inputs the
+# agents read). Later slices add stage toggles and model tiers.
+
+stack: go
+
+# Green Gate: run in order, each must exit 0. The factory runs these via `bash -c`.
+verify:
+  - go build ./...
+  - test -z "$(gofmt -l .)"
+  - go vet ./...
+  - go test ./...
+
+# Authoritative inputs the agents read for standards, terminology, architecture.
+# Kept lean so reading them fresh each step is cheap.
+docs:
+  standards: CODING_STANDARDS.md
+  glossary: UBIQUITOUS_LANGUAGE.md

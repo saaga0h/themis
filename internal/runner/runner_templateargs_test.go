@@ -305,6 +305,51 @@ func TestRunner_CommitLogContainsBranchCommits(t *testing.T) {
 
 // Both context args (PIPELINE_SHAPE, COMMIT_LOG) must be present in masterArgs
 // so filterArgs can pass them to templates that reference them.
+// The {{STANDARDS_DOCS}} placeholder renders the project's declared authoritative
+// docs (from .themis/workflow.yaml, surfaced via Config.StandardsDocs) — the
+// factory carries no hardcoded standards.
+func TestRunner_StandardsDocsPlaceholderRendersDeclaredDocs(t *testing.T) {
+	workDir := t.TempDir()
+	saveStateAt(t, workDir, pipeline.StepDocs)
+	tDir := makeTemplateDir(t, map[string]string{
+		"update-docs.md": "standards:\n{{STANDARDS_DOCS}}",
+	})
+	inv := &recordingInvoker{}
+	w := &stubIssueWriter{prURL: "https://example.com/pr/std"}
+	cfg := Config{
+		WorkDir:       workDir,
+		IssueNumber:   42,
+		Fetcher:       &stubFetcher{issue: sampleIssue()},
+		Invoker:       inv,
+		IssueWriter:   w,
+		TemplateDir:   tDir,
+		CheckpointFn:  noopCheckpoint,
+		StandardsDocs: []string{"CODING_STANDARDS.md", "UBIQUITOUS_LANGUAGE.md"},
+	}
+	if _, err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run(): %v", err)
+	}
+	got := inv.opts[0].Prompt
+	if strings.Contains(got, "{{") {
+		t.Errorf("unresolved placeholder in prompt:\n%s", got)
+	}
+	if !strings.Contains(got, "CODING_STANDARDS.md") || !strings.Contains(got, "UBIQUITOUS_LANGUAGE.md") {
+		t.Errorf("expected declared docs in prompt, got:\n%s", got)
+	}
+}
+
+// formatStandardsDocs renders a bullet list, and says so plainly when a project
+// declares none rather than implying a default.
+func TestFormatStandardsDocs(t *testing.T) {
+	if got := formatStandardsDocs(nil); !strings.Contains(got, "none declared") {
+		t.Errorf("empty: expected a 'none declared' note, got %q", got)
+	}
+	got := formatStandardsDocs([]string{"A.md", "B.md"})
+	if !strings.Contains(got, "- `A.md`") || !strings.Contains(got, "- `B.md`") {
+		t.Errorf("expected bullet list, got %q", got)
+	}
+}
+
 func TestRunner_AllNewTemplateArgsAvailableInMasterArgs(t *testing.T) {
 	workDir := t.TempDir()
 	saveStateAt(t, workDir, pipeline.StepDocs)
