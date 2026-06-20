@@ -73,3 +73,24 @@ func TestBranchHasTestFiles(t *testing.T) {
 		}
 	}
 }
+
+// filterTestFiles keeps only the *_test.go entries, preserving them one per line,
+// so the Implement step is handed exactly the tests TestRed committed.
+func TestFilterTestFiles(t *testing.T) {
+	cases := []struct {
+		name    string
+		changed string
+		want    string
+	}{
+		{"empty", "", ""},
+		{"only source", "a.go\ninternal/review/review.go", ""},
+		{"mixed keeps only tests", "internal/review/review.go\ninternal/review/review_test.go", "internal/review/review_test.go"},
+		{"multiple tests", "pkg/a_test.go\npkg/a.go\npkg/b_test.go", "pkg/a_test.go\npkg/b_test.go"},
+		{"substring not suffix", "pkg/test_helper.go", ""},
+	}
+	for _, c := range cases {
+		if got := filterTestFiles(c.changed); got != c.want {
+			t.Errorf("%s: filterTestFiles(%q) = %q, want %q", c.name, c.changed, got, c.want)
+		}
+	}
+}

@@ -30,12 +30,20 @@ func blockIssue(ctx context.Context, cfg Config, reason error) error {
 // the base) contains at least one Go test file. Used to recognise that TestRed's
 // failing tests are already present on a resumed or rebased branch.
 func branchHasTestFiles(changedFiles string) bool {
+	return filterTestFiles(changedFiles) != ""
+}
+
+// filterTestFiles returns the *_test.go entries from a changed-files list, one
+// per line. TestRed commits only test files, so for the Implement step this is
+// the set of tests that step must make pass.
+func filterTestFiles(changedFiles string) string {
+	var out []string
 	for _, f := range strings.Split(changedFiles, "\n") {
 		if strings.HasSuffix(strings.TrimSpace(f), "_test.go") {
-			return true
+			out = append(out, f)
 		}
 	}
-	return false
+	return strings.Join(out, "\n")
 }
 
 func pipelineShape(commitLog string) string {
@@ -134,6 +142,7 @@ func buildTemplateArgs(
 		"AC_STATUS":           acList,
 		"BRANCH_NAME":         branchName,
 		"CHANGED_FILES":       changedFilesResult,
+		"TEST_FILES":          filterTestFiles(changedFilesResult),
 		"REVIEW_CYCLE":        strconv.Itoa(reviewCycle + 1),
 		"BLOCKING_FINDINGS":   lastBlockingFindings,
 		"PIPELINE_SHAPE":      pipelineShape(commitLog),

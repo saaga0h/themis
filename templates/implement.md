@@ -16,6 +16,13 @@
 - Shared stubs, no per-issue duplicates
 - No hardcoded hostnames/URLs/ports
 
+## Test files to make pass
+
+{{TEST_FILES}}
+
+These test files were written in the TestRed step. Make them pass.
+Focus on the functions and types referenced in these files.
+
 ## Instructions
 
 Implement the code needed to make the failing tests pass.
