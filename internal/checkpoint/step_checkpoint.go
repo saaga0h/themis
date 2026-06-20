@@ -10,7 +10,7 @@ import (
 )
 
 var stepPrefix = map[pipeline.Step]string{
-	pipeline.StepTestRed:  "test(",
+	pipeline.StepTestRed:   "test(",
 	pipeline.StepImplement: "feat(",
 	pipeline.StepRefactor:  "refactor(",
 	pipeline.StepFix:       "fix(",

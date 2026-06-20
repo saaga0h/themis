@@ -171,4 +171,3 @@ func buildCmdEnv(parentEnv []string, issueNumber int, stepName string) []string 
 	}
 	return result
 }
-

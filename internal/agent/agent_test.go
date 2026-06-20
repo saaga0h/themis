@@ -41,8 +41,8 @@ func TestFakeInvokerReturnsResult(t *testing.T) {
 	}
 
 	result, err := fi.Invoke(context.Background(), InvokeOptions{
-		Prompt:  "do something",
-		Model:   "sonnet",
+		Prompt:   "do something",
+		Model:    "sonnet",
 		MaxTurns: 10,
 	})
 	if err != nil {
