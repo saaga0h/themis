@@ -8,8 +8,17 @@
 
 {{ACCEPTANCE_CRITERIA}}
 
-Read `CODING_STANDARDS.md` and `UBIQUITOUS_LANGUAGE.md` from the workspace root
-for coding standards and terminology rules.
+## Standards digest (consult full CODING_STANDARDS.md only if needed)
+
+- Error strings lowercase, no punctuation
+- Wrap errors: `fmt.Errorf("doing X: %w", err)`
+- HTTP clients must have Timeout set
+- Context as first param on I/O functions
+- Interfaces defined at consumer, not provider
+- Import domain types, inject infrastructure operations
+- Test files named by behaviour, not issue number
+- Shared stubs, no per-issue duplicates
+- No hardcoded hostnames/URLs/ports
 
 ## Instructions
 
