@@ -11,11 +11,22 @@
 Read `CODING_STANDARDS.md` and `UBIQUITOUS_LANGUAGE.md` from the workspace root
 for coding standards and terminology rules.
 
+## Diff size
+
+{{DIFF_LINES}} lines changed.
+
+If under 50 lines and no security/numerical signals detected, use:
+> /review --autonomous --quick
+
+Otherwise use:
+> /review --autonomous
+
 ## Instructions
 
 Run the **review command** via Task to review the implementation on the current
 branch. Pass `--autonomous` — the review command scopes to the branch diff
-automatically:
+automatically. Choose `--quick` or the full review per the **Diff size** section
+above:
 
 > /review --autonomous
 

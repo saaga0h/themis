@@ -188,6 +188,49 @@ func assertBranchIsMain(t *testing.T, dir string) {
 	}
 }
 
+// runGit runs an arbitrary git command in dir, failing the test on error.
+func runGitIn(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=test",
+		"GIT_AUTHOR_EMAIL=test@test",
+		"GIT_COMMITTER_NAME=test",
+		"GIT_COMMITTER_EMAIL=test@test",
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+// --- DiffLineCount ---
+
+func TestDiffLineCountNoRemoteReturnsZero(t *testing.T) {
+	dir := initTestRepo(t)
+	if n := DiffLineCount(context.Background(), dir); n != 0 {
+		t.Errorf("expected 0 with no remote, got %d", n)
+	}
+}
+
+func TestDiffLineCountCountsAddedAndDeletedLines(t *testing.T) {
+	dir := initTestRepo(t)
+	ctx := context.Background()
+
+	// Establish a remote tracking branch at the initial commit.
+	remote := t.TempDir()
+	runGitIn(t, remote, "init", "--bare", "--initial-branch=main", remote)
+	runGitIn(t, dir, "remote", "add", "origin", remote)
+	runGitIn(t, dir, "push", "-u", "origin", "main")
+
+	// Add a new file with three lines: 3 insertions vs the merge base.
+	addCommit(t, dir, "feature.go", "line1\nline2\nline3\n", "add feature")
+
+	if n := DiffLineCount(ctx, dir); n != 3 {
+		t.Errorf("expected 3 changed lines, got %d", n)
+	}
+}
+
 func TestInitTestRepo_DefaultBranchIsMain(t *testing.T) {
 	assertBranchIsMain(t, initTestRepo(t))
 }

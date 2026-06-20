@@ -46,6 +46,7 @@ type fakeGitOps struct {
 	commitLog       string
 	commitsAhead    int
 	changedFiles    string
+	diffLines       int
 }
 
 func (f *fakeGitOps) CheckoutNewBranch(ctx context.Context, dir, name string) error {
@@ -80,6 +81,10 @@ func (f *fakeGitOps) CommitsAheadOfBase(ctx context.Context, dir, base string) (
 
 func (f *fakeGitOps) ChangedFiles(_ context.Context, _ string) string {
 	return f.changedFiles
+}
+
+func (f *fakeGitOps) DiffLineCount(_ context.Context, _ string) int {
+	return f.diffLines
 }
 
 func (f *fakeGitOps) CommitSHAs(ctx context.Context, dir string) ([]string, error) {

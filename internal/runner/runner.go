@@ -39,6 +39,7 @@ type GitOps interface {
 	BranchCommitLog(ctx context.Context, dir string) string
 	CommitsAheadOfBase(ctx context.Context, dir, base string) (int, error)
 	ChangedFiles(ctx context.Context, dir string) string
+	DiffLineCount(ctx context.Context, dir string) int
 	CommitSHAs(ctx context.Context, dir string) ([]string, error)
 }
 

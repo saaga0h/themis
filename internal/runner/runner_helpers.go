@@ -147,9 +147,11 @@ func buildTemplateArgs(
 	acList := formatACs(acs)
 	var commitLog string
 	var changedFilesResult string
+	var diffLines int
 	if cfg.Git != nil {
 		commitLog = cfg.Git.BranchCommitLog(ctx, cfg.WorkDir)
 		changedFilesResult = cfg.Git.ChangedFiles(ctx, cfg.WorkDir)
+		diffLines = cfg.Git.DiffLineCount(ctx, cfg.WorkDir)
 	}
 	return map[string]string{
 		"ISSUE_NUMBER":        strconv.Itoa(cfg.IssueNumber),
@@ -159,6 +161,7 @@ func buildTemplateArgs(
 		"BRANCH_NAME":         branchName,
 		"CHANGED_FILES":       changedFilesResult,
 		"TEST_FILES":          filterTestFiles(changedFilesResult),
+		"DIFF_LINES":          strconv.Itoa(diffLines),
 		"REVIEW_CYCLE":        strconv.Itoa(reviewCycle + 1),
 		"BLOCKING_FINDINGS":   lastBlockingFindings,
 		"PIPELINE_SHAPE":      pipelineShape(commitLog),

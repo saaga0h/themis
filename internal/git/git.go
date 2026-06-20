@@ -161,6 +161,35 @@ func CommitsAheadOfBase(ctx context.Context, dir, base string) (int, error) {
 	return 0, fmt.Errorf("could not count commits ahead of %s", base)
 }
 
+// DiffLineCount returns the total number of changed lines (insertions plus
+// deletions) on the current branch relative to the nearest remote tracking
+// branch. Returns 0 when no remote exists or any git command fails. Binary-file
+// rows (which git reports as "-") are skipped.
+func DiffLineCount(ctx context.Context, dir string) int {
+	base := branchMergeBase(ctx, dir)
+	if base == "" {
+		return 0
+	}
+	out, err := runGit(ctx, dir, "diff", "--numstat", base)
+	if err != nil {
+		return 0
+	}
+	total := 0
+	for _, line := range parseLines(out) {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		added, errA := strconv.Atoi(fields[0])
+		deleted, errD := strconv.Atoi(fields[1])
+		if errA != nil || errD != nil {
+			continue
+		}
+		total += added + deleted
+	}
+	return total
+}
+
 // PushBranch pushes the current branch to origin.
 func PushBranch(ctx context.Context, dir, branch string) error {
 	_, err := runGit(ctx, dir, "push", "-u", "origin", branch)

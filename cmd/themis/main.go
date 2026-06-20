@@ -46,6 +46,10 @@ func (g *cmdGitOps) ChangedFiles(ctx context.Context, dir string) string {
 	return git.ChangedFiles(ctx, dir)
 }
 
+func (g *cmdGitOps) DiffLineCount(ctx context.Context, dir string) int {
+	return git.DiffLineCount(ctx, dir)
+}
+
 func (g *cmdGitOps) CommitSHAs(ctx context.Context, dir string) ([]string, error) {
 	return git.CommitsBefore(ctx, dir)
 }
