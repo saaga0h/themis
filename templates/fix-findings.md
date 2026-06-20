@@ -1,8 +1,16 @@
 # Fix blocking review findings for issue #{{ISSUE_NUMBER}} — cycle {{REVIEW_CYCLE}}
 
+## Files changed in this PR
+
+{{CHANGED_FILES}}
+
 ## Blocking findings to fix
 
 {{BLOCKING_FINDINGS}}
+
+Fix ONLY the specific issues listed above. Do not refactor surrounding code.
+Do not address non-blocking findings. Change only the files and lines named
+in the findings.
 
 ## Acceptance Criteria
 
