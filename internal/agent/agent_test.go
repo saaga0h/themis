@@ -378,17 +378,10 @@ func TestCommitSetDiff_NewCommitsAreDetected(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Issue #64: AllowedTools is dead code and must be removed from InvokeOptions
-// ---------------------------------------------------------------------------
-
-// TestInvokeOptions_HasNoAllowedToolsField asserts that the AllowedTools field
-// has been removed from InvokeOptions. The field was never wired into buildArgs
-// and is therefore dead code. This test is RED until the field is deleted.
 func TestInvokeOptions_HasNoAllowedToolsField(t *testing.T) {
 	typ := reflect.TypeOf(InvokeOptions{})
 	if _, ok := typ.FieldByName("AllowedTools"); ok {
-		t.Error("InvokeOptions must not have an AllowedTools field: it is dead code and must be removed (issue #64)")
+		t.Error("InvokeOptions must not have an AllowedTools field")
 	}
 }
 
