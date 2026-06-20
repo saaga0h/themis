@@ -26,7 +26,6 @@ type Invoker interface {
 | `Model` | `string` | Model identifier passed as `--model MODEL` |
 | `MaxTurns` | `int` | Maximum agent turns passed as `--max-turns N` |
 | `WorkDir` | `string` | Working directory for the subprocess and git snapshot |
-| `AllowedTools` | `[]string` | Reserved. Declared on the struct but not currently read by `buildArgs` — no `--allowedTools` flag is emitted. No caller sets it. |
 | `IssueNumber` | `int` | Issue number injected into `OTEL_RESOURCE_ATTRIBUTES` |
 | `PipelineStep` | `string` | Pipeline step name injected into `OTEL_RESOURCE_ATTRIBUTES` |
 | `CommitCountFn` | `func(ctx context.Context, dir string) ([]string, error)` | Returns all current commit SHAs in `dir`; called before and after invocation to detect new commits. When nil, `CommitsMade` is always empty and no snapshot is taken |
@@ -48,7 +47,7 @@ type Invoker interface {
 Exact command line built by `buildArgs`:
 
 ```
-claude --print --verbose --dangerously-skip-permissions --max-turns N --model MODEL
+claude --print --dangerously-skip-permissions --max-turns N --model MODEL
 ```
 
 The prompt is written to the subprocess's stdin via `strings.NewReader(opts.Prompt)`. Stdout is captured into a `bytes.Buffer`; stderr is not captured (it inherits the parent process's stderr).
