@@ -129,6 +129,12 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 	if log == nil {
 		log = os.Stderr
 	}
+	// Normalize ReviewResultsLoader once so step-processing code never needs to
+	// nil-check it. cmd/themis injects review.ReadReviewResults at construction
+	// time; this default covers callers (e.g. tests) that omit the field.
+	if cfg.ReviewResultsLoader == nil {
+		cfg.ReviewResultsLoader = review.ReadReviewResults
+	}
 
 	loaded, err := pipeline.LoadState(cfg.WorkDir)
 	if err != nil {
@@ -210,25 +216,8 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 
 		// Branch step: create issue branch, or checkout if it already exists.
 		if step == pipeline.StepBranch {
-			branchName := fmt.Sprintf("issue/%d-%s", cfg.IssueNumber, slugify(issue.Title))
-			if cfg.Git != nil {
-				if err := cfg.Git.CheckoutNewBranch(ctx, cfg.WorkDir, branchName); err != nil {
-					if checkoutErr := cfg.Git.Checkout(ctx, cfg.WorkDir, branchName); checkoutErr != nil {
-						return nil, fmt.Errorf("branch %s: create failed (%v), checkout failed (%v)", branchName, err, checkoutErr)
-					}
-					fmt.Fprintf(log, "note: branch %s already exists, checked out existing\n", branchName)
-				}
-			}
-			// Seed review-results.json with empty findings so that Review is
-			// non-blocking unless the review agent itself writes blocking findings.
-			// This only runs on fresh pipeline starts (resumed runs skip Branch).
-			themisDir := filepath.Join(cfg.WorkDir, ".themis")
-			if mkErr := os.MkdirAll(themisDir, 0o755); mkErr != nil {
-				return nil, fmt.Errorf("creating .themis directory: %w", mkErr)
-			}
-			if wfErr := os.WriteFile(filepath.Join(themisDir, "review-results.json"),
-				[]byte(`{"findings":[]}`), 0o644); wfErr != nil {
-				return nil, fmt.Errorf("seeding review-results.json: %w", wfErr)
+			if err := runBranchStep(ctx, cfg, issue, log); err != nil {
+				return nil, err
 			}
 			next, err := state.Advance(pipeline.StepResult{Success: true})
 			if err != nil {
@@ -244,85 +233,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 
 		// Ship step: push branch, invoke agent for PR body, create PR.
 		if step == pipeline.StepShip {
-			var branch string
-			var branchErr error
-			if cfg.Git != nil {
-				branch, branchErr = cfg.Git.CurrentBranch(ctx, cfg.WorkDir)
-				if branchErr != nil {
-					branch = "main"
-				}
-			}
-			acs := tracker.ParseCheckboxes(issue.Body)
-			base := issue.Ref
-			if base == "" {
-				base = "main"
-			}
-
-			if cfg.Git != nil {
-				if branchErr == nil && branch == base {
-					return nil, fmt.Errorf("current branch is the base branch — no issue branch was created")
-				}
-				if n, countErr := cfg.Git.CommitsAheadOfBase(ctx, cfg.WorkDir, base); countErr == nil && n == 0 {
-					return nil, fmt.Errorf("no commits on branch %s — nothing to ship", branch)
-				}
-				if err := cfg.Git.PushBranch(ctx, cfg.WorkDir, branch); err != nil {
-					return nil, fmt.Errorf("pushing branch %s: %w", branch, err)
-				}
-			}
-
-			prBody := buildPRBody(cfg.IssueNumber, issue.Title, acs)
-
-			shipTmplPath := filepath.Join(cfg.TemplateDir, "ship.md")
-			shipTmplContent, readErr := os.ReadFile(shipTmplPath)
-			if readErr != nil {
-				fmt.Fprintf(log, "warning: ship template read failed: %v — using fallback PR body\n", readErr)
-			} else {
-				shipArgs := buildTemplateArgs(ctx, cfg, issue, branch, state.ReviewCycle, lastBlockingFindings)
-				filteredArgs := filterArgs(string(shipTmplContent), shipArgs)
-				substituted, subErr := prompt.Substitute(string(shipTmplContent), filteredArgs)
-				if subErr != nil {
-					fmt.Fprintf(log, "warning: ship template substitution failed: %v — using fallback PR body\n", subErr)
-				} else {
-					model := modelForStep(step, prof)
-					fmt.Fprintf(log, "%s: invoking agent model=%s maxTurns=%d\n", step, model, cfg.MaxTurns)
-					shipOpts := agent.InvokeOptions{
-						Prompt:       substituted,
-						Model:        model,
-						MaxTurns:     cfg.MaxTurns,
-						WorkDir:      cfg.WorkDir,
-						IssueNumber:  cfg.IssueNumber,
-						PipelineStep: pipeline.StepShip.String(),
-					}
-					if cfg.Git != nil {
-						shipOpts.CommitCountFn = cfg.Git.CommitSHAs
-					}
-					invokeResult, invokeErr := cfg.Invoker.Invoke(ctx, shipOpts)
-					if invokeErr != nil {
-						fmt.Fprintf(log, "warning: ship agent invocation failed: %v; falling back to buildPRBody\n", invokeErr)
-					} else if invokeResult.Stdout != "" {
-						prBody = stripCodeFences(invokeResult.Stdout)
-					}
-				}
-			}
-
-			prURL, err := cfg.IssueWriter.CreatePR(ctx, PROptions{
-				Title: fmt.Sprintf("Closes #%d — %s", cfg.IssueNumber, issue.Title),
-				Body:  prBody,
-				Base:  base,
-				Head:  branch,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("creating PR: %w", err)
-			}
-			fmt.Fprintf(log, "%s: PR URL %s\n", step, prURL)
-			if err := pipeline.SaveState(cfg.WorkDir, state); err != nil {
-				return nil, fmt.Errorf("saving final state: %w", err)
-			}
-			if rmErr := os.Remove(filepath.Join(cfg.WorkDir, ".themis", "review-results.json")); rmErr != nil && !os.IsNotExist(rmErr) {
-				fmt.Fprintf(log, "warning: removing review-results.json: %v\n", rmErr)
-			}
-			fmt.Fprintf(log, "%s: done (%dms)\n", step, time.Since(stepStart).Milliseconds())
-			return &Result{PRURL: prURL}, nil
+			return runShipStep(ctx, cfg, issue, state, lastBlockingFindings, prof, stepStart, log)
 		}
 
 		// Agent steps: load template, substitute, invoke, checkpoint.
@@ -393,11 +304,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 
 		stepResult := deriveStepResult(ctx, step, invokeResult, cfg)
 		if step == pipeline.StepReview {
-			loadResults := cfg.ReviewResultsLoader
-			if loadResults == nil {
-				loadResults = review.ReadReviewResults
-			}
-			findings, found := loadResults(ctx, cfg.WorkDir)
+			findings, found := cfg.ReviewResultsLoader(ctx, cfg.WorkDir)
 			if !found {
 				fmt.Fprintf(log, "warning: review-results.json not found after review step — treating as blocking\n")
 			} else {
@@ -478,4 +385,113 @@ func deriveStepResult(ctx context.Context, step pipeline.Step, r *agent.InvokeRe
 	default:
 		return pipeline.StepResult{Success: true}
 	}
+}
+
+// runBranchStep creates or checks out the issue branch and seeds
+// .themis/review-results.json with empty findings so the Review step is
+// non-blocking unless the review agent itself writes blocking findings.
+func runBranchStep(ctx context.Context, cfg Config, issue *tracker.IssueData, log io.Writer) error {
+	branchName := fmt.Sprintf("issue/%d-%s", cfg.IssueNumber, slugify(issue.Title))
+	if cfg.Git != nil {
+		if err := cfg.Git.CheckoutNewBranch(ctx, cfg.WorkDir, branchName); err != nil {
+			if checkoutErr := cfg.Git.Checkout(ctx, cfg.WorkDir, branchName); checkoutErr != nil {
+				return fmt.Errorf("branch %s: create failed (%v), checkout failed (%v)", branchName, err, checkoutErr)
+			}
+			fmt.Fprintf(log, "note: branch %s already exists, checked out existing\n", branchName)
+		}
+	}
+	themisDir := filepath.Join(cfg.WorkDir, ".themis")
+	if mkErr := os.MkdirAll(themisDir, 0o755); mkErr != nil {
+		return fmt.Errorf("creating .themis directory: %w", mkErr)
+	}
+	if wfErr := os.WriteFile(filepath.Join(themisDir, "review-results.json"),
+		[]byte(`{"findings":[]}`), 0o644); wfErr != nil {
+		return fmt.Errorf("seeding review-results.json: %w", wfErr)
+	}
+	return nil
+}
+
+// runShipStep pushes the branch, invokes the ship agent for a PR description,
+// creates the PR, and returns the Result. It also saves final pipeline state and
+// removes the review-results.json artifact.
+func runShipStep(ctx context.Context, cfg Config, issue *tracker.IssueData, state *pipeline.PipelineState, lastBlockingFindings string, prof ProfileData, stepStart time.Time, log io.Writer) (*Result, error) {
+	var branch string
+	var branchErr error
+	if cfg.Git != nil {
+		branch, branchErr = cfg.Git.CurrentBranch(ctx, cfg.WorkDir)
+		if branchErr != nil {
+			branch = "main"
+		}
+	}
+	acs := tracker.ParseCheckboxes(issue.Body)
+	base := issue.Ref
+	if base == "" {
+		base = "main"
+	}
+
+	if cfg.Git != nil {
+		if branchErr == nil && branch == base {
+			return nil, fmt.Errorf("current branch is the base branch — no issue branch was created")
+		}
+		if n, countErr := cfg.Git.CommitsAheadOfBase(ctx, cfg.WorkDir, base); countErr == nil && n == 0 {
+			return nil, fmt.Errorf("no commits on branch %s — nothing to ship", branch)
+		}
+		if err := cfg.Git.PushBranch(ctx, cfg.WorkDir, branch); err != nil {
+			return nil, fmt.Errorf("pushing branch %s: %w", branch, err)
+		}
+	}
+
+	prBody := buildPRBody(cfg.IssueNumber, issue.Title, acs)
+
+	shipTmplPath := filepath.Join(cfg.TemplateDir, "ship.md")
+	shipTmplContent, readErr := os.ReadFile(shipTmplPath)
+	if readErr != nil {
+		fmt.Fprintf(log, "warning: ship template read failed: %v — using fallback PR body\n", readErr)
+	} else {
+		shipArgs := buildTemplateArgs(ctx, cfg, issue, branch, state.ReviewCycle, lastBlockingFindings)
+		filteredArgs := filterArgs(string(shipTmplContent), shipArgs)
+		substituted, subErr := prompt.Substitute(string(shipTmplContent), filteredArgs)
+		if subErr != nil {
+			fmt.Fprintf(log, "warning: ship template substitution failed: %v — using fallback PR body\n", subErr)
+		} else {
+			model := modelForStep(pipeline.StepShip, prof)
+			fmt.Fprintf(log, "%s: invoking agent model=%s maxTurns=%d\n", pipeline.StepShip, model, cfg.MaxTurns)
+			shipOpts := agent.InvokeOptions{
+				Prompt:       substituted,
+				Model:        model,
+				MaxTurns:     cfg.MaxTurns,
+				WorkDir:      cfg.WorkDir,
+				IssueNumber:  cfg.IssueNumber,
+				PipelineStep: pipeline.StepShip.String(),
+			}
+			if cfg.Git != nil {
+				shipOpts.CommitCountFn = cfg.Git.CommitSHAs
+			}
+			invokeResult, invokeErr := cfg.Invoker.Invoke(ctx, shipOpts)
+			if invokeErr != nil {
+				fmt.Fprintf(log, "warning: ship agent invocation failed: %v; falling back to buildPRBody\n", invokeErr)
+			} else if invokeResult.Stdout != "" {
+				prBody = stripCodeFences(invokeResult.Stdout)
+			}
+		}
+	}
+
+	prURL, err := cfg.IssueWriter.CreatePR(ctx, PROptions{
+		Title: fmt.Sprintf("Closes #%d — %s", cfg.IssueNumber, issue.Title),
+		Body:  prBody,
+		Base:  base,
+		Head:  branch,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating PR: %w", err)
+	}
+	fmt.Fprintf(log, "%s: PR URL %s\n", pipeline.StepShip, prURL)
+	if err := pipeline.SaveState(cfg.WorkDir, state); err != nil {
+		return nil, fmt.Errorf("saving final state: %w", err)
+	}
+	if rmErr := os.Remove(filepath.Join(cfg.WorkDir, ".themis", "review-results.json")); rmErr != nil && !os.IsNotExist(rmErr) {
+		fmt.Fprintf(log, "warning: removing review-results.json: %v\n", rmErr)
+	}
+	fmt.Fprintf(log, "%s: done (%dms)\n", pipeline.StepShip, time.Since(stepStart).Milliseconds())
+	return &Result{PRURL: prURL}, nil
 }

@@ -1,11 +1,7 @@
 package review
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -22,21 +18,6 @@ type ReviewFinding struct {
 // ReviewResults holds the structured output written by the review step agent.
 type ReviewResults struct {
 	Findings []ReviewFinding `json:"findings"`
-}
-
-// ctx is accepted per convention for I/O functions but is not passed to
-// os.ReadFile, which has no context-aware variant.
-func ReadReviewResults(_ context.Context, workDir string) ([]ReviewFinding, bool) {
-	path := filepath.Join(workDir, ".themis", "review-results.json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, false
-	}
-	var rr ReviewResults
-	if err := json.Unmarshal(data, &rr); err != nil {
-		return nil, false
-	}
-	return rr.Findings, true
 }
 
 func CountFindingsBySeverity(findings []ReviewFinding) (blocking, nonBlocking int) {

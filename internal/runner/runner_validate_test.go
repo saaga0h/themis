@@ -136,11 +136,11 @@ func TestValidateResumedState_BranchMismatch_LogsWarning(t *testing.T) {
 // AC6: integration test — resume-validation path is reachable via Run()
 // ---------------------------------------------------------------------------
 
-// TestRun_ResumeValidationDelegatestoHelper verifies the resume-validation
+// TestRun_ResumeValidationDelegatesToHelper verifies the resume-validation
 // path by exercising it through Run() with a GitOps stub that returns a
 // branch not containing the issue number. Run() must log a warning containing
 // the mismatched branch name and still complete successfully.
-func TestRun_ResumeValidationDelegatestoHelper(t *testing.T) {
+func TestRun_ResumeValidationDelegatesToHelper(t *testing.T) {
 	workDir := t.TempDir()
 
 	// Save state at a step after Branch so the branch-check path is triggered.
