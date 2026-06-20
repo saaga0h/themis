@@ -119,11 +119,10 @@ func (c *ClaudeCodeInvoker) buildArgs(opts InvokeOptions) []string {
 }
 
 // completionMarkers are strings in agent output that signal the agent finished.
+// Templates instruct the agent to emit "STEP COMPLETE" once its terminal state is
+// reached; the absence of the marker means the step ran to its turn limit instead.
 var completionMarkers = []string{
-	"COMPLETED",
-	"Task complete",
-	"All ACs pass",
-	"Implementation complete",
+	"STEP COMPLETE",
 }
 
 func containsCompletionMarker(output string) bool {

@@ -121,9 +121,11 @@ func TestCompletionMarkerDetection(t *testing.T) {
 		output    string
 		completed bool
 	}{
-		{"Task complete. All ACs pass.", true},
-		{"COMPLETED: implementation done", true},
+		{"work done\n\nSTEP COMPLETE", true},
+		{"STEP COMPLETE — no changes", true},
+		{"step complete", true}, // matched case-insensitively
 		{"some output without marker", false},
+		{"Task complete. All ACs pass.", false}, // old markers no longer count
 		{"", false},
 	}
 	for _, tc := range cases {

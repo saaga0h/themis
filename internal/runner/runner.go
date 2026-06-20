@@ -289,11 +289,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			return nil, fmt.Errorf("agent invocation at step %v: %w", step, err)
 		}
 
-		completionStatus := "completed"
-		if !invokeResult.Completed {
-			completionStatus = "not completed"
-		}
-		fmt.Fprintf(log, "%s: agent result: %d commits, %s\n", step, len(invokeResult.CommitsMade), completionStatus)
+		logAgentResult(log, step, invokeResult, turns)
 
 		if cfg.CheckpointFn != nil {
 			if chkErr := cfg.CheckpointFn(ctx, step, cfg.WorkDir); chkErr != nil {

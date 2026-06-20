@@ -3,13 +3,29 @@ package runner
 import (
 	"context"
 	"fmt"
+	"io"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/saaga0h/themis/internal/agent"
 	"github.com/saaga0h/themis/internal/pipeline"
 	"github.com/saaga0h/themis/internal/tracker"
 )
+
+// logAgentResult records the commit count and completion status of an agent
+// step, and warns when the step ended without signalling completion — meaning it
+// ran to its turn limit rather than reaching its terminal state.
+func logAgentResult(log io.Writer, step pipeline.Step, r *agent.InvokeResult, turns int) {
+	status := "completed"
+	if !r.Completed {
+		status = "not completed"
+	}
+	fmt.Fprintf(log, "%s: agent result: %d commits, %s\n", step, len(r.CommitsMade), status)
+	if !r.Completed {
+		fmt.Fprintf(log, "%s: warning: step did not signal completion (hit turn limit at %d turns)\n", step, turns)
+	}
+}
 
 var placeholderRE = regexp.MustCompile(`\{\{([A-Z0-9_]+)\}\}`)
 
