@@ -107,7 +107,7 @@ strict mode and validates model names and round3 values at load time.
 
 `Invoker` interface with `Invoke(ctx, InvokeOptions) (*InvokeResult, error)` as
 the seam between deterministic pipeline control and LLM creative work.
-`InvokeOptions` carries `Prompt`, `Model`, `MaxTurns`, `WorkDir`, `AllowedTools`,
+`InvokeOptions` carries `Prompt`, `Model`, `MaxTurns`, `WorkDir`,
 `IssueNumber int`, `PipelineStep string`, and `CommitCountFn func(ctx, dir) ([]string, error)`.
 `ClaudeCodeInvoker` implements the interface by spawning `claude --print --dangerously-skip-permissions --max-turns N
 --model MODEL`, feeding the prompt via stdin, and capturing stdout. Before spawning,

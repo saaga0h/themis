@@ -25,7 +25,6 @@ type InvokeOptions struct {
 	Model         string
 	MaxTurns      int
 	WorkDir       string
-	AllowedTools  []string
 	IssueNumber   int
 	PipelineStep  string
 	CommitCountFn func(ctx context.Context, dir string) ([]string, error)

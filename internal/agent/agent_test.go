@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os/exec"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -67,11 +68,10 @@ func TestFakeInvokerReturnsError(t *testing.T) {
 
 func TestInvokeOptionsFields(t *testing.T) {
 	opts := InvokeOptions{
-		Prompt:       "hello",
-		Model:        "opus",
-		MaxTurns:     42,
-		WorkDir:      "/tmp/work",
-		AllowedTools: []string{"Read", "Write", "Edit"},
+		Prompt:   "hello",
+		Model:    "opus",
+		MaxTurns: 42,
+		WorkDir:  "/tmp/work",
 	}
 	if opts.Prompt != "hello" {
 		t.Error("Prompt not stored")
@@ -84,9 +84,6 @@ func TestInvokeOptionsFields(t *testing.T) {
 	}
 	if opts.WorkDir != "/tmp/work" {
 		t.Error("WorkDir not stored")
-	}
-	if len(opts.AllowedTools) != 3 {
-		t.Error("AllowedTools not stored")
 	}
 }
 
@@ -378,6 +375,13 @@ func TestCommitSetDiff_NewCommitsAreDetected(t *testing.T) {
 	got := commitSetDiff(before, after)
 	if len(got) != 1 || got[0] != "def" {
 		t.Errorf("commitSetDiff(%v, %v) = %v, want [def]", before, after, got)
+	}
+}
+
+func TestInvokeOptions_HasNoAllowedToolsField(t *testing.T) {
+	typ := reflect.TypeOf(InvokeOptions{})
+	if _, ok := typ.FieldByName("AllowedTools"); ok {
+		t.Error("InvokeOptions must not have an AllowedTools field")
 	}
 }
 
