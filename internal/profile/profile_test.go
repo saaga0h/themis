@@ -3,6 +3,7 @@ package profile
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -191,6 +192,45 @@ func TestLoadUnknownFieldReturnsError(t *testing.T) {
 	_, err := Load(dir)
 	if err == nil {
 		t.Error("expected error for unknown field, got nil")
+	}
+}
+
+// --- Schema shape: removed fields must not exist ---
+
+func TestAgentConfigHasNoPerReviewerModelFields(t *testing.T) {
+	agentType := reflect.TypeOf(AgentConfig{})
+	for _, field := range []string{"Architecture", "Complexity", "Conventions", "Coverage", "Numerical", "Depth"} {
+		if _, ok := agentType.FieldByName(field); ok {
+			t.Errorf("AgentConfig must not have field %q", field)
+		}
+	}
+}
+
+func TestLoadRejectsPerReviewerModelFields(t *testing.T) {
+	for _, yamlKey := range []string{"architecture", "complexity", "conventions", "coverage", "numerical", "depth"} {
+		t.Run(yamlKey, func(t *testing.T) {
+			dir := t.TempDir()
+			writeProfile(t, dir, "review:\n  agents:\n    "+yamlKey+": sonnet\n")
+			_, err := Load(dir)
+			if err == nil {
+				t.Errorf("Load with removed agent field %q: expected error, got nil", yamlKey)
+			}
+		})
+	}
+}
+
+func TestBlockingConfigHasNoIncludesField(t *testing.T) {
+	if _, ok := reflect.TypeOf(BlockingConfig{}).FieldByName("Includes"); ok {
+		t.Error(`BlockingConfig must not have field "Includes"`)
+	}
+}
+
+func TestLoadRejectsBlockingIncludes(t *testing.T) {
+	dir := t.TempDir()
+	writeProfile(t, dir, "blocking:\n  includes:\n    - security\n")
+	_, err := Load(dir)
+	if err == nil {
+		t.Error("Load with blocking.includes: expected error (removed field), got nil")
 	}
 }
 

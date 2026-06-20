@@ -113,13 +113,8 @@ func Save(dir string, p *Profile) error {
 }
 
 func validate(p *Profile) error {
-	agents := map[string]string{
-		"security": p.Review.Agents.Security,
-	}
-	for name, model := range agents {
-		if !validModels[model] {
-			return fmt.Errorf("invalid model %q for review agent %q (must be haiku, sonnet, opus, or skip)", model, name)
-		}
+	if !validModels[p.Review.Agents.Security] {
+		return fmt.Errorf("invalid model %q for review agent %q (must be haiku, sonnet, opus, or skip)", p.Review.Agents.Security, "security")
 	}
 	if !validRound3Values[p.Review.Round3] {
 		return fmt.Errorf("invalid round3 value %q (must be auto, always, or never)", p.Review.Round3)
