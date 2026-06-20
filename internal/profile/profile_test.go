@@ -197,7 +197,7 @@ func TestLoadUnknownFieldReturnsError(t *testing.T) {
 
 // --- Schema shape: removed fields must not exist ---
 
-func TestAgentConfigHasNoPerReviewerModelFields(t *testing.T) {
+func TestAgentConfig_HasNoPerReviewerModelFields(t *testing.T) {
 	agentType := reflect.TypeOf(AgentConfig{})
 	for _, field := range []string{"Architecture", "Complexity", "Conventions", "Coverage", "Numerical", "Depth"} {
 		if _, ok := agentType.FieldByName(field); ok {
@@ -206,7 +206,7 @@ func TestAgentConfigHasNoPerReviewerModelFields(t *testing.T) {
 	}
 }
 
-func TestLoadRejectsPerReviewerModelFields(t *testing.T) {
+func TestLoad_RejectsPerReviewerModelFields(t *testing.T) {
 	for _, yamlKey := range []string{"architecture", "complexity", "conventions", "coverage", "numerical", "depth"} {
 		t.Run(yamlKey, func(t *testing.T) {
 			dir := t.TempDir()
@@ -219,13 +219,13 @@ func TestLoadRejectsPerReviewerModelFields(t *testing.T) {
 	}
 }
 
-func TestBlockingConfigHasNoIncludesField(t *testing.T) {
+func TestBlockingConfig_HasNoIncludesField(t *testing.T) {
 	if _, ok := reflect.TypeOf(BlockingConfig{}).FieldByName("Includes"); ok {
 		t.Error(`BlockingConfig must not have field "Includes"`)
 	}
 }
 
-func TestLoadRejectsBlockingIncludes(t *testing.T) {
+func TestLoad_BlockingIncludes_ReturnsError(t *testing.T) {
 	dir := t.TempDir()
 	writeProfile(t, dir, "blocking:\n  includes:\n    - security\n")
 	_, err := Load(dir)
