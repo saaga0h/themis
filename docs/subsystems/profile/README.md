@@ -6,7 +6,7 @@
 
 ## Overview
 
-`internal/profile` loads per-project pipeline configuration from `.themis/profile.yaml`. It is the single point of truth for which model each review agent uses, how round-3 gating behaves, how many test-fix attempts the implement step makes, and whether the docs and refactor steps run.
+`internal/profile` loads per-project pipeline configuration from `.themis/profile.yaml`. It is the single point of truth for which model the security review agent uses, how round-3 gating behaves, how many test-fix attempts the implement step makes, and whether the docs and refactor steps run.
 
 `Load(dir string) (*Profile, error)` is the only entry point callers need. When `.themis/profile.yaml` is absent it returns a fully-populated `*Profile` holding the hardcoded defaults — no error. When the file exists it is parsed with strict YAML decoding (`KnownFields(true)`) followed by semantic validation; any failure returns a non-nil error and a nil `*Profile`. Fields left empty in the file are back-filled with the same defaults that `Load` uses when the file is absent.
 
@@ -28,12 +28,6 @@ The full YAML structure accepted by `.themis/profile.yaml`. Every field is optio
 | YAML key | Go field | Type | Valid values | Default |
 |---|---|---|---|---|
 | `review.agents.security` | `Review.Agents.Security` | string | `haiku`, `sonnet`, `opus`, `skip` | `sonnet` |
-| `review.agents.architecture` | `Review.Agents.Architecture` | string | `haiku`, `sonnet`, `opus`, `skip` | `sonnet` |
-| `review.agents.complexity` | `Review.Agents.Complexity` | string | `haiku`, `sonnet`, `opus`, `skip` | `haiku` |
-| `review.agents.conventions` | `Review.Agents.Conventions` | string | `haiku`, `sonnet`, `opus`, `skip` | `haiku` |
-| `review.agents.coverage` | `Review.Agents.Coverage` | string | `haiku`, `sonnet`, `opus`, `skip` | `haiku` |
-| `review.agents.numerical` | `Review.Agents.Numerical` | string | `haiku`, `sonnet`, `opus`, `skip` | `sonnet` |
-| `review.agents.depth` | `Review.Agents.Depth` | string | `haiku`, `sonnet`, `opus`, `skip` | `sonnet` |
 | `review.round3` | `Review.Round3` | string | `auto`, `always`, `never` | `auto` |
 | `review.round3_surfaces` | `Review.Round3Surfaces` | `[]string` | arbitrary strings | `nil` (empty list) |
 
@@ -65,37 +59,28 @@ Same pointer semantics as `refactor.enabled`.
 
 ### `blocking`
 
-| YAML key | Go field | Type | Valid values | Default |
-|---|---|---|---|---|
-| `blocking.includes` | `Blocking.Includes` | `[]string` | finding category labels | `["security","ac-coverage","compile-failure","data-loss","abstraction-boundary"]` |
+`BlockingConfig` is currently empty — there are no configurable fields in this section. The `blocking:` key is accepted by the strict YAML decoder but carries no effect.
 
 ## Defaults When Absent
 
 When `.themis/profile.yaml` does not exist, `Load` returns the struct produced by the private `defaults()` function — identical to what `applyDefaults` would fill in for a completely empty file:
 
 ```
-Review.Agents.Security     = "sonnet"
-Review.Agents.Architecture = "sonnet"
-Review.Agents.Complexity   = "haiku"
-Review.Agents.Conventions  = "haiku"
-Review.Agents.Coverage     = "haiku"
-Review.Agents.Numerical    = "sonnet"
-Review.Agents.Depth        = "sonnet"
-Review.Round3              = "auto"
-Review.Round3Surfaces      = nil
-Implement.Model            = "sonnet"
-Implement.TestFixAttempts  = 3
-Refactor.Enabled           = &true
-Docs.Enabled               = &true
-Docs.SkipTiers             = nil
-Blocking.Includes          = ["security","ac-coverage","compile-failure","data-loss","abstraction-boundary"]
+Review.Agents.Security    = "sonnet"
+Review.Round3             = "auto"
+Review.Round3Surfaces     = nil
+Implement.Model           = "sonnet"
+Implement.TestFixAttempts = 3
+Refactor.Enabled          = &true
+Docs.Enabled              = &true
+Docs.SkipTiers            = nil
 ```
 
 ## Validation Rules
 
 Validation runs after strict YAML decoding and before `applyDefaults`. Both checks happen inside `validate(*Profile)`.
 
-**Agent model names** — each of the seven agent fields (`security`, `architecture`, `complexity`, `conventions`, `coverage`, `numerical`, `depth`) must be one of: `haiku`, `sonnet`, `opus`, `skip`, or the empty string (empty triggers the default). Any other value returns:
+**Agent model names** — the `security` agent field must be one of: `haiku`, `sonnet`, `opus`, `skip`, or the empty string (empty triggers the default). Any other value returns:
 
 ```
 invalid model "X" for review agent "Y" (must be haiku, sonnet, opus, or skip)
@@ -121,12 +106,6 @@ The following file reproduces the built-in defaults exactly:
 review:
   agents:
     security: sonnet
-    architecture: sonnet
-    complexity: haiku
-    conventions: haiku
-    coverage: haiku
-    numerical: sonnet
-    depth: sonnet
   round3: auto
 
 implement:
@@ -138,14 +117,6 @@ refactor:
 
 docs:
   enabled: true
-
-blocking:
-  includes:
-    - security
-    - ac-coverage
-    - compile-failure
-    - data-loss
-    - abstraction-boundary
 ```
 
 ## Architecture
@@ -200,14 +171,14 @@ func Save(dir string, p *Profile) error
 | `invalid round3 value "X"` | `review.round3` set to an unsupported value | Use `auto`, `always`, or `never` |
 | `reading profile: open .themis/profile.yaml: permission denied` | File permissions prevent read | Check file and directory permissions (`0o600`/`0o700` expected) |
 | Pipeline ignores `.themis/profile.yaml` entirely | `Load` received the wrong `dir` argument | Confirm `dir` is the project root containing `.themis/` |
-| Invalid `implement.model` accepted at load | `validate` only checks the seven `review.agents.*` models and `round3` — `implement.model` is **not** validated | An unsupported value passes `Load` and only surfaces later when handed to `claude --model`. Use `haiku`, `sonnet`, `opus`, or `skip`. |
+| Invalid `implement.model` accepted at load | `validate` only checks `review.agents.security` and `round3` — `implement.model` is **not** validated | An unsupported value passes `Load` and only surfaces later when handed to `claude --model`. Use `haiku`, `sonnet`, `opus`, or `skip`. |
 
 ## What is the Failure Behavior
 
 `Load` returns `(nil, error)` on any of:
 
 - A YAML parse error (including unknown fields due to strict mode).
-- An invalid model name in any `review.agents.*` field.
+- An invalid model name in the `review.agents.security` field.
 - An invalid `review.round3` value.
 - An OS error reading the file (other than `ErrNotExist`).
 
