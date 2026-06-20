@@ -10,14 +10,13 @@ import (
 
 	"github.com/saaga0h/themis/internal/agent"
 	"github.com/saaga0h/themis/internal/pipeline"
-	"github.com/saaga0h/themis/internal/review"
 	"github.com/saaga0h/themis/internal/tracker"
 )
 
 // deriveStepResult maps an agent invocation outcome onto a pipeline.StepResult,
 // applying the per-step success contract: TestRed wants failing tests present,
-// Implement and Fix gate on a green suite (the TestRunner), and Review gates on
-// the structured findings JSON.
+// and Implement gates on a green suite (the TestRunner). Other steps (Review,
+// Docs) never gate the pipeline — they always succeed.
 func deriveStepResult(ctx context.Context, step pipeline.Step, r *agent.InvokeResult, cfg Config) pipeline.StepResult {
 	switch step {
 	case pipeline.StepTestRed:
@@ -38,31 +37,14 @@ func deriveStepResult(ctx context.Context, step pipeline.Step, r *agent.InvokeRe
 		}
 		return pipeline.StepResult{Success: false, TestACKey: key}
 
-	case pipeline.StepImplement, pipeline.StepFix:
-		// GREEN gate: the step is "done" only when the suite passes. Without a
+	case pipeline.StepImplement:
+		// GREEN gate: Implement is "done" only when the suite passes. Without a
 		// TestRunner configured, fall back to the legacy commit-only contract.
 		if cfg.TestRunner == nil {
 			return pipeline.StepResult{Success: true}
 		}
 		passed, _ := cfg.TestRunner(ctx, cfg.WorkDir)
 		return pipeline.StepResult{Success: passed}
-
-	case pipeline.StepReview:
-		loadResults := cfg.ReviewResultsLoader
-		if loadResults == nil {
-			loadResults = review.ReadReviewResults
-		}
-		findings, found := loadResults(ctx, cfg.WorkDir)
-		if !found {
-			// Missing JSON is the fail-safe: the review step produced no
-			// structured result, so treat it as blocking regardless of stdout.
-			return pipeline.StepResult{Success: false, BlockingFindings: true}
-		}
-		blocking := review.DetermineBlockingStatus(findings)
-		return pipeline.StepResult{
-			Success:          !blocking,
-			BlockingFindings: blocking,
-		}
 
 	default:
 		return pipeline.StepResult{Success: true}
@@ -169,9 +151,7 @@ func filterArgs(tmpl string, all map[string]string) map[string]string {
 var defaultStepTurns = map[pipeline.Step]int{
 	pipeline.StepTestRed:   80,
 	pipeline.StepImplement: 120,
-	pipeline.StepRefactor:  30,
 	pipeline.StepReview:    80,
-	pipeline.StepFix:       60,
 	pipeline.StepDocs:      40,
 	pipeline.StepShip:      60,
 }
@@ -190,9 +170,9 @@ func modelForStep(step pipeline.Step, prof ProfileData) string {
 	switch step {
 	case pipeline.StepReview:
 		return prof.ReviewModel
-	case pipeline.StepRefactor, pipeline.StepDocs:
-		// Refactor and Docs are either a fast "nothing to do" exit or mechanical
-		// cleanup — neither needs a frontier model.
+	case pipeline.StepDocs:
+		// Docs is either a fast "nothing to do" exit or mechanical cleanup —
+		// it doesn't need a frontier model.
 		return "haiku"
 	default:
 		return prof.ImplementModel
@@ -215,8 +195,6 @@ func buildTemplateArgs(
 	cfg Config,
 	issue *tracker.IssueData,
 	branchName string,
-	reviewCycle int,
-	lastBlockingFindings string,
 ) map[string]string {
 	acs := tracker.ParseCheckboxes(issue.Body)
 	acList := formatACs(acs)
@@ -238,8 +216,6 @@ func buildTemplateArgs(
 		"TEST_FILES":          filterTestFiles(changedFilesResult),
 		"DIFF_LINES":          strconv.Itoa(diffLines),
 		"STANDARDS_DOCS":      formatStandardsDocs(cfg.StandardsDocs),
-		"REVIEW_CYCLE":        strconv.Itoa(reviewCycle + 1),
-		"BLOCKING_FINDINGS":   lastBlockingFindings,
 		"PIPELINE_SHAPE":      pipelineShape(commitLog),
 		"COMMIT_LOG":          commitLog,
 	}

@@ -1,7 +1,6 @@
 package pipeline
 
 import (
-	"errors"
 	"fmt"
 	"time"
 )
@@ -14,9 +13,9 @@ const (
 	StepBranch
 	StepTestRed
 	StepImplement
-	StepRefactor
+	StepRefactor // retained for state-file/resume compatibility; no longer reached
 	StepReview
-	StepFix
+	StepFix // retained for state-file/resume compatibility; no longer reached
 	StepDocs
 	StepShip
 )
@@ -29,45 +28,35 @@ func (s Step) String() string {
 	return fmt.Sprintf("Step(%d)", int(s))
 }
 
-type Round3Trigger int
-
-const (
-	TriggerNone Round3Trigger = iota
-	TriggerSecurity
-	TriggerPublicAPI
-	TriggerNumerical
-	TriggerContextArtifact
-)
-
 type StepResult struct {
-	Success          bool
-	BlockingFindings bool
-	Round3Trigger    Round3Trigger
-	TestACKey        string
+	Success   bool
+	TestACKey string
 }
 
 type PipelineState struct {
 	IssueNumber       int
 	CurrentStep       Step
-	ReviewCycle       int
-	MaxReviewCycles   int
 	TestFixAttempts   map[string]int
 	ImplementAttempts int
-	FixAttempts       int
 	Commits           []string
 	StartedAt         time.Time
 	StepHistory       []StepResult
 	CodeVersion       string
 }
 
-// maxGreenGateAttempts bounds how many times Implement or Fix may re-run when the
-// test suite is still red after the step completes. It mirrors the TestRed
-// retry ceiling: enough room to recover from a truncated run, low enough that a
+// maxGreenGateAttempts bounds how many times Implement may re-run when the test
+// suite is still red after the step completes. It mirrors the TestRed retry
+// ceiling: enough room to recover from a truncated run, low enough that a
 // genuinely stuck step blocks the issue for a human instead of looping forever.
 const maxGreenGateAttempts = 3
 
 // Advance computes the next pipeline step given the result of the current step.
-// It encodes review-cycle limits and round-3 gate logic deterministically.
+//
+// The pipeline is linear and never loops on review: TestRed → Implement →
+// Review → Docs → Ship. Review is a single-pass annotation + gate whose findings
+// inform the PR verdict at ship time, not control flow — so there is no Fix or
+// Refactor step and no review-cycle machinery. The only retries are the bounded
+// green gates on TestRed (failing tests must exist) and Implement (tests pass).
 func (ps *PipelineState) Advance(result StepResult) (Step, error) {
 	switch ps.CurrentStep {
 	case StepTestRed:
@@ -83,10 +72,9 @@ func (ps *PipelineState) Advance(result StepResult) (Step, error) {
 		return StepImplement, nil
 
 	case StepImplement:
-		// Implement is "done" only when the suite is green (Success). A red or
+		// Green gate: Implement is "done" only when the suite passes. A red or
 		// truncated run re-runs Implement, bounded by maxGreenGateAttempts, so a
-		// turn-limited implementation is caught here rather than wasting a review
-		// cycle downstream.
+		// turn-limited implementation is caught here rather than shipped broken.
 		if !result.Success {
 			if ps.ImplementAttempts >= maxGreenGateAttempts {
 				return 0, fmt.Errorf("implement attempts exceeded maximum of %d: test suite still failing", maxGreenGateAttempts)
@@ -95,34 +83,13 @@ func (ps *PipelineState) Advance(result StepResult) (Step, error) {
 			return StepImplement, nil
 		}
 		ps.recordStep(result)
-		ps.CurrentStep = StepRefactor
-		return StepRefactor, nil
-
-	case StepFix:
-		// Fix carries the same green gate as Implement: re-running blocking-finding
-		// fixes must leave the suite green before the next review, otherwise Review
-		// burns a cycle on code that no longer compiles or passes.
-		if !result.Success {
-			if ps.FixAttempts >= maxGreenGateAttempts {
-				return 0, fmt.Errorf("fix attempts exceeded maximum of %d: test suite still failing", maxGreenGateAttempts)
-			}
-			ps.FixAttempts++
-			return StepFix, nil
-		}
-		ps.recordStep(result)
 		ps.CurrentStep = StepReview
 		return StepReview, nil
 
 	case StepReview:
-		if result.BlockingFindings {
-			if err := ps.checkReviewCycleLimit(result.Round3Trigger); err != nil {
-				return 0, err
-			}
-			ps.ReviewCycle++
-			ps.recordStep(result)
-			ps.CurrentStep = StepFix
-			return StepFix, nil
-		}
+		// Review never loops and never routes to a fix step. Its findings are
+		// recorded for the PR verdict (composed at ship), not used for control
+		// flow. Always proceed to Docs.
 		ps.recordStep(result)
 		ps.CurrentStep = StepDocs
 		return StepDocs, nil
@@ -138,28 +105,12 @@ func (ps *PipelineState) Advance(result StepResult) (Step, error) {
 	}
 }
 
-func (ps *PipelineState) maxReviewCycles() int {
-	if ps.MaxReviewCycles == 0 {
-		return 2
-	}
-	return ps.MaxReviewCycles
-}
-
-func (ps *PipelineState) checkReviewCycleLimit(trigger Round3Trigger) error {
-	if ps.ReviewCycle >= 3 {
-		return errors.New("review cycle 3 exhausted: blocking findings remain after maximum cycles")
-	}
-	if ps.ReviewCycle >= ps.maxReviewCycles() && trigger == TriggerNone {
-		return fmt.Errorf("review cycle limit %d reached with blocking findings and no round-3 trigger", ps.maxReviewCycles())
-	}
-	return nil
-}
-
 func (ps *PipelineState) recordStep(result StepResult) {
 	ps.StepHistory = append(ps.StepHistory, result)
 }
 
-// linearNext returns the next step in the default linear sequence.
+// linearNext returns the next step in the default linear sequence, for steps
+// without explicit handling in Advance (Implement and Review are explicit).
 func linearNext(s Step) (Step, error) {
 	switch s {
 	case StepFetch:
@@ -168,12 +119,6 @@ func linearNext(s Step) (Step, error) {
 		return StepBranch, nil
 	case StepBranch:
 		return StepTestRed, nil
-	case StepImplement:
-		return StepRefactor, nil
-	case StepRefactor:
-		return StepReview, nil
-	case StepFix:
-		return StepReview, nil
 	case StepDocs:
 		return StepShip, nil
 	default:

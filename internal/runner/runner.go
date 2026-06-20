@@ -96,18 +96,14 @@ type Result struct {
 var agentSteps = map[pipeline.Step]bool{
 	pipeline.StepTestRed:   true,
 	pipeline.StepImplement: true,
-	pipeline.StepRefactor:  true,
 	pipeline.StepReview:    true,
-	pipeline.StepFix:       true,
 	pipeline.StepDocs:      true,
 }
 
 var templateFile = map[pipeline.Step]string{
 	pipeline.StepTestRed:   "test-red.md",
 	pipeline.StepImplement: "implement.md",
-	pipeline.StepRefactor:  "refactor.md",
 	pipeline.StepReview:    "review.md",
-	pipeline.StepFix:       "fix-findings.md",
 	pipeline.StepDocs:      "update-docs.md",
 }
 
@@ -162,14 +158,11 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		state = &pipeline.PipelineState{
 			IssueNumber:     cfg.IssueNumber,
 			CurrentStep:     pipeline.StepFetch,
-			MaxReviewCycles: 2,
 			TestFixAttempts: map[string]int{},
 			StartedAt:       time.Now(),
 			CodeVersion:     cfg.CodeVersion,
 		}
 	}
-
-	initialReviewCycle := state.ReviewCycle
 
 	issue, err := cfg.Fetcher.Fetch(ctx, cfg.IssueNumber)
 	if err != nil {
@@ -190,8 +183,6 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 	if prof.ReviewModel == "" {
 		prof.ReviewModel = "sonnet"
 	}
-
-	var lastBlockingFindings string
 
 	for {
 		step := state.CurrentStep
@@ -245,7 +236,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 
 		// Ship step: push branch, invoke agent for PR body, create PR.
 		if step == pipeline.StepShip {
-			return runShipStep(ctx, cfg, issue, state, lastBlockingFindings, prof, stepStart, log)
+			return runShipStep(ctx, cfg, issue, state, prof, stepStart, log)
 		}
 
 		// Agent steps: load template, substitute, invoke, checkpoint.
@@ -272,7 +263,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			}
 		}
 
-		allArgs := buildTemplateArgs(ctx, cfg, issue, branchName, state.ReviewCycle, lastBlockingFindings)
+		allArgs := buildTemplateArgs(ctx, cfg, issue, branchName)
 
 		filteredArgs := filterArgs(string(tmplContent), allArgs)
 
@@ -312,35 +303,21 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		}
 
 		stepResult := deriveStepResult(ctx, step, invokeResult, cfg)
-		if (step == pipeline.StepImplement || step == pipeline.StepFix) && cfg.TestRunner != nil {
+		if step == pipeline.StepImplement && cfg.TestRunner != nil {
 			logGreenGate(log, step, stepResult.Success, invokeResult.Completed, turns)
 		}
 		if step == pipeline.StepReview {
 			findings, found := cfg.ReviewResultsLoader(ctx, cfg.WorkDir)
 			if !found {
-				fmt.Fprintf(log, "warning: review-results.json not found after review step — treating as blocking\n")
+				fmt.Fprintf(log, "warning: review-results.json not found after review step\n")
 			} else {
 				blocking, nonBlocking := review.CountFindingsBySeverity(findings)
-				fmt.Fprintf(log, "%s: review findings: %d blocking, %d non-blocking\n", step, blocking, nonBlocking)
-				if stepResult.BlockingFindings {
-					lastBlockingFindings = review.FormatBlockingFindings(findings)
-				}
+				fmt.Fprintf(log, "%s: review findings: %d blocking, %d non-blocking (recorded for the PR; does not gate the pipeline)\n", step, blocking, nonBlocking)
 			}
 		}
 
 		next, advErr := state.Advance(stepResult)
 		if advErr != nil {
-			if strings.Contains(advErr.Error(), "review cycle") && state.ReviewCycle > initialReviewCycle {
-				// Cycle limit hit during this run — code works, review has unresolved opinions.
-				// Continue to ship so the human can decide via the PR.
-				fmt.Fprintf(log, "%s: %v — continuing to ship with unresolved findings\n", step, advErr)
-				state.CurrentStep = pipeline.StepDocs
-				if err := pipeline.SaveState(cfg.WorkDir, state); err != nil {
-					return nil, fmt.Errorf("saving state after cycle limit: %w", err)
-				}
-				fmt.Fprintf(log, "%s: done (%dms)\n", step, time.Since(stepStart).Milliseconds())
-				continue
-			}
 			blockErr := blockIssue(ctx, cfg, advErr)
 			if blockErr != nil {
 				return nil, fmt.Errorf("blocking issue after %v: %w", advErr, blockErr)
@@ -384,7 +361,7 @@ func runBranchStep(ctx context.Context, cfg Config, issue *tracker.IssueData, lo
 // runShipStep pushes the branch, invokes the ship agent for a PR description,
 // creates the PR, and returns the Result. It also saves final pipeline state and
 // removes the review-results.json artifact.
-func runShipStep(ctx context.Context, cfg Config, issue *tracker.IssueData, state *pipeline.PipelineState, lastBlockingFindings string, prof ProfileData, stepStart time.Time, log io.Writer) (*Result, error) {
+func runShipStep(ctx context.Context, cfg Config, issue *tracker.IssueData, state *pipeline.PipelineState, prof ProfileData, stepStart time.Time, log io.Writer) (*Result, error) {
 	var branch string
 	var branchErr error
 	if cfg.Git != nil {
@@ -418,7 +395,7 @@ func runShipStep(ctx context.Context, cfg Config, issue *tracker.IssueData, stat
 	if readErr != nil {
 		fmt.Fprintf(log, "warning: ship template read failed: %v — using fallback PR body\n", readErr)
 	} else {
-		shipArgs := buildTemplateArgs(ctx, cfg, issue, branch, state.ReviewCycle, lastBlockingFindings)
+		shipArgs := buildTemplateArgs(ctx, cfg, issue, branch)
 		filteredArgs := filterArgs(string(shipTmplContent), shipArgs)
 		substituted, subErr := prompt.Substitute(string(shipTmplContent), filteredArgs)
 		if subErr != nil {

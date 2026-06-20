@@ -236,7 +236,6 @@ func saveStateAt(t *testing.T, workDir string, step pipeline.Step) {
 	s := &pipeline.PipelineState{
 		IssueNumber:     42,
 		CurrentStep:     step,
-		MaxReviewCycles: 2,
 		TestFixAttempts: map[string]int{},
 	}
 	if err := pipeline.SaveState(workDir, s); err != nil {

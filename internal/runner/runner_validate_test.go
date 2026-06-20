@@ -45,7 +45,6 @@ func TestValidateResumedState_IssueMismatch_ReturnsFresh(t *testing.T) {
 	state := &pipeline.PipelineState{
 		IssueNumber:     99,
 		CurrentStep:     pipeline.StepImplement,
-		MaxReviewCycles: 2,
 		TestFixAttempts: map[string]int{},
 	}
 	cfg := Config{IssueNumber: 42}
@@ -64,7 +63,6 @@ func TestValidateResumedState_MatchingIssue_ReturnsState(t *testing.T) {
 	state := &pipeline.PipelineState{
 		IssueNumber:     42,
 		CurrentStep:     pipeline.StepImplement,
-		MaxReviewCycles: 2,
 		TestFixAttempts: map[string]int{},
 	}
 	cfg := Config{IssueNumber: 42}
@@ -83,7 +81,6 @@ func TestValidateResumedState_VersionMismatch_LogsWarning(t *testing.T) {
 	state := &pipeline.PipelineState{
 		IssueNumber:     42,
 		CurrentStep:     pipeline.StepImplement,
-		MaxReviewCycles: 2,
 		TestFixAttempts: map[string]int{},
 		CodeVersion:     "v0.1",
 	}
@@ -108,7 +105,6 @@ func TestValidateResumedState_BranchMismatch_LogsWarning(t *testing.T) {
 	state := &pipeline.PipelineState{
 		IssueNumber:     42,
 		CurrentStep:     pipeline.StepImplement, // > StepBranch
-		MaxReviewCycles: 2,
 		TestFixAttempts: map[string]int{},
 	}
 
@@ -147,7 +143,6 @@ func TestRun_ResumeValidationDelegatesToHelper(t *testing.T) {
 	state := &pipeline.PipelineState{
 		IssueNumber:     42,
 		CurrentStep:     pipeline.StepImplement,
-		MaxReviewCycles: 2,
 		TestFixAttempts: map[string]int{},
 	}
 	if err := pipeline.SaveState(workDir, state); err != nil {

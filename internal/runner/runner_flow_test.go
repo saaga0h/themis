@@ -57,7 +57,6 @@ func TestRunner_ResumesFromSavedState(t *testing.T) {
 	priorState := &pipeline.PipelineState{
 		IssueNumber:     42,
 		CurrentStep:     pipeline.StepImplement,
-		MaxReviewCycles: 2,
 		TestFixAttempts: map[string]int{},
 	}
 	if err := pipeline.SaveState(workDir, priorState); err != nil {
@@ -97,7 +96,6 @@ func TestRunner_StopsOnTestFixLimit(t *testing.T) {
 	priorState := &pipeline.PipelineState{
 		IssueNumber:     42,
 		CurrentStep:     pipeline.StepTestRed,
-		MaxReviewCycles: 2,
 		TestFixAttempts: map[string]int{"ac-0": 3},
 	}
 	if err := pipeline.SaveState(workDir, priorState); err != nil {

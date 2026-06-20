@@ -4,12 +4,9 @@ package runner
 // JSON-over-stdout sourcing, the severity table, and blocking-finding formatting.
 
 import (
-	"context"
 	"strings"
 	"testing"
 
-	"github.com/saaga0h/themis/internal/agent"
-	"github.com/saaga0h/themis/internal/pipeline"
 	"github.com/saaga0h/themis/internal/review"
 )
 
@@ -19,57 +16,6 @@ func TestBlockingThreshold_ValueIsMedium(t *testing.T) {
 	const want = "medium"
 	if review.BlockingThreshold != want {
 		t.Errorf("review.BlockingThreshold = %q, want %q", review.BlockingThreshold, want)
-	}
-}
-
-// TestDeriveStepResult_ReviewStep_ReadsJSONNotStdout verifies that when
-// .themis/review-results.json contains a critical finding and stdout is empty,
-// the runner detects blocking findings from the JSON file.
-func TestDeriveStepResult_ReviewStep_ReadsJSONNotStdout(t *testing.T) {
-	workDir := t.TempDir()
-	writeReviewResults(t, workDir, []review.ReviewFinding{
-		{Severity: "critical", Description: "SQL injection vulnerability", File: "db.go", Line: 42},
-	})
-
-	result := &agent.InvokeResult{
-		ExitCode:  0,
-		Completed: true,
-		Stdout:    "", // stdout is empty — blocking must come from JSON
-	}
-
-	cfg := Config{
-		WorkDir: workDir,
-	}
-
-	sr := deriveStepResult(context.Background(), pipeline.StepReview, result, cfg)
-	if !sr.BlockingFindings {
-		t.Error("BlockingFindings must be true when review-results.json contains a critical finding, even with empty stdout")
-	}
-}
-
-// TestDeriveStepResult_ReviewStep_StdoutAloneDoesNotTriggerBlocking verifies
-// that stdout containing the old "BLOCKING_FINDINGS: YES" marker does not
-// trigger blocking when .themis/review-results.json has no blocking findings.
-func TestDeriveStepResult_ReviewStep_StdoutAloneDoesNotTriggerBlocking(t *testing.T) {
-	workDir := t.TempDir()
-
-	result := &agent.InvokeResult{
-		ExitCode:  0,
-		Completed: true,
-		Stdout:    "BLOCKING_FINDINGS: YES\nSecurity issue found.",
-	}
-
-	cfg := Config{
-		WorkDir: workDir,
-	}
-
-	// Writing an EMPTY findings JSON (no critical entries) alongside the same
-	// stdout makes blocking FALSE — proving stdout is not read.
-	writeReviewResults(t, workDir, []review.ReviewFinding{})
-
-	srWithEmptyJSON := deriveStepResult(context.Background(), pipeline.StepReview, result, cfg)
-	if srWithEmptyJSON.BlockingFindings {
-		t.Error("BlockingFindings must be false when review-results.json has no findings, even when stdout contains old BLOCKING_FINDINGS marker")
 	}
 }
 

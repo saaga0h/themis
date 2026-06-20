@@ -12,7 +12,7 @@ import (
 
 // TestRunner_MaxTurnsActsAsGlobalCeiling verifies that Config.MaxTurns is a hard
 // ceiling: when it is lower than every per-step default, every agent invocation
-// (all 5 agent steps plus the ship step) is clamped to that ceiling.
+// (all agent steps plus the ship step) is clamped to that ceiling.
 func TestRunner_MaxTurnsActsAsGlobalCeiling(t *testing.T) {
 	inv := &recordingInvoker{}
 	w := &stubIssueWriter{prURL: "https://example.com/pr/maxturns"}
@@ -68,9 +68,7 @@ func TestTurnsForStep(t *testing.T) {
 		// Ceiling well above every default → each step gets its default.
 		{pipeline.StepTestRed, 1000, 80},
 		{pipeline.StepImplement, 1000, 120},
-		{pipeline.StepRefactor, 1000, 30},
 		{pipeline.StepReview, 1000, 80},
-		{pipeline.StepFix, 1000, 60},
 		{pipeline.StepDocs, 1000, 40},
 		{pipeline.StepShip, 1000, 60},
 		// Ceiling below every default → ceiling binds everywhere.
@@ -87,8 +85,8 @@ func TestTurnsForStep(t *testing.T) {
 }
 
 // TestModelForStep_AllSteps verifies that modelForStep returns ReviewModel for
-// StepReview, the fixed "haiku" tier for the mechanical Refactor and Docs steps,
-// and ImplementModel for every other pipeline step.
+// StepReview, the fixed "haiku" tier for the mechanical Docs step, and
+// ImplementModel for every other step (including the now-unreached Refactor/Fix).
 func TestModelForStep_AllSteps(t *testing.T) {
 	prof := ProfileData{
 		ImplementModel: "sonnet",
@@ -103,7 +101,7 @@ func TestModelForStep_AllSteps(t *testing.T) {
 		{pipeline.StepBranch, "sonnet"},
 		{pipeline.StepTestRed, "sonnet"},
 		{pipeline.StepImplement, "sonnet"},
-		{pipeline.StepRefactor, "haiku"},
+		{pipeline.StepRefactor, "sonnet"},
 		{pipeline.StepReview, "opus"},
 		{pipeline.StepFix, "sonnet"},
 		{pipeline.StepDocs, "haiku"},

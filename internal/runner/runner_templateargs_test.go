@@ -73,7 +73,6 @@ func TestRunner_ChangedFiles_IncludesFilesChangedOnBranch(t *testing.T) {
 	state := &pipeline.PipelineState{
 		IssueNumber:     42,
 		CurrentStep:     pipeline.StepDocs,
-		MaxReviewCycles: 2,
 		TestFixAttempts: map[string]int{},
 	}
 	if err := pipeline.SaveState(workDir, state); err != nil {
@@ -123,7 +122,6 @@ func TestRunner_ChangedFiles_ReturnsEmptyStringWhenGitFails(t *testing.T) {
 	state := &pipeline.PipelineState{
 		IssueNumber:     42,
 		CurrentStep:     pipeline.StepDocs,
-		MaxReviewCycles: 2,
 		TestFixAttempts: map[string]int{},
 	}
 	if err := pipeline.SaveState(dir, state); err != nil {

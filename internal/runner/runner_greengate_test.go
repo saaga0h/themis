@@ -10,13 +10,13 @@ import (
 	"github.com/saaga0h/themis/internal/pipeline"
 )
 
-// With a TestRunner reporting a green suite, Implement and Fix score success.
+// With a TestRunner reporting a green suite, Implement scores success.
 func TestDeriveStepResult_GreenGate_PassesWhenSuiteGreen(t *testing.T) {
 	cfg := Config{
 		WorkDir:    "/x",
 		TestRunner: func(context.Context, string) (bool, string) { return true, "ok" },
 	}
-	for _, step := range []pipeline.Step{pipeline.StepImplement, pipeline.StepFix} {
+	for _, step := range []pipeline.Step{pipeline.StepImplement} {
 		sr := deriveStepResult(context.Background(), step, &agent.InvokeResult{Completed: true}, cfg)
 		if !sr.Success {
 			t.Errorf("%v: expected success when suite is green", step)
@@ -24,14 +24,14 @@ func TestDeriveStepResult_GreenGate_PassesWhenSuiteGreen(t *testing.T) {
 	}
 }
 
-// With a TestRunner reporting a red suite, Implement and Fix score failure so the
+// With a TestRunner reporting a red suite, Implement scores failure so the
 // pipeline retries rather than advancing on a broken build.
 func TestDeriveStepResult_GreenGate_FailsWhenSuiteRed(t *testing.T) {
 	cfg := Config{
 		WorkDir:    "/x",
 		TestRunner: func(context.Context, string) (bool, string) { return false, "FAIL" },
 	}
-	for _, step := range []pipeline.Step{pipeline.StepImplement, pipeline.StepFix} {
+	for _, step := range []pipeline.Step{pipeline.StepImplement} {
 		sr := deriveStepResult(context.Background(), step, &agent.InvokeResult{Completed: true}, cfg)
 		if sr.Success {
 			t.Errorf("%v: expected failure when suite is red", step)
@@ -40,11 +40,11 @@ func TestDeriveStepResult_GreenGate_FailsWhenSuiteRed(t *testing.T) {
 }
 
 // Without a TestRunner the gate is bypassed and the legacy commit-only contract
-// applies, so Implement and Fix advance on completion alone. This keeps callers
-// that do not wire a runner (e.g. unit tests) working unchanged.
+// applies, so Implement advances on completion alone. This keeps callers that do
+// not wire a runner (e.g. unit tests) working unchanged.
 func TestDeriveStepResult_GreenGate_NilRunnerIsLegacySuccess(t *testing.T) {
 	cfg := Config{WorkDir: "/x"} // TestRunner nil
-	for _, step := range []pipeline.Step{pipeline.StepImplement, pipeline.StepFix} {
+	for _, step := range []pipeline.Step{pipeline.StepImplement} {
 		sr := deriveStepResult(context.Background(), step, &agent.InvokeResult{}, cfg)
 		if !sr.Success {
 			t.Errorf("%v: expected legacy success when TestRunner is nil", step)

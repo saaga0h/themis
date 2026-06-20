@@ -22,8 +22,9 @@ import (
 )
 
 // pipelineAgentCallCount is the number of agent steps that run before Ship in the
-// default happy-path pipeline (TestRed, Implement, Refactor, Review, Docs).
-const pipelineAgentCallCount = 5
+// default happy-path pipeline (TestRed, Implement, Review, Docs). Refactor and
+// Fix were removed in the linear-pipeline redesign.
+const pipelineAgentCallCount = 4
 
 // failAfterInvoker succeeds for the first successLimit calls then returns err.
 // Used to simulate ship agent failure after all pipeline steps have succeeded.
@@ -163,7 +164,6 @@ func TestRunner_ShipStep_BranchNameUsesGitCurrentBranch(t *testing.T) {
 	state := &pipeline.PipelineState{
 		IssueNumber:     42,
 		CurrentStep:     pipeline.StepShip,
-		MaxReviewCycles: 2,
 		TestFixAttempts: map[string]int{},
 	}
 	if err := pipeline.SaveState(dir, state); err != nil {
@@ -332,7 +332,6 @@ func TestRunner_ShipUsesAgentOutputAsPRBody(t *testing.T) {
 		results: []*agent.InvokeResult{
 			{ExitCode: 0, Completed: true},                      // TestRed
 			{ExitCode: 0, Completed: true},                      // Implement
-			{ExitCode: 0, Completed: true},                      // Refactor
 			{ExitCode: 0, Completed: true, Stdout: ""},          // Review (no blocking findings)
 			{ExitCode: 0, Completed: true},                      // Docs
 			{ExitCode: 0, Completed: true, Stdout: agentPRBody}, // Ship

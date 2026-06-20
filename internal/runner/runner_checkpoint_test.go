@@ -51,7 +51,6 @@ func TestRunner_FailingCheckpointStopsPipeline(t *testing.T) {
 	priorState := &pipeline.PipelineState{
 		IssueNumber:     42,
 		CurrentStep:     pipeline.StepTestRed,
-		MaxReviewCycles: 2,
 		TestFixAttempts: map[string]int{},
 	}
 	if err := pipeline.SaveState(workDir, priorState); err != nil {
@@ -96,7 +95,6 @@ func TestRunner_StepCheckpoint_NoCommit_StopsPipeline(t *testing.T) {
 	priorState := &pipeline.PipelineState{
 		IssueNumber:     42,
 		CurrentStep:     pipeline.StepTestRed,
-		MaxReviewCycles: 2,
 		TestFixAttempts: map[string]int{},
 	}
 	if err := pipeline.SaveState(dir, priorState); err != nil {
