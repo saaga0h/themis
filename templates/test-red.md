@@ -60,3 +60,13 @@ Only after all verifications pass:
 ```
 test(<scope>): add failing tests for issue #{{ISSUE_NUMBER}}
 ```
+
+## Completion
+
+When all tests are committed and the suite fails (RED state confirmed), output:
+
+STEP COMPLETE
+
+Do not re-verify, re-read files, or explore further. One commit, one confirmation, done.
+If using the refactoring fast-path (no Task delegation), the same rule applies:
+commit the tests and output STEP COMPLETE.

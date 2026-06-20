@@ -26,3 +26,12 @@ themselves contain a blocking defect.
 ```
 fix(<scope>): resolve review findings cycle {{REVIEW_CYCLE}} for issue #{{ISSUE_NUMBER}}
 ```
+
+## Completion
+
+When all blocking findings are addressed and committed, output:
+
+STEP COMPLETE
+
+Fix only what the findings specify. Do not refactor surrounding code.
+Do not address non-blocking findings.

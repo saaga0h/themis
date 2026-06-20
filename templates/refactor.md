@@ -20,3 +20,16 @@ refactor(<scope>): clean up implementation for issue #{{ISSUE_NUMBER}}
 ```
 
 If no refactoring was needed, do not create an empty commit — skip this step.
+
+## Completion
+
+First decide in one pass whether anything qualifies for refactoring.
+If nothing qualifies, output immediately:
+
+STEP COMPLETE — no changes
+
+Do not re-scan, do not re-read files, do not look for more opportunities.
+
+If refactoring was needed, commit the changes and output:
+
+STEP COMPLETE

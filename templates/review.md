@@ -32,3 +32,11 @@ If it does not exist, something went wrong — report the error.
 
 Do not classify findings yourself. Do not write the JSON file yourself.
 The review command handles all of this.
+
+## Completion
+
+When the review command has written .themis/review-results.json, output:
+
+STEP COMPLETE
+
+Do not re-analyze, do not suggest additional improvements, do not read more files.

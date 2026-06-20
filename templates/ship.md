@@ -66,3 +66,9 @@ The PR body must:
    - **Follow-ups**: explicitly deferred items (omit section if none)
 
 Output the complete PR body as your final response. Do not create the PR itself — the system will handle that.
+
+## Completion
+
+When the PR body is composed and output, output:
+
+STEP COMPLETE

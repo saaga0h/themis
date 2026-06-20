@@ -36,3 +36,12 @@ When all ACs pass, run the full test suite. If anything fails, apply the same
 ```
 feat(<scope>): implement issue #{{ISSUE_NUMBER}} — {{ISSUE_TITLE}}
 ```
+
+## Completion
+
+When the full test suite passes (GREEN) and changes are committed, output:
+
+STEP COMPLETE
+
+Do not refactor, do not improve code style, do not explore related files.
+Commit the implementation and stop.

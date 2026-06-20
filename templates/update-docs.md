@@ -45,3 +45,16 @@ docs(<scope>): update documentation for issue #{{ISSUE_NUMBER}}
 ```
 
 If no docs needed updating, do not create an empty commit.
+
+## Completion
+
+First decide in one pass whether any documentation needs updating.
+If nothing needs updating, output immediately:
+
+STEP COMPLETE — no changes
+
+Do not re-scan, do not re-read source files looking for more doc opportunities.
+
+If docs were updated, commit and output:
+
+STEP COMPLETE
