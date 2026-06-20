@@ -64,6 +64,21 @@ func TestNewIssueConfig_SetsCheckpointFn(t *testing.T) {
 	}
 }
 
+// newIssueConfig wires the production TestRunner so the Implement/Fix green gate
+// is active in real runs (it is nil-bypassed only in tests).
+func TestNewIssueConfig_SetsTestRunner(t *testing.T) {
+	dir := initGitRepoCheckpointTest(t)
+	ctx := context.Background()
+
+	cfg, err := newIssueConfig(ctx, 42, dir, dir, &stubMainFetcher{}, &stubMainIssueWriter{}, defaultMaxTurns)
+	if err != nil {
+		t.Fatalf("newIssueConfig: %v", err)
+	}
+	if cfg.TestRunner == nil {
+		t.Error("production runner.Config must have TestRunner set for the green gate")
+	}
+}
+
 // TestNewIssueConfig_PropagatesMaxTurnsToRunnerConfig verifies that the maxTurns
 // argument passed to newIssueConfig flows into runner.Config.MaxTurns (AC1 wiring).
 func TestNewIssueConfig_PropagatesMaxTurnsToRunnerConfig(t *testing.T) {

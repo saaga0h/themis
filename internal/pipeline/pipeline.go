@@ -47,16 +47,24 @@ type StepResult struct {
 }
 
 type PipelineState struct {
-	IssueNumber     int
-	CurrentStep     Step
-	ReviewCycle     int
-	MaxReviewCycles int
-	TestFixAttempts map[string]int
-	Commits         []string
-	StartedAt       time.Time
-	StepHistory     []StepResult
-	CodeVersion     string
+	IssueNumber       int
+	CurrentStep       Step
+	ReviewCycle       int
+	MaxReviewCycles   int
+	TestFixAttempts   map[string]int
+	ImplementAttempts int
+	FixAttempts       int
+	Commits           []string
+	StartedAt         time.Time
+	StepHistory       []StepResult
+	CodeVersion       string
 }
+
+// maxGreenGateAttempts bounds how many times Implement or Fix may re-run when the
+// test suite is still red after the step completes. It mirrors the TestRed
+// retry ceiling: enough room to recover from a truncated run, low enough that a
+// genuinely stuck step blocks the issue for a human instead of looping forever.
+const maxGreenGateAttempts = 3
 
 // Advance computes the next pipeline step given the result of the current step.
 // It encodes review-cycle limits and round-3 gate logic deterministically.
@@ -73,6 +81,37 @@ func (ps *PipelineState) Advance(result StepResult) (Step, error) {
 		ps.recordStep(result)
 		ps.CurrentStep = StepImplement
 		return StepImplement, nil
+
+	case StepImplement:
+		// Implement is "done" only when the suite is green (Success). A red or
+		// truncated run re-runs Implement, bounded by maxGreenGateAttempts, so a
+		// turn-limited implementation is caught here rather than wasting a review
+		// cycle downstream.
+		if !result.Success {
+			if ps.ImplementAttempts >= maxGreenGateAttempts {
+				return 0, fmt.Errorf("implement attempts exceeded maximum of %d: test suite still failing", maxGreenGateAttempts)
+			}
+			ps.ImplementAttempts++
+			return StepImplement, nil
+		}
+		ps.recordStep(result)
+		ps.CurrentStep = StepRefactor
+		return StepRefactor, nil
+
+	case StepFix:
+		// Fix carries the same green gate as Implement: re-running blocking-finding
+		// fixes must leave the suite green before the next review, otherwise Review
+		// burns a cycle on code that no longer compiles or passes.
+		if !result.Success {
+			if ps.FixAttempts >= maxGreenGateAttempts {
+				return 0, fmt.Errorf("fix attempts exceeded maximum of %d: test suite still failing", maxGreenGateAttempts)
+			}
+			ps.FixAttempts++
+			return StepFix, nil
+		}
+		ps.recordStep(result)
+		ps.CurrentStep = StepReview
+		return StepReview, nil
 
 	case StepReview:
 		if result.BlockingFindings {

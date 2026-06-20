@@ -10,8 +10,79 @@ import (
 
 	"github.com/saaga0h/themis/internal/agent"
 	"github.com/saaga0h/themis/internal/pipeline"
+	"github.com/saaga0h/themis/internal/review"
 	"github.com/saaga0h/themis/internal/tracker"
 )
+
+// deriveStepResult maps an agent invocation outcome onto a pipeline.StepResult,
+// applying the per-step success contract: TestRed wants failing tests present,
+// Implement and Fix gate on a green suite (the TestRunner), and Review gates on
+// the structured findings JSON.
+func deriveStepResult(ctx context.Context, step pipeline.Step, r *agent.InvokeResult, cfg Config) pipeline.StepResult {
+	switch step {
+	case pipeline.StepTestRed:
+		key := cfg.TestACKey
+		if key == "" {
+			key = "tests"
+		}
+		if len(r.CommitsMade) > 0 || r.Completed {
+			return pipeline.StepResult{Success: true}
+		}
+		// A resumed or rebased run can reach TestRed with the failing tests
+		// already committed on the branch. The agent then correctly makes no new
+		// commit, but TestRed's goal — failing tests present before Implement —
+		// is already met. Treat that as success rather than scoring a failed
+		// attempt, which would otherwise stall the pipeline on the retry ceiling.
+		if cfg.Git != nil && branchHasTestFiles(cfg.Git.ChangedFiles(ctx, cfg.WorkDir)) {
+			return pipeline.StepResult{Success: true}
+		}
+		return pipeline.StepResult{Success: false, TestACKey: key}
+
+	case pipeline.StepImplement, pipeline.StepFix:
+		// GREEN gate: the step is "done" only when the suite passes. Without a
+		// TestRunner configured, fall back to the legacy commit-only contract.
+		if cfg.TestRunner == nil {
+			return pipeline.StepResult{Success: true}
+		}
+		passed, _ := cfg.TestRunner(ctx, cfg.WorkDir)
+		return pipeline.StepResult{Success: passed}
+
+	case pipeline.StepReview:
+		loadResults := cfg.ReviewResultsLoader
+		if loadResults == nil {
+			loadResults = review.ReadReviewResults
+		}
+		findings, found := loadResults(ctx, cfg.WorkDir)
+		if !found {
+			// Missing JSON is the fail-safe: the review step produced no
+			// structured result, so treat it as blocking regardless of stdout.
+			return pipeline.StepResult{Success: false, BlockingFindings: true}
+		}
+		blocking := review.DetermineBlockingStatus(findings)
+		return pipeline.StepResult{
+			Success:          !blocking,
+			BlockingFindings: blocking,
+		}
+
+	default:
+		return pipeline.StepResult{Success: true}
+	}
+}
+
+// logGreenGate reports the outcome of the Implement/Fix green gate, distinguishing
+// a stuck implementation (completed but red) from a truncated one (no completion
+// signal, likely out of turns) so the operator can tell a budget problem from a
+// capability problem.
+func logGreenGate(log io.Writer, step pipeline.Step, passed, completed bool, turns int) {
+	switch {
+	case passed:
+		fmt.Fprintf(log, "%s: green gate passed (test suite passes)\n", step)
+	case completed:
+		fmt.Fprintf(log, "%s: green gate failed — tests red though agent signalled completion (implementation may be stuck), retrying\n", step)
+	default:
+		fmt.Fprintf(log, "%s: green gate failed — tests red and no completion signal (likely hit the %d-turn limit), retrying\n", step, turns)
+	}
+}
 
 // logAgentResult records the commit count and completion status of an agent
 // step, and warns when the step ended without signalling completion — meaning it

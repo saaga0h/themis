@@ -594,7 +594,7 @@ func TestRunner_ChangedFiles_IncludesFilesChangedOnBranch(t *testing.T) {
 		IssueWriter:  w,
 		TemplateDir:  templateDir(t),
 		CheckpointFn: noopCheckpoint,
-		Git: &fakeGitOps{changedFiles: "newfeature.go", commitsAhead: 1},
+		Git:          &fakeGitOps{changedFiles: "newfeature.go", commitsAhead: 1},
 	}
 
 	if _, err := Run(context.Background(), cfg); err != nil {
@@ -644,7 +644,7 @@ func TestRunner_ChangedFiles_ReturnsEmptyStringWhenGitFails(t *testing.T) {
 		IssueWriter:  w,
 		TemplateDir:  templateDir(t),
 		CheckpointFn: noopCheckpoint,
-		Git: &fakeGitOps{commitsAhead: 1},
+		Git:          &fakeGitOps{commitsAhead: 1},
 	}
 
 	// Run must succeed even when changedFiles cannot diff against a remote
@@ -684,7 +684,7 @@ func TestRunner_PipelineShapeFromCommitPrefixes(t *testing.T) {
 		IssueWriter:  w,
 		TemplateDir:  tDir,
 		CheckpointFn: noopCheckpoint,
-		Git: &fakeGitOps{commitLog: fakeLog, commitsAhead: 1},
+		Git:          &fakeGitOps{commitLog: fakeLog, commitsAhead: 1},
 	}
 
 	if _, err := Run(context.Background(), cfg); err != nil {
@@ -785,7 +785,7 @@ func TestRunner_CommitLogContainsBranchCommits(t *testing.T) {
 		IssueWriter:  w,
 		TemplateDir:  tDir,
 		CheckpointFn: noopCheckpoint,
-		Git: &fakeGitOps{commitLog: fakeLog, commitsAhead: 1},
+		Git:          &fakeGitOps{commitLog: fakeLog, commitsAhead: 1},
 	}
 
 	if _, err := Run(context.Background(), cfg); err != nil {
@@ -1621,12 +1621,12 @@ func TestRunner_UsesProfileLoaderFromConfig(t *testing.T) {
 	inv := &recordingInvoker{}
 	w := &stubIssueWriter{prURL: "https://example.com/pr/profile-loader"}
 	cfg := Config{
-		WorkDir:     workDir,
-		IssueNumber: 42,
-		Fetcher:     &stubFetcher{issue: sampleIssue()},
-		Invoker:     inv,
-		IssueWriter: w,
-		TemplateDir: templateDir(t),
+		WorkDir:      workDir,
+		IssueNumber:  42,
+		Fetcher:      &stubFetcher{issue: sampleIssue()},
+		Invoker:      inv,
+		IssueWriter:  w,
+		TemplateDir:  templateDir(t),
 		CheckpointFn: noopCheckpoint,
 		ProfileLoader: func(dir string) (ProfileData, error) {
 			return ProfileData{

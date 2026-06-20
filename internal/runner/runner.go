@@ -61,20 +61,26 @@ type PROptions struct {
 
 // Config holds all dependencies for a pipeline run.
 type Config struct {
-	WorkDir              string
-	IssueNumber          int
-	Fetcher              tracker.Fetcher
-	Invoker              agent.Invoker
-	IssueWriter          IssueWriter
-	TemplateDir          string
-	CheckpointFn         func(ctx context.Context, step pipeline.Step, workDir string) error
-	TestACKey            string
-	Git                  GitOps
-	ProfileLoader        func(dir string) (ProfileData, error)
-	ReviewResultsLoader  func(ctx context.Context, workDir string) ([]review.ReviewFinding, bool)
-	Logger               io.Writer
-	CodeVersion          string
-	MaxTurns             int
+	WorkDir             string
+	IssueNumber         int
+	Fetcher             tracker.Fetcher
+	Invoker             agent.Invoker
+	IssueWriter         IssueWriter
+	TemplateDir         string
+	CheckpointFn        func(ctx context.Context, step pipeline.Step, workDir string) error
+	TestACKey           string
+	Git                 GitOps
+	ProfileLoader       func(dir string) (ProfileData, error)
+	ReviewResultsLoader func(ctx context.Context, workDir string) ([]review.ReviewFinding, bool)
+	// TestRunner runs the project's test suite in workDir and reports whether it
+	// passed, plus the captured output for diagnostics. It is the GREEN gate for
+	// the Implement and Fix steps: a step that committed but left tests red is
+	// retried rather than advanced. When nil, those steps advance on commit alone
+	// (legacy behaviour; used by tests that do not exercise the gate).
+	TestRunner  func(ctx context.Context, dir string) (passed bool, output string)
+	Logger      io.Writer
+	CodeVersion string
+	MaxTurns    int
 }
 
 // Result holds the outcome of a successful pipeline run.
@@ -301,6 +307,9 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		}
 
 		stepResult := deriveStepResult(ctx, step, invokeResult, cfg)
+		if (step == pipeline.StepImplement || step == pipeline.StepFix) && cfg.TestRunner != nil {
+			logGreenGate(log, step, stepResult.Success, invokeResult.Completed, turns)
+		}
 		if step == pipeline.StepReview {
 			findings, found := cfg.ReviewResultsLoader(ctx, cfg.WorkDir)
 			if !found {
@@ -340,48 +349,6 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 
 		state.CurrentStep = next
 		fmt.Fprintf(log, "%s: done (%dms)\n", step, time.Since(stepStart).Milliseconds())
-	}
-}
-
-func deriveStepResult(ctx context.Context, step pipeline.Step, r *agent.InvokeResult, cfg Config) pipeline.StepResult {
-	switch step {
-	case pipeline.StepTestRed:
-		key := cfg.TestACKey
-		if key == "" {
-			key = "tests"
-		}
-		if len(r.CommitsMade) > 0 || r.Completed {
-			return pipeline.StepResult{Success: true}
-		}
-		// A resumed or rebased run can reach TestRed with the failing tests
-		// already committed on the branch. The agent then correctly makes no new
-		// commit, but TestRed's goal — failing tests present before Implement —
-		// is already met. Treat that as success rather than scoring a failed
-		// attempt, which would otherwise stall the pipeline on the retry ceiling.
-		if cfg.Git != nil && branchHasTestFiles(cfg.Git.ChangedFiles(ctx, cfg.WorkDir)) {
-			return pipeline.StepResult{Success: true}
-		}
-		return pipeline.StepResult{Success: false, TestACKey: key}
-
-	case pipeline.StepReview:
-		loadResults := cfg.ReviewResultsLoader
-		if loadResults == nil {
-			loadResults = review.ReadReviewResults
-		}
-		findings, found := loadResults(ctx, cfg.WorkDir)
-		if !found {
-			// Missing JSON is the fail-safe: the review step produced no
-			// structured result, so treat it as blocking regardless of stdout.
-			return pipeline.StepResult{Success: false, BlockingFindings: true}
-		}
-		blocking := review.DetermineBlockingStatus(findings)
-		return pipeline.StepResult{
-			Success:          !blocking,
-			BlockingFindings: blocking,
-		}
-
-	default:
-		return pipeline.StepResult{Success: true}
 	}
 }
 

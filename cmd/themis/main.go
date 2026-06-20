@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/saaga0h/themis/internal/agent"
@@ -14,6 +15,17 @@ import (
 	"github.com/saaga0h/themis/internal/runner"
 	"github.com/saaga0h/themis/internal/tracker"
 )
+
+// goTestRunner runs the Go test suite in dir and reports whether it passed,
+// along with the combined output for diagnostics. A non-zero exit (test failure
+// or build error) counts as not green. It satisfies runner.Config.TestRunner and
+// is the GREEN gate for the Implement and Fix steps.
+func goTestRunner(ctx context.Context, dir string) (bool, string) {
+	cmd := exec.CommandContext(ctx, "go", "test", "./...")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	return err == nil, string(out)
+}
 
 // cmdGitOps wraps internal/git functions and satisfies runner.GitOps.
 type cmdGitOps struct{}
@@ -158,6 +170,7 @@ func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir strin
 		Git:                 &cmdGitOps{},
 		ProfileLoader:       profileLoader,
 		ReviewResultsLoader: review.ReadReviewResults,
+		TestRunner:          goTestRunner,
 	}, nil
 }
 

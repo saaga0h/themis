@@ -135,6 +135,68 @@ func TestAdvanceTestRedFailureAtMaxAttemptsErrors(t *testing.T) {
 	}
 }
 
+// --- Implement / Fix green gate ---
+
+// A failed (red) Implement result re-runs Implement and increments the attempt
+// counter, rather than advancing to Refactor with a broken build.
+func TestAdvanceImplementFailureRetries(t *testing.T) {
+	ps := &PipelineState{CurrentStep: StepImplement, MaxReviewCycles: 2, TestFixAttempts: map[string]int{}}
+	next, err := ps.Advance(StepResult{Success: false})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if next != StepImplement {
+		t.Errorf("got %v, want StepImplement (retry)", next)
+	}
+	if ps.ImplementAttempts != 1 {
+		t.Errorf("expected ImplementAttempts=1, got %d", ps.ImplementAttempts)
+	}
+}
+
+// A red Implement result at the attempt ceiling returns an error so the issue is
+// blocked for a human rather than looping forever.
+func TestAdvanceImplementFailureAtMaxErrors(t *testing.T) {
+	ps := &PipelineState{CurrentStep: StepImplement, ImplementAttempts: maxGreenGateAttempts, TestFixAttempts: map[string]int{}}
+	if _, err := ps.Advance(StepResult{Success: false}); err == nil {
+		t.Fatal("expected error when Implement fails at the attempt ceiling")
+	}
+}
+
+// A green Implement result advances to Refactor.
+func TestAdvanceImplementSuccessAdvances(t *testing.T) {
+	ps := &PipelineState{CurrentStep: StepImplement, TestFixAttempts: map[string]int{}}
+	next, err := ps.Advance(StepResult{Success: true})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if next != StepRefactor {
+		t.Errorf("got %v, want StepRefactor", next)
+	}
+}
+
+// A red Fix result re-runs Fix instead of returning to Review with a broken build.
+func TestAdvanceFixFailureRetries(t *testing.T) {
+	ps := &PipelineState{CurrentStep: StepFix, ReviewCycle: 1, MaxReviewCycles: 2, TestFixAttempts: map[string]int{}}
+	next, err := ps.Advance(StepResult{Success: false})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if next != StepFix {
+		t.Errorf("got %v, want StepFix (retry)", next)
+	}
+	if ps.FixAttempts != 1 {
+		t.Errorf("expected FixAttempts=1, got %d", ps.FixAttempts)
+	}
+}
+
+// A red Fix result at the attempt ceiling returns an error.
+func TestAdvanceFixFailureAtMaxErrors(t *testing.T) {
+	ps := &PipelineState{CurrentStep: StepFix, FixAttempts: maxGreenGateAttempts, MaxReviewCycles: 2, TestFixAttempts: map[string]int{}}
+	if _, err := ps.Advance(StepResult{Success: false}); err == nil {
+		t.Fatal("expected error when Fix fails at the attempt ceiling")
+	}
+}
+
 // --- Review cycle logic ---
 
 func TestAdvanceReviewBlockingReturnsFix(t *testing.T) {
