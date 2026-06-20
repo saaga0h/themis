@@ -9,7 +9,7 @@ import (
 
 // --- Load on missing file returns default ---
 
-func TestLoadMissingFileReturnsDefaults(t *testing.T) {
+func TestLoad_MissingFile_ReturnsDefaults(t *testing.T) {
 	dir := t.TempDir()
 	p, err := Load(dir)
 	if err != nil {
@@ -45,7 +45,7 @@ func TestLoadMissingFileReturnsDefaults(t *testing.T) {
 
 // --- Load a valid profile file ---
 
-func TestLoadValidProfile(t *testing.T) {
+func TestLoad_ValidProfile(t *testing.T) {
 	dir := t.TempDir()
 	content := `
 review:
@@ -93,7 +93,7 @@ docs:
 
 // --- skip agent ---
 
-func TestLoadSkipAgent(t *testing.T) {
+func TestLoad_SkipAgent(t *testing.T) {
 	dir := t.TempDir()
 	writeProfile(t, dir, `
 review:
@@ -111,7 +111,7 @@ review:
 
 // --- Model override ---
 
-func TestLoadModelOverride(t *testing.T) {
+func TestLoad_ModelOverride(t *testing.T) {
 	for _, model := range []string{"haiku", "sonnet", "opus"} {
 		dir := t.TempDir()
 		writeProfile(t, dir, "review:\n  agents:\n    security: "+model+"\n")
@@ -127,7 +127,7 @@ func TestLoadModelOverride(t *testing.T) {
 
 // --- round3 values ---
 
-func TestLoadRound3Values(t *testing.T) {
+func TestLoad_Round3Values(t *testing.T) {
 	for _, r3 := range []string{"auto", "always", "never"} {
 		dir := t.TempDir()
 		writeProfile(t, dir, "review:\n  round3: "+r3+"\n")
@@ -143,7 +143,7 @@ func TestLoadRound3Values(t *testing.T) {
 
 // --- Invalid YAML ---
 
-func TestLoadInvalidYAMLReturnsError(t *testing.T) {
+func TestLoad_InvalidYAML_ReturnsError(t *testing.T) {
 	dir := t.TempDir()
 	writeProfile(t, dir, "review: [not a map\n")
 	_, err := Load(dir)
@@ -152,7 +152,7 @@ func TestLoadInvalidYAMLReturnsError(t *testing.T) {
 	}
 }
 
-func TestLoadInvalidModelNameReturnsError(t *testing.T) {
+func TestLoad_InvalidModelName_ReturnsError(t *testing.T) {
 	dir := t.TempDir()
 	writeProfile(t, dir, "review:\n  agents:\n    security: gpt4\n")
 	_, err := Load(dir)
@@ -161,7 +161,7 @@ func TestLoadInvalidModelNameReturnsError(t *testing.T) {
 	}
 }
 
-func TestLoadInvalidRound3ValueReturnsError(t *testing.T) {
+func TestLoad_InvalidRound3Value_ReturnsError(t *testing.T) {
 	dir := t.TempDir()
 	writeProfile(t, dir, "review:\n  round3: maybe\n")
 	_, err := Load(dir)
@@ -170,7 +170,7 @@ func TestLoadInvalidRound3ValueReturnsError(t *testing.T) {
 	}
 }
 
-func TestLoadPartialProfileEnabledDefaultsToTrue(t *testing.T) {
+func TestLoad_PartialProfile_EnabledDefaultsToTrue(t *testing.T) {
 	// A profile that has a refactor/docs section but omits enabled should default to true.
 	dir := t.TempDir()
 	writeProfile(t, dir, "refactor: {}\ndocs: {}\n")
@@ -186,7 +186,7 @@ func TestLoadPartialProfileEnabledDefaultsToTrue(t *testing.T) {
 	}
 }
 
-func TestLoadUnknownFieldReturnsError(t *testing.T) {
+func TestLoad_UnknownField_ReturnsError(t *testing.T) {
 	dir := t.TempDir()
 	writeProfile(t, dir, "unknown_field: true\n")
 	_, err := Load(dir)
@@ -285,6 +285,38 @@ docs:
 	}
 	if p1.Refactor.Enabled == nil || p2.Refactor.Enabled == nil || *p2.Refactor.Enabled != *p1.Refactor.Enabled {
 		t.Errorf("round-trip refactor.enabled mismatch")
+	}
+}
+
+// --- Save error paths ---
+
+func TestSave_MkdirAllFailure_ReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	// Place a file at the path where MkdirAll would create a directory.
+	themisPath := filepath.Join(dir, ".themis")
+	if err := os.WriteFile(themisPath, []byte("blocker"), 0o600); err != nil {
+		t.Fatalf("setup WriteFile: %v", err)
+	}
+	err := Save(dir, defaults())
+	if err == nil {
+		t.Error("Save: expected error when .themis path is a file, got nil")
+	}
+}
+
+func TestSave_WriteFileFailure_ReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	themisDir := filepath.Join(dir, ".themis")
+	if err := os.MkdirAll(themisDir, 0o700); err != nil {
+		t.Fatalf("setup MkdirAll: %v", err)
+	}
+	// Make the directory read-only so WriteFile inside it fails.
+	if err := os.Chmod(themisDir, 0o500); err != nil {
+		t.Fatalf("setup Chmod: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(themisDir, 0o700) })
+	err := Save(dir, defaults())
+	if err == nil {
+		t.Error("Save: expected error when .themis directory is not writable, got nil")
 	}
 }
 
