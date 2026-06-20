@@ -34,6 +34,7 @@ Infrastructure steps (Fetch, Scan, Branch) execute without an agent. Agent steps
 | `TestACKey` | `string` | Acceptance-criteria key for TestRed retry tracking; defaults to `"tests"` |
 | `Git` | `GitOps` | Git operations interface (CheckoutNewBranch, Checkout, PushBranch, CurrentBranch, BranchCommitLog, CommitsAheadOfBase, ChangedFiles); nil skips all git operations |
 | `ProfileLoader` | `func(dir string) (ProfileData, error)` | Loads per-project profile settings; nil uses zero-value `ProfileData` defaults |
+| `ReviewResultsLoader` | `func(ctx context.Context, workDir string) ([]review.ReviewFinding, bool)` | Reads `.themis/review-results.json`; nil defaults to `review.ReadReviewResults` |
 | `Logger` | `io.Writer` | Step log sink; defaults to `os.Stderr` |
 | `CodeVersion` | `string` | Binary version; compared against `state.CodeVersion` on resume |
 | `MaxTurns` | `int` | Per-agent turn limit; `DefaultMaxTurns = 250` when unset |
@@ -106,12 +107,12 @@ Each iteration reads `state.CurrentStep` and branches:
 
 ### Blocking determination
 
-After the Review agent runs, the runner calls `readReviewResults(workDir)` to parse `.themis/review-results.json`.
+After the Review agent runs, the runner calls `cfg.ReviewResultsLoader(ctx, workDir)` (defaulting to `review.ReadReviewResults`) to parse `.themis/review-results.json`.
 
 - **File absent** → treated as blocking (fail-safe). Warning logged: `"review-results.json not found after review step — treating as blocking"`. `deriveStepResult` returns `StepResult{Success: false, BlockingFindings: true}`.
-- **File present** → findings with severity `critical`, `high`, or `medium` are counted as blocking (`blockingThreshold = "medium"`). `low` and any other severity are non-blocking.
+- **File present** → `review.CountFindingsBySeverity` counts findings at or above `review.BlockingThreshold` (`"medium"`). `low` and any other severity are non-blocking.
 
-`lastBlockingFindings` is updated only when `stepResult.BlockingFindings` is true; it carries the formatted critical → high → medium list into subsequent template substitutions as `{{BLOCKING_FINDINGS}}`.
+`lastBlockingFindings` is updated only when `stepResult.BlockingFindings` is true; it carries the `review.FormatBlockingFindings` output (critical → high → medium list) into subsequent template substitutions as `{{BLOCKING_FINDINGS}}`.
 
 ### Review cycle limit and "continue to ship"
 
@@ -207,9 +208,10 @@ To add a new `Config` dependency (e.g. a new service client): add the field to `
 | `internal/agent` | `Invoker`, `InvokeOptions`, `InvokeResult` |
 | `internal/prompt` | `Substitute` — placeholder substitution in templates |
 | `internal/tracker` | `Fetcher`, `IssueData`, `ParseCheckboxes` |
+| `internal/review` | `ReviewFinding`, `BlockingThreshold`, `CountFindingsBySeverity`, `DetermineBlockingStatus`, `FormatBlockingFindings`; `ReadReviewResults` is the default for `Config.ReviewResultsLoader` |
 | `internal/checkpoint` | Provides `CheckpointFn` via `NewStepCheckpoint` (wired externally) |
 
-`internal/git` and `internal/profile` are **not** imported directly. Git operations are injected via the `GitOps` interface (`Config.Git`); profile settings are injected via `Config.ProfileLoader`. Concrete implementations are provided by `cmd/themis/`.
+`internal/git` and `internal/profile` are **not** imported directly. Git operations are injected via the `GitOps` interface (`Config.Git`); profile settings are injected via `Config.ProfileLoader`; review-results filesystem I/O is injected via `Config.ReviewResultsLoader`. Concrete implementations are provided by `cmd/themis/`.
 
 ## Related Documents
 
