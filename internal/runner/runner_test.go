@@ -959,13 +959,14 @@ func TestRunner_LogsAgentInvocationModelAndMaxTurns(t *testing.T) {
 	}
 
 	output := buf.String()
-	// The default profile model is "sonnet" for all non-review agent steps.
+	// The default profile model is "sonnet" for the testred/implement/review steps.
 	if !strings.Contains(output, "sonnet") {
 		t.Errorf("expected model name 'sonnet' in agent invocation log; got:\n%s", output)
 	}
-	// Max turns must reflect the configured value, not a hardcoded constant.
-	if !strings.Contains(output, "250") {
-		t.Errorf("expected max turns '250' in agent invocation log; got:\n%s", output)
+	// Max turns must reflect the per-step budget, not the global ceiling: with a
+	// 250 ceiling, TestRed is capped at its lower default of 80.
+	if !strings.Contains(output, "maxTurns=80") {
+		t.Errorf("expected per-step max turns 'maxTurns=80' in agent invocation log; got:\n%s", output)
 	}
 }
 
@@ -1315,14 +1316,14 @@ func TestRunnerShipStepPassesPipelineStepToInvoker(t *testing.T) {
 // MaxTurns: Config.MaxTurns propagates to every agent invocation (issue #52)
 // ---------------------------------------------------------------------------
 
-// TestRunner_PassesConfigMaxTurnsToEveryAgentStep verifies that when
-// Config.MaxTurns is set, every agent pipeline invocation (all 5 agent steps
-// plus the ship step) receives that value in InvokeOptions.MaxTurns.
-func TestRunner_PassesConfigMaxTurnsToEveryAgentStep(t *testing.T) {
+// TestRunner_MaxTurnsActsAsGlobalCeiling verifies that Config.MaxTurns is a hard
+// ceiling: when it is lower than every per-step default, every agent invocation
+// (all 5 agent steps plus the ship step) is clamped to that ceiling.
+func TestRunner_MaxTurnsActsAsGlobalCeiling(t *testing.T) {
 	inv := &recordingInvoker{}
 	w := &stubIssueWriter{prURL: "https://example.com/pr/maxturns"}
 	cfg := baseConfig(t, w, &stubFetcher{issue: sampleIssue()}, inv)
-	cfg.MaxTurns = 300
+	cfg.MaxTurns = 20 // below every per-step default — the ceiling binds everywhere
 
 	if _, err := Run(context.Background(), cfg); err != nil {
 		t.Fatalf("Run error: %v", err)
@@ -1334,19 +1335,19 @@ func TestRunner_PassesConfigMaxTurnsToEveryAgentStep(t *testing.T) {
 		t.Fatalf("expected at least %d invocations, got %d", totalExpected, len(inv.opts))
 	}
 	for i, opts := range inv.opts {
-		if opts.MaxTurns != 300 {
-			t.Errorf("invocation %d: InvokeOptions.MaxTurns = %d, want 300", i, opts.MaxTurns)
+		if opts.MaxTurns != 20 {
+			t.Errorf("invocation %d: InvokeOptions.MaxTurns = %d, want 20 (ceiling)", i, opts.MaxTurns)
 		}
 	}
 }
 
-// TestRunner_PassesConfigMaxTurnsToShipStep verifies specifically that the ship
-// step invocation uses Config.MaxTurns, not a hardcoded literal.
-func TestRunner_PassesConfigMaxTurnsToShipStep(t *testing.T) {
+// TestRunner_PassesPerStepTurnsToShipStep verifies the ship step receives its
+// per-step turn budget (60) rather than the larger global ceiling.
+func TestRunner_PassesPerStepTurnsToShipStep(t *testing.T) {
 	inv := &recordingInvoker{}
 	w := &stubIssueWriter{prURL: "https://example.com/pr/maxturns-ship"}
 	cfg := baseConfig(t, w, &stubFetcher{issue: sampleIssue()}, inv)
-	cfg.MaxTurns = 300
+	cfg.MaxTurns = 300 // above the ship default — the per-step cap (60) wins
 
 	if _, err := Run(context.Background(), cfg); err != nil {
 		t.Fatalf("Run error: %v", err)
@@ -1357,8 +1358,37 @@ func TestRunner_PassesConfigMaxTurnsToShipStep(t *testing.T) {
 		t.Fatalf("expected at least %d invocations (pipeline + ship), got %d", totalExpected, len(inv.opts))
 	}
 	shipOpts := inv.opts[pipelineAgentCallCount]
-	if shipOpts.MaxTurns != 300 {
-		t.Errorf("ship-step InvokeOptions.MaxTurns = %d, want 300", shipOpts.MaxTurns)
+	if shipOpts.MaxTurns != 60 {
+		t.Errorf("ship-step InvokeOptions.MaxTurns = %d, want 60 (per-step cap)", shipOpts.MaxTurns)
+	}
+}
+
+// TestTurnsForStep verifies the per-step turn budget: a step's default applies
+// when it is below the global ceiling; otherwise the ceiling applies.
+func TestTurnsForStep(t *testing.T) {
+	tests := []struct {
+		step     pipeline.Step
+		maxTurns int
+		want     int
+	}{
+		// Ceiling well above every default → each step gets its default.
+		{pipeline.StepTestRed, 1000, 80},
+		{pipeline.StepImplement, 1000, 120},
+		{pipeline.StepRefactor, 1000, 30},
+		{pipeline.StepReview, 1000, 80},
+		{pipeline.StepFix, 1000, 60},
+		{pipeline.StepDocs, 1000, 40},
+		{pipeline.StepShip, 1000, 60},
+		// Ceiling below every default → ceiling binds everywhere.
+		{pipeline.StepImplement, 25, 25},
+		{pipeline.StepTestRed, 25, 25},
+		// A step with no per-step default falls through to the ceiling.
+		{pipeline.StepBranch, 250, 250},
+	}
+	for _, tc := range tests {
+		if got := turnsForStep(tc.step, tc.maxTurns); got != tc.want {
+			t.Errorf("turnsForStep(%v, %d) = %d, want %d", tc.step, tc.maxTurns, got, tc.want)
+		}
 	}
 }
 

@@ -270,12 +270,13 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		}
 
 		model := modelForStep(step, prof)
-		fmt.Fprintf(log, "%s: invoking agent model=%s maxTurns=%d\n", step, model, cfg.MaxTurns)
+		turns := turnsForStep(step, cfg.MaxTurns)
+		fmt.Fprintf(log, "%s: invoking agent model=%s maxTurns=%d\n", step, model, turns)
 
 		opts := agent.InvokeOptions{
 			Prompt:       substituted,
 			Model:        model,
-			MaxTurns:     cfg.MaxTurns,
+			MaxTurns:     turns,
 			WorkDir:      cfg.WorkDir,
 			IssueNumber:  cfg.IssueNumber,
 			PipelineStep: step.String(),
@@ -455,11 +456,12 @@ func runShipStep(ctx context.Context, cfg Config, issue *tracker.IssueData, stat
 			fmt.Fprintf(log, "warning: ship template substitution failed: %v — using fallback PR body\n", subErr)
 		} else {
 			model := modelForStep(pipeline.StepShip, prof)
-			fmt.Fprintf(log, "%s: invoking agent model=%s maxTurns=%d\n", pipeline.StepShip, model, cfg.MaxTurns)
+			turns := turnsForStep(pipeline.StepShip, cfg.MaxTurns)
+			fmt.Fprintf(log, "%s: invoking agent model=%s maxTurns=%d\n", pipeline.StepShip, model, turns)
 			shipOpts := agent.InvokeOptions{
 				Prompt:       substituted,
 				Model:        model,
-				MaxTurns:     cfg.MaxTurns,
+				MaxTurns:     turns,
 				WorkDir:      cfg.WorkDir,
 				IssueNumber:  cfg.IssueNumber,
 				PipelineStep: pipeline.StepShip.String(),

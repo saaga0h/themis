@@ -67,6 +67,30 @@ func filterArgs(tmpl string, all map[string]string) map[string]string {
 	return out
 }
 
+// defaultStepTurns caps how many turns each pipeline step may use. These are
+// per-step ceilings: a step uses its default when that default is lower than the
+// global --max-turns value, so a smaller --max-turns still lowers every step
+// while the defaults keep simple steps from running to a large global limit.
+var defaultStepTurns = map[pipeline.Step]int{
+	pipeline.StepTestRed:   80,
+	pipeline.StepImplement: 120,
+	pipeline.StepRefactor:  30,
+	pipeline.StepReview:    80,
+	pipeline.StepFix:       60,
+	pipeline.StepDocs:      40,
+	pipeline.StepShip:      60,
+}
+
+// turnsForStep returns the per-step turn budget: the step's default when it is
+// lower than maxTurns, otherwise the global maxTurns ceiling. maxTurns therefore
+// acts as a hard ceiling — passing a value below every default lowers all steps.
+func turnsForStep(step pipeline.Step, maxTurns int) int {
+	if stepLimit, ok := defaultStepTurns[step]; ok && stepLimit < maxTurns {
+		return stepLimit
+	}
+	return maxTurns
+}
+
 func modelForStep(step pipeline.Step, prof ProfileData) string {
 	switch step {
 	case pipeline.StepReview:
