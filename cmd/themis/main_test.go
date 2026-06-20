@@ -125,3 +125,25 @@ func TestNoOldHostnameInGoFiles(t *testing.T) {
 		t.Fatalf("error walking repo: %v", err)
 	}
 }
+
+// maxTestFileLines caps every *_test.go file in cmd/themis. Like the runner
+// package's guard, it stops any one file from regrowing into a catch-all: when a
+// file trips it, split it by concern (see run_loop_*_test.go) rather than raising
+// the limit.
+const maxTestFileLines = 600
+
+func TestCmdTestFiles_StayUnderLineLimit(t *testing.T) {
+	files, err := filepath.Glob("*_test.go")
+	if err != nil {
+		t.Fatalf("Glob test files: %v", err)
+	}
+	for _, f := range files {
+		src, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatalf("ReadFile %s: %v", f, err)
+		}
+		if lines := strings.Count(string(src), "\n"); lines >= maxTestFileLines {
+			t.Errorf("%s has %d lines; must be < %d — split it by concern", f, lines, maxTestFileLines)
+		}
+	}
+}
