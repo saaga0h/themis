@@ -13,13 +13,7 @@ import (
 // AgentConfig holds per-reviewer model assignments.
 // Valid values: "haiku", "sonnet", "opus", "skip".
 type AgentConfig struct {
-	Security     string `yaml:"security"`
-	Architecture string `yaml:"architecture"`
-	Complexity   string `yaml:"complexity"`
-	Conventions  string `yaml:"conventions"`
-	Coverage     string `yaml:"coverage"`
-	Numerical    string `yaml:"numerical"`
-	Depth        string `yaml:"depth"`
+	Security string `yaml:"security"`
 }
 
 // ReviewConfig controls the review step.
@@ -50,7 +44,6 @@ type DocsConfig struct {
 
 // BlockingConfig defines what counts as a blocking finding.
 type BlockingConfig struct {
-	Includes []string `yaml:"includes"`
 }
 
 // Profile is the per-project pipeline configuration loaded from .themis/profile.yaml.
@@ -120,19 +113,8 @@ func Save(dir string, p *Profile) error {
 }
 
 func validate(p *Profile) error {
-	agents := map[string]string{
-		"security":     p.Review.Agents.Security,
-		"architecture": p.Review.Agents.Architecture,
-		"complexity":   p.Review.Agents.Complexity,
-		"conventions":  p.Review.Agents.Conventions,
-		"coverage":     p.Review.Agents.Coverage,
-		"numerical":    p.Review.Agents.Numerical,
-		"depth":        p.Review.Agents.Depth,
-	}
-	for name, model := range agents {
-		if !validModels[model] {
-			return fmt.Errorf("invalid model %q for review agent %q (must be haiku, sonnet, opus, or skip)", model, name)
-		}
+	if !validModels[p.Review.Agents.Security] {
+		return fmt.Errorf("invalid model %q for review agent %q (must be haiku, sonnet, opus, or skip)", p.Review.Agents.Security, "security")
 	}
 	if !validRound3Values[p.Review.Round3] {
 		return fmt.Errorf("invalid round3 value %q (must be auto, always, or never)", p.Review.Round3)
@@ -145,24 +127,6 @@ func applyDefaults(p *Profile) {
 	a := &p.Review.Agents
 	if a.Security == "" {
 		a.Security = d.Review.Agents.Security
-	}
-	if a.Architecture == "" {
-		a.Architecture = d.Review.Agents.Architecture
-	}
-	if a.Complexity == "" {
-		a.Complexity = d.Review.Agents.Complexity
-	}
-	if a.Conventions == "" {
-		a.Conventions = d.Review.Agents.Conventions
-	}
-	if a.Coverage == "" {
-		a.Coverage = d.Review.Agents.Coverage
-	}
-	if a.Numerical == "" {
-		a.Numerical = d.Review.Agents.Numerical
-	}
-	if a.Depth == "" {
-		a.Depth = d.Review.Agents.Depth
 	}
 	if p.Review.Round3 == "" {
 		p.Review.Round3 = d.Review.Round3
@@ -187,13 +151,7 @@ func defaults() *Profile {
 	return &Profile{
 		Review: ReviewConfig{
 			Agents: AgentConfig{
-				Security:     "sonnet",
-				Architecture: "sonnet",
-				Complexity:   "haiku",
-				Conventions:  "haiku",
-				Coverage:     "haiku",
-				Numerical:    "sonnet",
-				Depth:        "sonnet",
+				Security: "sonnet",
 			},
 			Round3: "auto",
 		},
@@ -203,14 +161,6 @@ func defaults() *Profile {
 		},
 		Refactor: RefactorConfig{Enabled: boolPtr(true)},
 		Docs:     DocsConfig{Enabled: boolPtr(true)},
-		Blocking: BlockingConfig{
-			Includes: []string{
-				"security",
-				"ac-coverage",
-				"compile-failure",
-				"data-loss",
-				"abstraction-boundary",
-			},
-		},
+		Blocking: BlockingConfig{},
 	}
 }

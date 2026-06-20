@@ -97,10 +97,10 @@ placeholder lacks a corresponding arg (prevents silent empty substitutions) or i
 any arg lacks a corresponding placeholder (catches caller-side typos).
 ### Project Profile (`internal/profile/`)
 
-Per-project YAML configuration at `.themis/profile.yaml`. Controls model
-assignments per review agent, round-3 gate behaviour, test-fix attempt limits,
-and whether docs and refactor steps are enabled. `Load(dir string) (*Profile, error)`
-returns sensible defaults (sonnet/haiku mix, round3=auto, 3 test-fix attempts,
+Per-project YAML configuration at `.themis/profile.yaml`. Controls the model
+assignment for the security review agent, round-3 gate behaviour, test-fix attempt
+limits, and whether docs and refactor steps are enabled. `Load(dir string) (*Profile, error)`
+returns sensible defaults (security=sonnet, round3=auto, 3 test-fix attempts,
 both steps enabled) when the file is absent. Uses `yaml.v3` with `KnownFields(true)`
 strict mode and validates model names and round3 values at load time.
 ### Agent Invoker (`internal/agent/`)

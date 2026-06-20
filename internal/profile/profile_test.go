@@ -3,12 +3,13 @@ package profile
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
 // --- Load on missing file returns default ---
 
-func TestLoadMissingFileReturnsDefaults(t *testing.T) {
+func TestLoad_MissingFile_ReturnsDefaults(t *testing.T) {
 	dir := t.TempDir()
 	p, err := Load(dir)
 	if err != nil {
@@ -18,24 +19,9 @@ func TestLoadMissingFileReturnsDefaults(t *testing.T) {
 		t.Fatal("expected non-nil default profile")
 	}
 
-	// Default review agents: sonnet/haiku mix
+	// Default review agents
 	if p.Review.Agents.Security != "sonnet" {
 		t.Errorf("default security agent: got %q, want %q", p.Review.Agents.Security, "sonnet")
-	}
-	if p.Review.Agents.Architecture != "sonnet" {
-		t.Errorf("default architecture agent: got %q, want %q", p.Review.Agents.Architecture, "sonnet")
-	}
-	if p.Review.Agents.Complexity != "haiku" {
-		t.Errorf("default complexity agent: got %q, want %q", p.Review.Agents.Complexity, "haiku")
-	}
-	if p.Review.Agents.Conventions != "haiku" {
-		t.Errorf("default conventions agent: got %q, want %q", p.Review.Agents.Conventions, "haiku")
-	}
-	if p.Review.Agents.Coverage != "haiku" {
-		t.Errorf("default coverage agent: got %q, want %q", p.Review.Agents.Coverage, "haiku")
-	}
-	if p.Review.Agents.Depth != "sonnet" {
-		t.Errorf("default depth agent: got %q, want %q", p.Review.Agents.Depth, "sonnet")
 	}
 
 	// Default round3: auto
@@ -59,18 +45,12 @@ func TestLoadMissingFileReturnsDefaults(t *testing.T) {
 
 // --- Load a valid profile file ---
 
-func TestLoadValidProfile(t *testing.T) {
+func TestLoad_ValidProfile(t *testing.T) {
 	dir := t.TempDir()
 	content := `
 review:
   agents:
     security: opus
-    architecture: sonnet
-    complexity: haiku
-    conventions: haiku
-    coverage: haiku
-    numerical: skip
-    depth: sonnet
   round3: always
   round3_surfaces:
     - auth
@@ -86,11 +66,6 @@ refactor:
 docs:
   enabled: true
   skip_tiers: [3]
-
-blocking:
-  includes:
-    - security
-    - compile-failure
 `
 	writeProfile(t, dir, content)
 
@@ -101,9 +76,6 @@ blocking:
 
 	if p.Review.Agents.Security != "opus" {
 		t.Errorf("security agent: got %q, want opus", p.Review.Agents.Security)
-	}
-	if p.Review.Agents.Numerical != "skip" {
-		t.Errorf("numerical agent: got %q, want skip", p.Review.Agents.Numerical)
 	}
 	if p.Review.Round3 != "always" {
 		t.Errorf("round3: got %q, want always", p.Review.Round3)
@@ -117,32 +89,29 @@ blocking:
 	if p.Refactor.Enabled == nil || *p.Refactor.Enabled {
 		t.Error("refactor.enabled: got true, want false")
 	}
-	if len(p.Blocking.Includes) != 2 {
-		t.Errorf("blocking.includes: got %d items, want 2", len(p.Blocking.Includes))
-	}
 }
 
 // --- skip agent ---
 
-func TestLoadSkipAgent(t *testing.T) {
+func TestLoad_SkipAgent(t *testing.T) {
 	dir := t.TempDir()
 	writeProfile(t, dir, `
 review:
   agents:
-    numerical: skip
+    security: skip
 `)
 	p, err := Load(dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if p.Review.Agents.Numerical != "skip" {
-		t.Errorf("expected numerical agent to be skip, got %q", p.Review.Agents.Numerical)
+	if p.Review.Agents.Security != "skip" {
+		t.Errorf("expected security agent to be skip, got %q", p.Review.Agents.Security)
 	}
 }
 
 // --- Model override ---
 
-func TestLoadModelOverride(t *testing.T) {
+func TestLoad_ModelOverride(t *testing.T) {
 	for _, model := range []string{"haiku", "sonnet", "opus"} {
 		dir := t.TempDir()
 		writeProfile(t, dir, "review:\n  agents:\n    security: "+model+"\n")
@@ -158,7 +127,7 @@ func TestLoadModelOverride(t *testing.T) {
 
 // --- round3 values ---
 
-func TestLoadRound3Values(t *testing.T) {
+func TestLoad_Round3Values(t *testing.T) {
 	for _, r3 := range []string{"auto", "always", "never"} {
 		dir := t.TempDir()
 		writeProfile(t, dir, "review:\n  round3: "+r3+"\n")
@@ -174,7 +143,7 @@ func TestLoadRound3Values(t *testing.T) {
 
 // --- Invalid YAML ---
 
-func TestLoadInvalidYAMLReturnsError(t *testing.T) {
+func TestLoad_InvalidYAML_ReturnsError(t *testing.T) {
 	dir := t.TempDir()
 	writeProfile(t, dir, "review: [not a map\n")
 	_, err := Load(dir)
@@ -183,7 +152,7 @@ func TestLoadInvalidYAMLReturnsError(t *testing.T) {
 	}
 }
 
-func TestLoadInvalidModelNameReturnsError(t *testing.T) {
+func TestLoad_InvalidModelName_ReturnsError(t *testing.T) {
 	dir := t.TempDir()
 	writeProfile(t, dir, "review:\n  agents:\n    security: gpt4\n")
 	_, err := Load(dir)
@@ -192,7 +161,7 @@ func TestLoadInvalidModelNameReturnsError(t *testing.T) {
 	}
 }
 
-func TestLoadInvalidRound3ValueReturnsError(t *testing.T) {
+func TestLoad_InvalidRound3Value_ReturnsError(t *testing.T) {
 	dir := t.TempDir()
 	writeProfile(t, dir, "review:\n  round3: maybe\n")
 	_, err := Load(dir)
@@ -201,7 +170,7 @@ func TestLoadInvalidRound3ValueReturnsError(t *testing.T) {
 	}
 }
 
-func TestLoadPartialProfileEnabledDefaultsToTrue(t *testing.T) {
+func TestLoad_PartialProfile_EnabledDefaultsToTrue(t *testing.T) {
 	// A profile that has a refactor/docs section but omits enabled should default to true.
 	dir := t.TempDir()
 	writeProfile(t, dir, "refactor: {}\ndocs: {}\n")
@@ -217,12 +186,51 @@ func TestLoadPartialProfileEnabledDefaultsToTrue(t *testing.T) {
 	}
 }
 
-func TestLoadUnknownFieldReturnsError(t *testing.T) {
+func TestLoad_UnknownField_ReturnsError(t *testing.T) {
 	dir := t.TempDir()
 	writeProfile(t, dir, "unknown_field: true\n")
 	_, err := Load(dir)
 	if err == nil {
 		t.Error("expected error for unknown field, got nil")
+	}
+}
+
+// --- Schema shape: removed fields must not exist ---
+
+func TestAgentConfig_HasNoPerReviewerModelFields(t *testing.T) {
+	agentType := reflect.TypeOf(AgentConfig{})
+	for _, field := range []string{"Architecture", "Complexity", "Conventions", "Coverage", "Numerical", "Depth"} {
+		if _, ok := agentType.FieldByName(field); ok {
+			t.Errorf("AgentConfig must not have field %q", field)
+		}
+	}
+}
+
+func TestLoad_RejectsPerReviewerModelFields(t *testing.T) {
+	for _, yamlKey := range []string{"architecture", "complexity", "conventions", "coverage", "numerical", "depth"} {
+		t.Run(yamlKey, func(t *testing.T) {
+			dir := t.TempDir()
+			writeProfile(t, dir, "review:\n  agents:\n    "+yamlKey+": sonnet\n")
+			_, err := Load(dir)
+			if err == nil {
+				t.Errorf("Load with removed agent field %q: expected error, got nil", yamlKey)
+			}
+		})
+	}
+}
+
+func TestBlockingConfig_HasNoIncludesField(t *testing.T) {
+	if _, ok := reflect.TypeOf(BlockingConfig{}).FieldByName("Includes"); ok {
+		t.Error(`BlockingConfig must not have field "Includes"`)
+	}
+}
+
+func TestLoad_BlockingIncludes_ReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	writeProfile(t, dir, "blocking:\n  includes:\n    - security\n")
+	_, err := Load(dir)
+	if err == nil {
+		t.Error("Load with blocking.includes: expected error (removed field), got nil")
 	}
 }
 
@@ -234,12 +242,6 @@ func TestRoundTrip(t *testing.T) {
 review:
   agents:
     security: opus
-    architecture: sonnet
-    complexity: haiku
-    conventions: haiku
-    coverage: haiku
-    numerical: skip
-    depth: sonnet
   round3: auto
   round3_surfaces:
     - auth
@@ -254,10 +256,6 @@ refactor:
 docs:
   enabled: true
   skip_tiers: []
-
-blocking:
-  includes:
-    - security
 `
 	writeProfile(t, dir, content)
 
@@ -287,6 +285,38 @@ blocking:
 	}
 	if p1.Refactor.Enabled == nil || p2.Refactor.Enabled == nil || *p2.Refactor.Enabled != *p1.Refactor.Enabled {
 		t.Errorf("round-trip refactor.enabled mismatch")
+	}
+}
+
+// --- Save error paths ---
+
+func TestSave_MkdirAllFailure_ReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	// Place a file at the path where MkdirAll would create a directory.
+	themisPath := filepath.Join(dir, ".themis")
+	if err := os.WriteFile(themisPath, []byte("blocker"), 0o600); err != nil {
+		t.Fatalf("setup WriteFile: %v", err)
+	}
+	err := Save(dir, defaults())
+	if err == nil {
+		t.Error("Save: expected error when .themis path is a file, got nil")
+	}
+}
+
+func TestSave_WriteFileFailure_ReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	themisDir := filepath.Join(dir, ".themis")
+	if err := os.MkdirAll(themisDir, 0o700); err != nil {
+		t.Fatalf("setup MkdirAll: %v", err)
+	}
+	// Make the directory read-only so WriteFile inside it fails.
+	if err := os.Chmod(themisDir, 0o500); err != nil {
+		t.Fatalf("setup Chmod: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(themisDir, 0o700) })
+	err := Save(dir, defaults())
+	if err == nil {
+		t.Error("Save: expected error when .themis directory is not writable, got nil")
 	}
 }
 

@@ -1536,6 +1536,36 @@ func TestRunnerGo_LineCountUnder500(t *testing.T) {
 	}
 }
 
+// TestModelForStep_AllSteps verifies that modelForStep returns ReviewModel for
+// StepReview and ImplementModel for every other pipeline step.
+func TestModelForStep_AllSteps(t *testing.T) {
+	prof := ProfileData{
+		ImplementModel: "haiku",
+		ReviewModel:    "opus",
+	}
+	cases := []struct {
+		step pipeline.Step
+		want string
+	}{
+		{pipeline.StepFetch, "haiku"},
+		{pipeline.StepScan, "haiku"},
+		{pipeline.StepBranch, "haiku"},
+		{pipeline.StepTestRed, "haiku"},
+		{pipeline.StepImplement, "haiku"},
+		{pipeline.StepRefactor, "haiku"},
+		{pipeline.StepReview, "opus"},
+		{pipeline.StepFix, "haiku"},
+		{pipeline.StepDocs, "haiku"},
+		{pipeline.StepShip, "haiku"},
+	}
+	for _, tc := range cases {
+		got := modelForStep(tc.step, prof)
+		if got != tc.want {
+			t.Errorf("modelForStep(%v): got %q, want %q", tc.step, got, tc.want)
+		}
+	}
+}
+
 // TestRunner_UsesProfileLoaderFromConfig starts the pipeline at StepTestRed and
 // injects a ProfileLoader stub that returns a known Review model name
 // ("stub-model"). It then verifies that the agent is invoked with that model
