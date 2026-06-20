@@ -22,6 +22,7 @@ import (
 
 	"github.com/saaga0h/themis/internal/agent"
 	"github.com/saaga0h/themis/internal/pipeline"
+	"github.com/saaga0h/themis/internal/review"
 	"github.com/saaga0h/themis/internal/tracker"
 )
 
@@ -273,13 +274,13 @@ func logConfig(t *testing.T, buf *bytes.Buffer, w *stubIssueWriter, inv agent.In
 }
 
 // writeReviewResults marshals findings to .themis/review-results.json in workDir.
-func writeReviewResults(t *testing.T, workDir string, findings []ReviewFinding) {
+func writeReviewResults(t *testing.T, workDir string, findings []review.ReviewFinding) {
 	t.Helper()
 	themisDir := filepath.Join(workDir, ".themis")
 	if err := os.MkdirAll(themisDir, 0o755); err != nil {
 		t.Fatalf("mkdir .themis: %v", err)
 	}
-	data, err := json.Marshal(ReviewResults{Findings: findings})
+	data, err := json.Marshal(review.ReviewResults{Findings: findings})
 	if err != nil {
 		t.Fatalf("marshal review results: %v", err)
 	}
@@ -1453,6 +1454,88 @@ func TestConfig_HasProfileLoaderField(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// AC2–AC4: structural properties of runner.go (source-reading tests)
+// ---------------------------------------------------------------------------
+
+// TestRunner_BlockingThresholdNotDefinedInRunnerPackage asserts that the
+// blockingThreshold constant has been moved out of runner.go into internal/review/.
+// FAILS NOW: runner.go still contains "const blockingThreshold".
+func TestRunner_BlockingThresholdNotDefinedInRunnerPackage(t *testing.T) {
+	src, err := os.ReadFile("runner.go")
+	if err != nil {
+		t.Fatalf("ReadFile runner.go: %v", err)
+	}
+	if strings.Contains(string(src), "const blockingThreshold") {
+		t.Error("runner.go must not define const blockingThreshold — it belongs in internal/review/")
+	}
+}
+
+// TestRunner_NoReviewTypeDeclarations_InRunnerGo asserts that ReviewFinding and
+// ReviewResults have been extracted from runner.go.
+// FAILS NOW: both types are declared in runner.go.
+func TestRunner_NoReviewTypeDeclarations_InRunnerGo(t *testing.T) {
+	src, err := os.ReadFile("runner.go")
+	if err != nil {
+		t.Fatalf("ReadFile runner.go: %v", err)
+	}
+	content := string(src)
+	if strings.Contains(content, "type ReviewFinding") {
+		t.Error("runner.go must not declare type ReviewFinding — it belongs in internal/review/")
+	}
+	if strings.Contains(content, "type ReviewResults") {
+		t.Error("runner.go must not declare type ReviewResults — it belongs in internal/review/")
+	}
+}
+
+// TestRunner_NoReviewFuncDeclarations_InRunnerGo asserts that the four
+// review-results functions have been extracted from runner.go.
+// FAILS NOW: all four are still defined in runner.go.
+func TestRunner_NoReviewFuncDeclarations_InRunnerGo(t *testing.T) {
+	src, err := os.ReadFile("runner.go")
+	if err != nil {
+		t.Fatalf("ReadFile runner.go: %v", err)
+	}
+	content := string(src)
+	for _, fn := range []string{
+		"func readReviewResults",
+		"func countFindingsBySeverity",
+		"func determineBlockingStatus",
+		"func formatBlockingFindings",
+	} {
+		if strings.Contains(content, fn) {
+			t.Errorf("runner.go must not define %s — it belongs in internal/review/", fn)
+		}
+	}
+}
+
+// TestRunner_ImportsList_ContainsInternalReview asserts that runner.go imports
+// the internal/review package after extraction.
+// FAILS NOW: the import is not present.
+func TestRunner_ImportsList_ContainsInternalReview(t *testing.T) {
+	src, err := os.ReadFile("runner.go")
+	if err != nil {
+		t.Fatalf("ReadFile runner.go: %v", err)
+	}
+	if !strings.Contains(string(src), `"github.com/saaga0h/themis/internal/review"`) {
+		t.Error(`runner.go must import "github.com/saaga0h/themis/internal/review" after extraction`)
+	}
+}
+
+// TestRunner_RunnerGoIsUnder500Lines asserts that runner.go has fewer than 500
+// lines after the review-results extraction.
+// FAILS NOW: runner.go is over 500 lines.
+func TestRunnerGo_LineCountUnder500(t *testing.T) {
+	src, err := os.ReadFile("runner.go")
+	if err != nil {
+		t.Fatalf("ReadFile runner.go: %v", err)
+	}
+	lines := strings.Count(string(src), "\n")
+	if lines >= 500 {
+		t.Errorf("runner.go has %d lines; must be < 500 after extraction", lines)
+	}
+}
+
 // TestRunner_UsesProfileLoaderFromConfig starts the pipeline at StepTestRed and
 // injects a ProfileLoader stub that returns a known Review model name
 // ("stub-model"). It then verifies that the agent is invoked with that model
@@ -1465,7 +1548,7 @@ func TestRunner_UsesProfileLoaderFromConfig(t *testing.T) {
 	saveStateAt(t, workDir, pipeline.StepTestRed)
 
 	// ReviewResults needed to mark review non-blocking after the Review step.
-	writeReviewResults(t, workDir, []ReviewFinding{})
+	writeReviewResults(t, workDir, []review.ReviewFinding{})
 
 	const stubModel = "stub-model-for-review"
 

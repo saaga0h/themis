@@ -10,6 +10,7 @@ import (
 	"github.com/saaga0h/themis/internal/checkpoint"
 	"github.com/saaga0h/themis/internal/git"
 	"github.com/saaga0h/themis/internal/profile"
+	"github.com/saaga0h/themis/internal/review"
 	"github.com/saaga0h/themis/internal/runner"
 	"github.com/saaga0h/themis/internal/tracker"
 )
@@ -141,17 +142,18 @@ func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir strin
 		return runner.Config{}, fmt.Errorf("creating checkpoint: %w", err)
 	}
 	return runner.Config{
-		WorkDir:       workDir,
-		IssueNumber:   issueNumber,
-		Fetcher:       fetcher,
-		Invoker:       &agent.ClaudeCodeInvoker{},
-		IssueWriter:   issueWriter,
-		TemplateDir:   tmplDir,
-		CheckpointFn:  checkpointFn,
-		CodeVersion:   version,
-		MaxTurns:      maxTurns,
-		Git:           &cmdGitOps{},
-		ProfileLoader: profileLoader,
+		WorkDir:             workDir,
+		IssueNumber:         issueNumber,
+		Fetcher:             fetcher,
+		Invoker:             &agent.ClaudeCodeInvoker{},
+		IssueWriter:         issueWriter,
+		TemplateDir:         tmplDir,
+		CheckpointFn:        checkpointFn,
+		CodeVersion:         version,
+		MaxTurns:            maxTurns,
+		Git:                 &cmdGitOps{},
+		ProfileLoader:       profileLoader,
+		ReviewResultsLoader: review.ReadReviewResults,
 	}, nil
 }
 

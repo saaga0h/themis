@@ -26,6 +26,7 @@ scope by matching tags here, then load only those paths.
 | docs/subsystems/profile/README.md | 2 | Per-project config — `.themis/profile.yaml` schema, defaults, validation | profile,config,yaml,model-assignment,defaults,validation |
 | docs/subsystems/git/README.md | 2 | Context-aware git helpers and Gitea config inference from origin remote | git,subprocess,branch,commit,remote,gitea-infer,merge-base |
 | docs/subsystems/prompt/README.md | 2 | `{{KEY}}` template substitution with bidirectional validation | prompt,template,substitution,placeholder,validation |
+| docs/subsystems/review/README.md | 2 | Review-results domain types, blocking threshold, pure analysis functions, `ReadReviewResults` I/O | review,findings,blocking,severity,review-results,threshold |
 
 ## Notes
 

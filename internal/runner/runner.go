@@ -2,12 +2,10 @@ package runner
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -15,80 +13,13 @@ import (
 	"github.com/saaga0h/themis/internal/agent"
 	"github.com/saaga0h/themis/internal/pipeline"
 	"github.com/saaga0h/themis/internal/prompt"
+	"github.com/saaga0h/themis/internal/review"
 	"github.com/saaga0h/themis/internal/tracker"
 )
-
-const blockingThreshold = "medium"
 
 // DefaultMaxTurns is the default per-agent turn limit used when no --max-turns
 // value is supplied on the CLI. It is the single source of truth for the default.
 const DefaultMaxTurns = 250
-
-// ReviewFinding is a single finding produced by the review step.
-type ReviewFinding struct {
-	Severity    string `json:"severity"`
-	Description string `json:"description"`
-	File        string `json:"file,omitempty"`
-	Line        int    `json:"line,omitempty"`
-}
-
-// ReviewResults holds the structured output written by the review step agent.
-type ReviewResults struct {
-	Findings []ReviewFinding `json:"findings"`
-}
-
-func readReviewResults(ctx context.Context, workDir string) ([]ReviewFinding, bool) {
-	path := filepath.Join(workDir, ".themis", "review-results.json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, false
-	}
-	var rr ReviewResults
-	if err := json.Unmarshal(data, &rr); err != nil {
-		return nil, false
-	}
-	return rr.Findings, true
-}
-
-func countFindingsBySeverity(findings []ReviewFinding) (blocking, nonBlocking int) {
-	for _, f := range findings {
-		switch f.Severity {
-		case "critical", "high", blockingThreshold:
-			blocking++
-		default:
-			nonBlocking++
-		}
-	}
-	return
-}
-
-func determineBlockingStatus(findings []ReviewFinding) bool {
-	blocking, _ := countFindingsBySeverity(findings)
-	return blocking > 0
-}
-
-// formatBlockingFindings produces a human-readable list ordered critical → high → medium, omitting low.
-func formatBlockingFindings(findings []ReviewFinding) string {
-	order := []string{"critical", "high", blockingThreshold}
-	var sb strings.Builder
-	for _, sev := range order {
-		for _, f := range findings {
-			if f.Severity != sev {
-				continue
-			}
-			fmt.Fprintf(&sb, "- %s: %s", strings.ToUpper(sev), f.Description)
-			if f.File != "" {
-				fmt.Fprintf(&sb, " (%s", f.File)
-				if f.Line > 0 {
-					fmt.Fprintf(&sb, ":%d", f.Line)
-				}
-				sb.WriteString(")")
-			}
-			sb.WriteString("\n")
-		}
-	}
-	return sb.String()
-}
 
 // ProfileData holds the subset of profile fields the runner needs.
 // Concrete values are injected via Config.ProfileLoader; cmd/themis/ translates
@@ -129,19 +60,20 @@ type PROptions struct {
 
 // Config holds all dependencies for a pipeline run.
 type Config struct {
-	WorkDir       string
-	IssueNumber   int
-	Fetcher       tracker.Fetcher
-	Invoker       agent.Invoker
-	IssueWriter   IssueWriter
-	TemplateDir   string
-	CheckpointFn  func(ctx context.Context, step pipeline.Step, workDir string) error
-	TestACKey     string
-	Git           GitOps
-	ProfileLoader func(dir string) (ProfileData, error)
-	Logger        io.Writer
-	CodeVersion   string
-	MaxTurns      int
+	WorkDir              string
+	IssueNumber          int
+	Fetcher              tracker.Fetcher
+	Invoker              agent.Invoker
+	IssueWriter          IssueWriter
+	TemplateDir          string
+	CheckpointFn         func(ctx context.Context, step pipeline.Step, workDir string) error
+	TestACKey            string
+	Git                  GitOps
+	ProfileLoader        func(dir string) (ProfileData, error)
+	ReviewResultsLoader  func(ctx context.Context, workDir string) ([]review.ReviewFinding, bool)
+	Logger               io.Writer
+	CodeVersion          string
+	MaxTurns             int
 }
 
 // Result holds the outcome of a successful pipeline run.
@@ -167,35 +99,49 @@ var templateFile = map[pipeline.Step]string{
 	pipeline.StepDocs:      "update-docs.md",
 }
 
+// validateResumedState checks the loaded state against cfg and returns the
+// state to resume from, or nil to signal a fresh start.
+func validateResumedState(ctx context.Context, state *pipeline.PipelineState, cfg Config, log io.Writer) *pipeline.PipelineState {
+	if state == nil {
+		return nil
+	}
+	if state.IssueNumber != cfg.IssueNumber {
+		fmt.Fprintf(log, "warning: state file is for issue #%d, not #%d — starting fresh\n", state.IssueNumber, cfg.IssueNumber)
+		return nil
+	}
+	if cfg.CodeVersion != "" && state.CodeVersion != "" && state.CodeVersion != cfg.CodeVersion {
+		fmt.Fprintf(log, "warning: state was created by version %s, current version is %s\n", state.CodeVersion, cfg.CodeVersion)
+	}
+	if state.CurrentStep > pipeline.StepBranch && cfg.Git != nil {
+		if branch, brErr := cfg.Git.CurrentBranch(ctx, cfg.WorkDir); brErr == nil {
+			if !strings.Contains(branch, strconv.Itoa(cfg.IssueNumber)) {
+				fmt.Fprintf(log, "warning: current branch %q does not contain issue number %d\n", branch, cfg.IssueNumber)
+			}
+		}
+	}
+	fmt.Fprintf(log, "resuming from step %s\n", state.CurrentStep.String())
+	return state
+}
+
 // Run executes the full pipeline for the given configuration.
 func Run(ctx context.Context, cfg Config) (*Result, error) {
 	log := cfg.Logger
 	if log == nil {
 		log = os.Stderr
 	}
+	// Normalize ReviewResultsLoader once so step-processing code never needs to
+	// nil-check it. cmd/themis injects review.ReadReviewResults at construction
+	// time; this default covers callers (e.g. tests) that omit the field.
+	if cfg.ReviewResultsLoader == nil {
+		cfg.ReviewResultsLoader = review.ReadReviewResults
+	}
 
-	state, err := pipeline.LoadState(cfg.WorkDir)
+	loaded, err := pipeline.LoadState(cfg.WorkDir)
 	if err != nil {
 		return nil, fmt.Errorf("loading state: %w", err)
 	}
-	if state != nil {
-		if state.IssueNumber != cfg.IssueNumber {
-			fmt.Fprintf(log, "warning: state file is for issue #%d, not #%d — starting fresh\n", state.IssueNumber, cfg.IssueNumber)
-			state = nil
-		} else {
-			if cfg.CodeVersion != "" && state.CodeVersion != "" && state.CodeVersion != cfg.CodeVersion {
-				fmt.Fprintf(log, "warning: state was created by version %s, current version is %s\n", state.CodeVersion, cfg.CodeVersion)
-			}
-			if state.CurrentStep > pipeline.StepBranch && cfg.Git != nil {
-				if branch, brErr := cfg.Git.CurrentBranch(ctx, cfg.WorkDir); brErr == nil {
-					if !strings.Contains(branch, strconv.Itoa(cfg.IssueNumber)) {
-						fmt.Fprintf(log, "warning: current branch %q does not contain issue number %d\n", branch, cfg.IssueNumber)
-					}
-				}
-			}
-			fmt.Fprintf(log, "resuming from step %s\n", state.CurrentStep.String())
-		}
-	}
+
+	state := validateResumedState(ctx, loaded, cfg, log)
 	if state == nil {
 		fmt.Fprintf(log, "fresh start\n")
 		if rmErr := os.Remove(filepath.Join(cfg.WorkDir, ".themis", "review-results.json")); rmErr != nil && !os.IsNotExist(rmErr) {
@@ -270,25 +216,8 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 
 		// Branch step: create issue branch, or checkout if it already exists.
 		if step == pipeline.StepBranch {
-			branchName := fmt.Sprintf("issue/%d-%s", cfg.IssueNumber, slugify(issue.Title))
-			if cfg.Git != nil {
-				if err := cfg.Git.CheckoutNewBranch(ctx, cfg.WorkDir, branchName); err != nil {
-					if checkoutErr := cfg.Git.Checkout(ctx, cfg.WorkDir, branchName); checkoutErr != nil {
-						return nil, fmt.Errorf("branch %s: create failed (%v), checkout failed (%v)", branchName, err, checkoutErr)
-					}
-					fmt.Fprintf(log, "note: branch %s already exists, checked out existing\n", branchName)
-				}
-			}
-			// Seed review-results.json with empty findings so that Review is
-			// non-blocking unless the review agent itself writes blocking findings.
-			// This only runs on fresh pipeline starts (resumed runs skip Branch).
-			themisDir := filepath.Join(cfg.WorkDir, ".themis")
-			if mkErr := os.MkdirAll(themisDir, 0o755); mkErr != nil {
-				return nil, fmt.Errorf("creating .themis directory: %w", mkErr)
-			}
-			if wfErr := os.WriteFile(filepath.Join(themisDir, "review-results.json"),
-				[]byte(`{"findings":[]}`), 0o644); wfErr != nil {
-				return nil, fmt.Errorf("seeding review-results.json: %w", wfErr)
+			if err := runBranchStep(ctx, cfg, issue, log); err != nil {
+				return nil, err
 			}
 			next, err := state.Advance(pipeline.StepResult{Success: true})
 			if err != nil {
@@ -304,85 +233,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 
 		// Ship step: push branch, invoke agent for PR body, create PR.
 		if step == pipeline.StepShip {
-			var branch string
-			var branchErr error
-			if cfg.Git != nil {
-				branch, branchErr = cfg.Git.CurrentBranch(ctx, cfg.WorkDir)
-				if branchErr != nil {
-					branch = "main"
-				}
-			}
-			acs := tracker.ParseCheckboxes(issue.Body)
-			base := issue.Ref
-			if base == "" {
-				base = "main"
-			}
-
-			if cfg.Git != nil {
-				if branchErr == nil && branch == base {
-					return nil, fmt.Errorf("current branch is the base branch — no issue branch was created")
-				}
-				if n, countErr := cfg.Git.CommitsAheadOfBase(ctx, cfg.WorkDir, base); countErr == nil && n == 0 {
-					return nil, fmt.Errorf("no commits on branch %s — nothing to ship", branch)
-				}
-				if err := cfg.Git.PushBranch(ctx, cfg.WorkDir, branch); err != nil {
-					return nil, fmt.Errorf("pushing branch %s: %w", branch, err)
-				}
-			}
-
-			prBody := buildPRBody(cfg.IssueNumber, issue.Title, acs)
-
-			shipTmplPath := filepath.Join(cfg.TemplateDir, "ship.md")
-			shipTmplContent, readErr := os.ReadFile(shipTmplPath)
-			if readErr != nil {
-				fmt.Fprintf(log, "warning: ship template read failed: %v — using fallback PR body\n", readErr)
-			} else {
-				shipArgs := buildTemplateArgs(ctx, cfg, issue, branch, state.ReviewCycle, lastBlockingFindings)
-				filteredArgs := filterArgs(string(shipTmplContent), shipArgs)
-				substituted, subErr := prompt.Substitute(string(shipTmplContent), filteredArgs)
-				if subErr != nil {
-					fmt.Fprintf(log, "warning: ship template substitution failed: %v — using fallback PR body\n", subErr)
-				} else {
-					model := modelForStep(step, prof)
-					fmt.Fprintf(log, "%s: invoking agent model=%s maxTurns=%d\n", step, model, cfg.MaxTurns)
-					shipOpts := agent.InvokeOptions{
-						Prompt:       substituted,
-						Model:        model,
-						MaxTurns:     cfg.MaxTurns,
-						WorkDir:      cfg.WorkDir,
-						IssueNumber:  cfg.IssueNumber,
-						PipelineStep: pipeline.StepShip.String(),
-					}
-					if cfg.Git != nil {
-						shipOpts.CommitCountFn = cfg.Git.CommitSHAs
-					}
-					invokeResult, invokeErr := cfg.Invoker.Invoke(ctx, shipOpts)
-					if invokeErr != nil {
-						fmt.Fprintf(log, "warning: ship agent invocation failed: %v; falling back to buildPRBody\n", invokeErr)
-					} else if invokeResult.Stdout != "" {
-						prBody = stripCodeFences(invokeResult.Stdout)
-					}
-				}
-			}
-
-			prURL, err := cfg.IssueWriter.CreatePR(ctx, PROptions{
-				Title: fmt.Sprintf("Closes #%d — %s", cfg.IssueNumber, issue.Title),
-				Body:  prBody,
-				Base:  base,
-				Head:  branch,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("creating PR: %w", err)
-			}
-			fmt.Fprintf(log, "%s: PR URL %s\n", step, prURL)
-			if err := pipeline.SaveState(cfg.WorkDir, state); err != nil {
-				return nil, fmt.Errorf("saving final state: %w", err)
-			}
-			if rmErr := os.Remove(filepath.Join(cfg.WorkDir, ".themis", "review-results.json")); rmErr != nil && !os.IsNotExist(rmErr) {
-				fmt.Fprintf(log, "warning: removing review-results.json: %v\n", rmErr)
-			}
-			fmt.Fprintf(log, "%s: done (%dms)\n", step, time.Since(stepStart).Milliseconds())
-			return &Result{PRURL: prURL}, nil
+			return runShipStep(ctx, cfg, issue, state, lastBlockingFindings, prof, stepStart, log)
 		}
 
 		// Agent steps: load template, substitute, invoke, checkpoint.
@@ -453,14 +304,14 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 
 		stepResult := deriveStepResult(ctx, step, invokeResult, cfg)
 		if step == pipeline.StepReview {
-			findings, found := readReviewResults(ctx, cfg.WorkDir)
+			findings, found := cfg.ReviewResultsLoader(ctx, cfg.WorkDir)
 			if !found {
 				fmt.Fprintf(log, "warning: review-results.json not found after review step — treating as blocking\n")
 			} else {
-				blocking, nonBlocking := countFindingsBySeverity(findings)
+				blocking, nonBlocking := review.CountFindingsBySeverity(findings)
 				fmt.Fprintf(log, "%s: review findings: %d blocking, %d non-blocking\n", step, blocking, nonBlocking)
 				if stepResult.BlockingFindings {
-					lastBlockingFindings = formatBlockingFindings(findings)
+					lastBlockingFindings = review.FormatBlockingFindings(findings)
 				}
 			}
 		}
@@ -494,17 +345,6 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 	}
 }
 
-func blockIssue(ctx context.Context, cfg Config, reason error) error {
-	comment := fmt.Sprintf("Pipeline blocked on issue #%d: %v", cfg.IssueNumber, reason)
-	if err := cfg.IssueWriter.Comment(ctx, cfg.IssueNumber, comment); err != nil {
-		return fmt.Errorf("posting block comment: %w", err)
-	}
-	if err := cfg.IssueWriter.AddLabel(ctx, cfg.IssueNumber, "blocked"); err != nil {
-		return fmt.Errorf("adding blocked label: %w", err)
-	}
-	return nil
-}
-
 func deriveStepResult(ctx context.Context, step pipeline.Step, r *agent.InvokeResult, cfg Config) pipeline.StepResult {
 	switch step {
 	case pipeline.StepTestRed:
@@ -526,13 +366,17 @@ func deriveStepResult(ctx context.Context, step pipeline.Step, r *agent.InvokeRe
 		return pipeline.StepResult{Success: false, TestACKey: key}
 
 	case pipeline.StepReview:
-		findings, found := readReviewResults(ctx, cfg.WorkDir)
+		loadResults := cfg.ReviewResultsLoader
+		if loadResults == nil {
+			loadResults = review.ReadReviewResults
+		}
+		findings, found := loadResults(ctx, cfg.WorkDir)
 		if !found {
 			// Missing JSON is the fail-safe: the review step produced no
 			// structured result, so treat it as blocking regardless of stdout.
 			return pipeline.StepResult{Success: false, BlockingFindings: true}
 		}
-		blocking := determineBlockingStatus(findings)
+		blocking := review.DetermineBlockingStatus(findings)
 		return pipeline.StepResult{
 			Success:          !blocking,
 			BlockingFindings: blocking,
@@ -543,141 +387,111 @@ func deriveStepResult(ctx context.Context, step pipeline.Step, r *agent.InvokeRe
 	}
 }
 
-// branchHasTestFiles reports whether the branch's changed-files list (relative to
-// the base) contains at least one Go test file. Used to recognise that TestRed's
-// failing tests are already present on a resumed or rebased branch.
-func branchHasTestFiles(changedFiles string) bool {
-	for _, f := range strings.Split(changedFiles, "\n") {
-		if strings.HasSuffix(strings.TrimSpace(f), "_test.go") {
-			return true
+// runBranchStep creates or checks out the issue branch and seeds
+// .themis/review-results.json with empty findings so the Review step is
+// non-blocking unless the review agent itself writes blocking findings.
+func runBranchStep(ctx context.Context, cfg Config, issue *tracker.IssueData, log io.Writer) error {
+	branchName := fmt.Sprintf("issue/%d-%s", cfg.IssueNumber, slugify(issue.Title))
+	if cfg.Git != nil {
+		if err := cfg.Git.CheckoutNewBranch(ctx, cfg.WorkDir, branchName); err != nil {
+			if checkoutErr := cfg.Git.Checkout(ctx, cfg.WorkDir, branchName); checkoutErr != nil {
+				return fmt.Errorf("branch %s: create failed (%v), checkout failed (%v)", branchName, err, checkoutErr)
+			}
+			fmt.Fprintf(log, "note: branch %s already exists, checked out existing\n", branchName)
 		}
 	}
-	return false
+	themisDir := filepath.Join(cfg.WorkDir, ".themis")
+	if mkErr := os.MkdirAll(themisDir, 0o755); mkErr != nil {
+		return fmt.Errorf("creating .themis directory: %w", mkErr)
+	}
+	if wfErr := os.WriteFile(filepath.Join(themisDir, "review-results.json"),
+		[]byte(`{"findings":[]}`), 0o644); wfErr != nil {
+		return fmt.Errorf("seeding review-results.json: %w", wfErr)
+	}
+	return nil
 }
 
-var placeholderRE = regexp.MustCompile(`\{\{([A-Z0-9_]+)\}\}`)
-
-var conventionalPrefixRE = regexp.MustCompile(`^[0-9a-f]+\s+([a-z]+)[\(:]`)
-
-func pipelineShape(commitLog string) string {
-	if commitLog == "" {
-		return ""
+// runShipStep pushes the branch, invokes the ship agent for a PR description,
+// creates the PR, and returns the Result. It also saves final pipeline state and
+// removes the review-results.json artifact.
+func runShipStep(ctx context.Context, cfg Config, issue *tracker.IssueData, state *pipeline.PipelineState, lastBlockingFindings string, prof ProfileData, stepStart time.Time, log io.Writer) (*Result, error) {
+	var branch string
+	var branchErr error
+	if cfg.Git != nil {
+		branch, branchErr = cfg.Git.CurrentBranch(ctx, cfg.WorkDir)
+		if branchErr != nil {
+			branch = "main"
+		}
 	}
-	seen := make(map[string]bool)
-	var prefixes []string
-	for _, line := range strings.Split(commitLog, "\n") {
-		if m := conventionalPrefixRE.FindStringSubmatch(line); m != nil {
-			p := m[1]
-			if !seen[p] {
-				seen[p] = true
-				prefixes = append(prefixes, p)
+	acs := tracker.ParseCheckboxes(issue.Body)
+	base := issue.Ref
+	if base == "" {
+		base = "main"
+	}
+
+	if cfg.Git != nil {
+		if branchErr == nil && branch == base {
+			return nil, fmt.Errorf("current branch is the base branch — no issue branch was created")
+		}
+		if n, countErr := cfg.Git.CommitsAheadOfBase(ctx, cfg.WorkDir, base); countErr == nil && n == 0 {
+			return nil, fmt.Errorf("no commits on branch %s — nothing to ship", branch)
+		}
+		if err := cfg.Git.PushBranch(ctx, cfg.WorkDir, branch); err != nil {
+			return nil, fmt.Errorf("pushing branch %s: %w", branch, err)
+		}
+	}
+
+	prBody := buildPRBody(cfg.IssueNumber, issue.Title, acs)
+
+	shipTmplPath := filepath.Join(cfg.TemplateDir, "ship.md")
+	shipTmplContent, readErr := os.ReadFile(shipTmplPath)
+	if readErr != nil {
+		fmt.Fprintf(log, "warning: ship template read failed: %v — using fallback PR body\n", readErr)
+	} else {
+		shipArgs := buildTemplateArgs(ctx, cfg, issue, branch, state.ReviewCycle, lastBlockingFindings)
+		filteredArgs := filterArgs(string(shipTmplContent), shipArgs)
+		substituted, subErr := prompt.Substitute(string(shipTmplContent), filteredArgs)
+		if subErr != nil {
+			fmt.Fprintf(log, "warning: ship template substitution failed: %v — using fallback PR body\n", subErr)
+		} else {
+			model := modelForStep(pipeline.StepShip, prof)
+			fmt.Fprintf(log, "%s: invoking agent model=%s maxTurns=%d\n", pipeline.StepShip, model, cfg.MaxTurns)
+			shipOpts := agent.InvokeOptions{
+				Prompt:       substituted,
+				Model:        model,
+				MaxTurns:     cfg.MaxTurns,
+				WorkDir:      cfg.WorkDir,
+				IssueNumber:  cfg.IssueNumber,
+				PipelineStep: pipeline.StepShip.String(),
+			}
+			if cfg.Git != nil {
+				shipOpts.CommitCountFn = cfg.Git.CommitSHAs
+			}
+			invokeResult, invokeErr := cfg.Invoker.Invoke(ctx, shipOpts)
+			if invokeErr != nil {
+				fmt.Fprintf(log, "warning: ship agent invocation failed: %v; falling back to buildPRBody\n", invokeErr)
+			} else if invokeResult.Stdout != "" {
+				prBody = stripCodeFences(invokeResult.Stdout)
 			}
 		}
 	}
-	return strings.Join(prefixes, ", ")
-}
 
-func filterArgs(tmpl string, all map[string]string) map[string]string {
-	out := make(map[string]string)
-	for _, m := range placeholderRE.FindAllStringSubmatch(tmpl, -1) {
-		key := m[1]
-		if v, ok := all[key]; ok {
-			out[key] = v
-		}
+	prURL, err := cfg.IssueWriter.CreatePR(ctx, PROptions{
+		Title: fmt.Sprintf("Closes #%d — %s", cfg.IssueNumber, issue.Title),
+		Body:  prBody,
+		Base:  base,
+		Head:  branch,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating PR: %w", err)
 	}
-	return out
-}
-
-func modelForStep(step pipeline.Step, prof ProfileData) string {
-	switch step {
-	case pipeline.StepReview:
-		return prof.ReviewModel
-	default:
-		return prof.ImplementModel
+	fmt.Fprintf(log, "%s: PR URL %s\n", pipeline.StepShip, prURL)
+	if err := pipeline.SaveState(cfg.WorkDir, state); err != nil {
+		return nil, fmt.Errorf("saving final state: %w", err)
 	}
-}
-
-func buildPRBody(number int, title string, acs []string) string {
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "Closes #%d\n\n", number)
-	fmt.Fprintf(&sb, "## Summary\n\n%s\n\n", title)
-	sb.WriteString("## Acceptance Criteria\n\n")
-	for _, ac := range acs {
-		fmt.Fprintf(&sb, "- %s\n", ac)
+	if rmErr := os.Remove(filepath.Join(cfg.WorkDir, ".themis", "review-results.json")); rmErr != nil && !os.IsNotExist(rmErr) {
+		fmt.Fprintf(log, "warning: removing review-results.json: %v\n", rmErr)
 	}
-	return sb.String()
-}
-
-func buildTemplateArgs(
-	ctx context.Context,
-	cfg Config,
-	issue *tracker.IssueData,
-	branchName string,
-	reviewCycle int,
-	lastBlockingFindings string,
-) map[string]string {
-	acs := tracker.ParseCheckboxes(issue.Body)
-	acList := formatACs(acs)
-	var commitLog string
-	var changedFilesResult string
-	if cfg.Git != nil {
-		commitLog = cfg.Git.BranchCommitLog(ctx, cfg.WorkDir)
-		changedFilesResult = cfg.Git.ChangedFiles(ctx, cfg.WorkDir)
-	}
-	return map[string]string{
-		"ISSUE_NUMBER":        strconv.Itoa(cfg.IssueNumber),
-		"ISSUE_TITLE":         issue.Title,
-		"ACCEPTANCE_CRITERIA": acList,
-		"AC_STATUS":           acList,
-		"BRANCH_NAME":         branchName,
-		"CHANGED_FILES":       changedFilesResult,
-		"REVIEW_CYCLE":        strconv.Itoa(reviewCycle + 1),
-		"BLOCKING_FINDINGS":   lastBlockingFindings,
-		"PIPELINE_SHAPE":      pipelineShape(commitLog),
-		"COMMIT_LOG":          commitLog,
-	}
-}
-
-func formatACs(acs []string) string {
-	if len(acs) == 0 {
-		return ""
-	}
-	var sb strings.Builder
-	for _, ac := range acs {
-		fmt.Fprintf(&sb, "- [ ] %s\n", ac)
-	}
-	return strings.TrimRight(sb.String(), "\n")
-}
-
-// stripCodeFences removes leading/trailing code fence markers from agent output.
-// Claude Code's --print mode sometimes wraps markdown responses in ```...``` blocks.
-func stripCodeFences(s string) string {
-	s = strings.TrimSpace(s)
-	if !strings.HasPrefix(s, "```") {
-		return s
-	}
-	if idx := strings.Index(s, "\n"); idx != -1 {
-		s = s[idx+1:]
-	}
-	s = strings.TrimSpace(s)
-	s = strings.TrimSuffix(s, "```")
-	return strings.TrimSpace(s)
-}
-
-func slugify(s string) string {
-	s = strings.ToLower(s)
-	s = strings.Map(func(r rune) rune {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
-			return r
-		}
-		return '-'
-	}, s)
-	for strings.Contains(s, "--") {
-		s = strings.ReplaceAll(s, "--", "-")
-	}
-	s = strings.Trim(s, "-")
-	if len(s) > 50 {
-		s = s[:50]
-	}
-	return s
+	fmt.Fprintf(log, "%s: done (%dms)\n", pipeline.StepShip, time.Since(stepStart).Milliseconds())
+	return &Result{PRURL: prURL}, nil
 }

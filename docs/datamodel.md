@@ -84,7 +84,7 @@ Appended to `StepHistory` after each step; also returned by `Advance` to drive t
 
 ## `.themis/review-results.json`
 
-Written by the review agent following the `review.md` prompt template. Read by `runner.readReviewResults` after the Review step completes. Encoded as flat JSON, mode `0644`.
+Written by the review agent following the `review.md` prompt template. Read by `cfg.ReviewResultsLoader` (defaulting to `review.ReadReviewResults`) after the Review step completes. Encoded as flat JSON, mode `0644`.
 
 ### `ReviewResults` schema
 
@@ -109,10 +109,10 @@ Written by the review agent following the `review.md` prompt template. Read by `
 |----------|----------|
 | `critical` | yes |
 | `high` | yes |
-| `medium` | yes (`blockingThreshold = "medium"`) |
+| `medium` | yes (`review.BlockingThreshold = "medium"`) |
 | `low` | no |
 
-Any blocking finding (`blocking > 0`) sets `StepResult.BlockingFindings = true`, which causes `Advance` to increment `ReviewCycle` and route to `StepFix` instead of `StepDocs`.
+Any blocking finding (`blocking > 0`) sets `StepResult.BlockingFindings = true`, which causes `Advance` to increment `ReviewCycle` and route to `StepFix` instead of `StepDocs`. Blocking determination is performed by `review.DetermineBlockingStatus` in `internal/review`.
 
 If `review-results.json` is absent after the Review step, the runner treats the outcome as blocking (fail-safe).
 

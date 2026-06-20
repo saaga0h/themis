@@ -42,6 +42,7 @@ internal/
   pipeline/           # Pipeline state machine, step definitions, state persistence
   profile/            # Per-project YAML configuration schema and loader
   prompt/             # {{KEY}} placeholder substitution for template rendering
+  review/             # Review-results types and pure analysis functions
   runner/             # Pipeline orchestration: loads profile, fetches issue, invokes agents
   tracker/            # Fetcher interface and implementations for GitHub/Gitea
 agents/               # Review agent prompt definitions (markdown with YAML front matter)
@@ -95,7 +96,9 @@ at construction time. Tests substitute stubs or fakes for every injected depende
 - `internal/profile/` has no dependencies on other internal packages (leaf package)
 - `internal/prompt/` has no dependencies on other internal packages (leaf package)
 - `internal/runner/` imports domain type packages: `internal/pipeline/`,
-  `internal/prompt/`, `internal/tracker/`. It does NOT import infrastructure
+  `internal/prompt/`, `internal/tracker/`, `internal/review/` (types and pure
+  functions only; `ReadReviewResults` is injected as `Config.ReviewResultsLoader`
+  to avoid coupling runner to filesystem I/O). It does NOT import infrastructure
   packages (`git`, `agent`, `profile`) directly — those capabilities are injected
   via interfaces and function fields on `runner.Config`.
 - `internal/tracker/` has no dependencies on other internal packages (leaf package)
