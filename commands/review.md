@@ -28,6 +28,11 @@ Parse `$ARGUMENTS` for:
 
 If `--last-plan` is specified, find the most recently modified `.md` file in `.claude/plans/` and pass it as scope context to each agent.
 
+> **`--last-plan` is for interactive use only (v1 compatibility).** The autonomous
+> factory pipeline does not write `.claude/plans/`, so it does not pass
+> `--last-plan` — it invokes `/review --autonomous` and relies on the branch-diff
+> scoping in Step 2 below.
+
 ## Step 1: Confirm with user
 
 **If `--autonomous` is set: skip this step entirely.**

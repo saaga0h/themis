@@ -14,9 +14,10 @@ for coding standards and terminology rules.
 ## Instructions
 
 Run the **review command** via Task to review the implementation on the current
-branch. Pass `--autonomous` and the scope `--last-plan`:
+branch. Pass `--autonomous` — the review command scopes to the branch diff
+automatically:
 
-> /review --autonomous --last-plan
+> /review --autonomous
 
 Running in autonomous mode. Include this instruction in the delegation:
 > Running in autonomous mode. Skip human confirmation and recommendation steps.
