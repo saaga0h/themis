@@ -20,19 +20,12 @@
 skill test-red
 skill pr-composition
 
-# Commands invoked by templates (review.md -> /review)
-command review
-
 # Subagents spawned by the pipeline:
-#   test-red step  -> test-architect, test-writer; test-writer -> test-runner
+#   test-red step -> test-architect, test-writer; test-writer -> test-runner
 agent test-architect
 agent test-writer
 agent test-runner
-#   review step (/review fans out to these five; numerical-reviewer is inline in review.md)
-agent complexity-reviewer
-agent convention-reviewer
-agent coverage-reviewer
+#   review step (single-pass gate) -> security-reviewer; AC-coverage is inline.
+#   The full review panel (complexity/convention/coverage/architecture/numerical)
+#   is interactive-only now (the human's /review) and no longer curated here.
 agent security-reviewer
-agent architecture-reviewer
-#   review can auto-detect numerical diffs and spawn numerical-reviewer even in autonomous mode
-agent numerical-reviewer

@@ -8,47 +8,60 @@
 
 {{ACCEPTANCE_CRITERIA}}
 
-Read `CODING_STANDARDS.md` and `UBIQUITOUS_LANGUAGE.md` from the workspace root
-for coding standards and terminology rules.
+## Project standards
 
-## Diff size
+Consult this project's standards and terminology when judging findings:
 
-{{DIFF_LINES}} lines changed.
+{{STANDARDS_DOCS}}
 
-If under 50 lines and no security/numerical signals detected, use:
-> /review --autonomous --quick
+## What this review is — and is not
 
-Otherwise use:
-> /review --autonomous
+This is the factory's **single-pass safety gate**, not a comprehensive audit. The
+comprehensive audit is the human's job at PR review (and the interactive
+`/review` command); your job is only to decide whether this change is safe and
+faithful enough to put in front of a human.
 
-## Instructions
+Run it **once**. Do not loop, do not re-analyze, do not fix anything — you
+produce findings, you never edit code. Ask only two questions, both with ground
+truth:
 
-Run the **review command** via Task to review the implementation on the current
-branch. Pass `--autonomous` — the review command scopes to the branch diff
-automatically. Choose `--quick` or the full review per the **Diff size** section
-above:
+### 1. Security (delegate)
 
-> /review --autonomous
+Delegate to the **security-reviewer** subagent via Task, scoped to this branch's
+diff against the base. Include in the delegation:
 
-Running in autonomous mode. Include this instruction in the delegation:
-> Running in autonomous mode. Skip human confirmation and recommendation steps.
-> Write structured findings to .themis/review-results.json.
+> Running in autonomous mode. Review only the changes on this branch. Report
+> concrete, locus-bound vulnerabilities — a named risk at a named file:line
+> (injection, hardcoded secret, unsafe input handling, exposed endpoint). Do not
+> report style, naming, or speculative concerns.
 
-The review command will:
-1. Run all standard review agents (complexity, convention, coverage, security, architecture)
-2. Classify each finding by severity (CRITICAL, HIGH, MEDIUM, LOW)
-3. Write structured results to `.themis/review-results.json`
+### 2. AC coverage (one pass, yourself)
 
-After the review command returns, verify that `.themis/review-results.json` exists.
-If it does not exist, something went wrong — report the error.
+The test suite already passed (the green gate). For each acceptance criterion
+above, confirm a corresponding test exists — use `grep -n` to locate it. List any
+acceptance criterion that has **no** corresponding test as a finding; that is a
+real gap (the spec was not fully verified).
 
-Do not classify findings yourself. Do not write the JSON file yourself.
-The review command handles all of this.
+## Write the results
+
+Write `.themis/review-results.json` with exactly this shape:
+
+    {"findings": [{"severity": "high", "description": "...", "file": "path.go", "line": 42}]}
+
+Severity rules — keep blocking findings to genuine, actionable gates:
+
+- **critical** / **high** — a concrete security vulnerability from the security
+  pass, or an acceptance criterion with no test.
+- **low** — everything else the security pass happened to observe (style,
+  readability, speculative concerns). These are notes for the human reviewer,
+  never blockers.
+
+Do not emit "medium". If there are no findings, write `{"findings": []}`.
 
 ## Completion
 
-When the review command has written .themis/review-results.json, output:
+When `.themis/review-results.json` is written, output:
 
 STEP COMPLETE
 
-Do not re-analyze, do not suggest additional improvements, do not read more files.
+Do not re-analyze, do not fix, do not read more files.
