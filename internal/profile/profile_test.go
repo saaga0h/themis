@@ -18,24 +18,9 @@ func TestLoadMissingFileReturnsDefaults(t *testing.T) {
 		t.Fatal("expected non-nil default profile")
 	}
 
-	// Default review agents: sonnet/haiku mix
+	// Default review agents
 	if p.Review.Agents.Security != "sonnet" {
 		t.Errorf("default security agent: got %q, want %q", p.Review.Agents.Security, "sonnet")
-	}
-	if p.Review.Agents.Architecture != "sonnet" {
-		t.Errorf("default architecture agent: got %q, want %q", p.Review.Agents.Architecture, "sonnet")
-	}
-	if p.Review.Agents.Complexity != "haiku" {
-		t.Errorf("default complexity agent: got %q, want %q", p.Review.Agents.Complexity, "haiku")
-	}
-	if p.Review.Agents.Conventions != "haiku" {
-		t.Errorf("default conventions agent: got %q, want %q", p.Review.Agents.Conventions, "haiku")
-	}
-	if p.Review.Agents.Coverage != "haiku" {
-		t.Errorf("default coverage agent: got %q, want %q", p.Review.Agents.Coverage, "haiku")
-	}
-	if p.Review.Agents.Depth != "sonnet" {
-		t.Errorf("default depth agent: got %q, want %q", p.Review.Agents.Depth, "sonnet")
 	}
 
 	// Default round3: auto
@@ -65,12 +50,6 @@ func TestLoadValidProfile(t *testing.T) {
 review:
   agents:
     security: opus
-    architecture: sonnet
-    complexity: haiku
-    conventions: haiku
-    coverage: haiku
-    numerical: skip
-    depth: sonnet
   round3: always
   round3_surfaces:
     - auth
@@ -86,11 +65,6 @@ refactor:
 docs:
   enabled: true
   skip_tiers: [3]
-
-blocking:
-  includes:
-    - security
-    - compile-failure
 `
 	writeProfile(t, dir, content)
 
@@ -101,9 +75,6 @@ blocking:
 
 	if p.Review.Agents.Security != "opus" {
 		t.Errorf("security agent: got %q, want opus", p.Review.Agents.Security)
-	}
-	if p.Review.Agents.Numerical != "skip" {
-		t.Errorf("numerical agent: got %q, want skip", p.Review.Agents.Numerical)
 	}
 	if p.Review.Round3 != "always" {
 		t.Errorf("round3: got %q, want always", p.Review.Round3)
@@ -117,9 +88,6 @@ blocking:
 	if p.Refactor.Enabled == nil || *p.Refactor.Enabled {
 		t.Error("refactor.enabled: got true, want false")
 	}
-	if len(p.Blocking.Includes) != 2 {
-		t.Errorf("blocking.includes: got %d items, want 2", len(p.Blocking.Includes))
-	}
 }
 
 // --- skip agent ---
@@ -129,14 +97,14 @@ func TestLoadSkipAgent(t *testing.T) {
 	writeProfile(t, dir, `
 review:
   agents:
-    numerical: skip
+    security: skip
 `)
 	p, err := Load(dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if p.Review.Agents.Numerical != "skip" {
-		t.Errorf("expected numerical agent to be skip, got %q", p.Review.Agents.Numerical)
+	if p.Review.Agents.Security != "skip" {
+		t.Errorf("expected security agent to be skip, got %q", p.Review.Agents.Security)
 	}
 }
 
@@ -234,12 +202,6 @@ func TestRoundTrip(t *testing.T) {
 review:
   agents:
     security: opus
-    architecture: sonnet
-    complexity: haiku
-    conventions: haiku
-    coverage: haiku
-    numerical: skip
-    depth: sonnet
   round3: auto
   round3_surfaces:
     - auth
@@ -254,10 +216,6 @@ refactor:
 docs:
   enabled: true
   skip_tiers: []
-
-blocking:
-  includes:
-    - security
 `
 	writeProfile(t, dir, content)
 
