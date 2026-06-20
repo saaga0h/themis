@@ -119,6 +119,10 @@ func modelForStep(step pipeline.Step, prof ProfileData) string {
 	switch step {
 	case pipeline.StepReview:
 		return prof.ReviewModel
+	case pipeline.StepRefactor, pipeline.StepDocs:
+		// Refactor and Docs are either a fast "nothing to do" exit or mechanical
+		// cleanup — neither needs a frontier model.
+		return "haiku"
 	default:
 		return prof.ImplementModel
 	}

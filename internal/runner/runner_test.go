@@ -1572,26 +1572,27 @@ func TestRunnerGo_LineCountUnder500(t *testing.T) {
 }
 
 // TestModelForStep_AllSteps verifies that modelForStep returns ReviewModel for
-// StepReview and ImplementModel for every other pipeline step.
+// StepReview, the fixed "haiku" tier for the mechanical Refactor and Docs steps,
+// and ImplementModel for every other pipeline step.
 func TestModelForStep_AllSteps(t *testing.T) {
 	prof := ProfileData{
-		ImplementModel: "haiku",
+		ImplementModel: "sonnet",
 		ReviewModel:    "opus",
 	}
 	cases := []struct {
 		step pipeline.Step
 		want string
 	}{
-		{pipeline.StepFetch, "haiku"},
-		{pipeline.StepScan, "haiku"},
-		{pipeline.StepBranch, "haiku"},
-		{pipeline.StepTestRed, "haiku"},
-		{pipeline.StepImplement, "haiku"},
+		{pipeline.StepFetch, "sonnet"},
+		{pipeline.StepScan, "sonnet"},
+		{pipeline.StepBranch, "sonnet"},
+		{pipeline.StepTestRed, "sonnet"},
+		{pipeline.StepImplement, "sonnet"},
 		{pipeline.StepRefactor, "haiku"},
 		{pipeline.StepReview, "opus"},
-		{pipeline.StepFix, "haiku"},
+		{pipeline.StepFix, "sonnet"},
 		{pipeline.StepDocs, "haiku"},
-		{pipeline.StepShip, "haiku"},
+		{pipeline.StepShip, "sonnet"},
 	}
 	for _, tc := range cases {
 		got := modelForStep(tc.step, prof)
