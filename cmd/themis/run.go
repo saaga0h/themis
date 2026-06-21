@@ -2,12 +2,9 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
-	"os/exec"
 	"regexp"
 	"sort"
 	"strconv"
@@ -189,120 +186,8 @@ func (e *envTurns) RemainingFraction() float64 {
 	return f
 }
 
-// GiteaQuerier implements IssueQuerier against the Gitea REST API.
-type GiteaQuerier struct {
-	owner   string
-	repo    string
-	apiBase string
-	token   string
-	client  *http.Client
-}
-
-func newGiteaQuerier(owner, repo, apiBase, token string) *GiteaQuerier {
-	return &GiteaQuerier{
-		owner:   owner,
-		repo:    repo,
-		apiBase: strings.TrimRight(apiBase, "/"),
-		token:   token,
-		client:  &http.Client{Timeout: giteaClientTimeout},
-	}
-}
-
-func (q *GiteaQuerier) get(ctx context.Context, url string) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	if q.token != "" {
-		req.Header.Set("Authorization", "token "+q.token)
-	}
-	return q.client.Do(req)
-}
-
-const (
-	giteaClientTimeout = 30 * time.Second
-	giteaPageSize      = 50
-)
-
-func (q *GiteaQuerier) ListReadyIssues(ctx context.Context) ([]*tracker.IssueData, error) {
-	var all []tracker.IssueItem
-	for page := 1; ; page++ {
-		pageURL := fmt.Sprintf("%s/api/v1/repos/%s/%s/issues?state=open&type=issues&limit=%d&page=%d&labels=ready-for-agent",
-			q.apiBase, q.owner, q.repo, giteaPageSize, page)
-		resp, err := q.get(ctx, pageURL)
-		if err != nil {
-			return nil, fmt.Errorf("listing issues page %d: %w", page, err)
-		}
-		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
-			return nil, fmt.Errorf("gitea API returned %d", resp.StatusCode)
-		}
-		var items []tracker.IssueItem
-		decodeErr := json.NewDecoder(resp.Body).Decode(&items)
-		resp.Body.Close()
-		if decodeErr != nil {
-			return nil, fmt.Errorf("decoding issues page %d: %w", page, decodeErr)
-		}
-		all = append(all, items...)
-		if len(items) < giteaPageSize {
-			break
-		}
-	}
-	return tracker.ParseIssueItems(all), nil
-}
-
-func (q *GiteaQuerier) IsOpen(ctx context.Context, number int) (bool, error) {
-	url := fmt.Sprintf("%s/api/v1/repos/%s/%s/issues/%d", q.apiBase, q.owner, q.repo, number)
-	resp, err := q.get(ctx, url)
-	if err != nil {
-		return false, fmt.Errorf("checking issue #%d: %w", number, err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return false, fmt.Errorf("gitea API returned %d for issue #%d", resp.StatusCode, number)
-	}
-	var issue struct {
-		State string `json:"state"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&issue); err != nil {
-		return false, fmt.Errorf("decoding issue #%d: %w", number, err)
-	}
-	return issue.State == "open", nil
-}
-
-// GitHubQuerier implements IssueQuerier using the gh CLI.
-type GitHubQuerier struct{}
-
-func (q *GitHubQuerier) ListReadyIssues(ctx context.Context) ([]*tracker.IssueData, error) {
-	out, err := exec.CommandContext(ctx, "gh", "issue", "list",
-		"--label", "ready-for-agent",
-		"--state", "open",
-		"--json", "number,title,body,labels",
-		"--limit", "1000",
-	).Output()
-	if err != nil {
-		return nil, fmt.Errorf("gh issue list: %w", err)
-	}
-	var items []tracker.IssueItem
-	if err := json.Unmarshal(out, &items); err != nil {
-		return nil, fmt.Errorf("parsing gh output: %w", err)
-	}
-	return tracker.ParseIssueItems(items), nil
-}
-
-func (q *GitHubQuerier) IsOpen(ctx context.Context, number int) (bool, error) {
-	out, err := exec.CommandContext(ctx, "gh", "issue", "view",
-		fmt.Sprintf("%d", number),
-		"--json", "state",
-	).Output()
-	if err != nil {
-		return false, fmt.Errorf("gh issue view %d: %w", number, err)
-	}
-	var result struct {
-		State string `json:"state"`
-	}
-	if err := json.Unmarshal(out, &result); err != nil {
-		return false, fmt.Errorf("parsing gh output: %w", err)
-	}
-	return strings.ToLower(result.State) == "open", nil
-}
+// giteaClientTimeout bounds the Gitea HTTP clients constructed in main.go
+// (issue writer and tracker queriers). The querier/fetcher implementations now
+// live in internal/tracker; this consumer-side constant is passed into their
+// constructors.
+const giteaClientTimeout = 30 * time.Second

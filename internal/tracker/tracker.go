@@ -199,3 +199,128 @@ func NewFetcher(provider, owner, repo, apiBase, token string, timeout time.Durat
 		return nil, fmt.Errorf("unknown provider %q (must be github or gitea)", provider)
 	}
 }
+
+const querierPageSize = 50
+
+// GiteaQuerier implements an issue querier against the Gitea REST API.
+type GiteaQuerier struct {
+	owner   string
+	repo    string
+	apiBase string
+	token   string
+	client  *http.Client
+}
+
+// NewGiteaQuerier creates a GiteaQuerier for the given repo with the specified HTTP timeout.
+func NewGiteaQuerier(owner, repo, apiBase, token string, timeout time.Duration) *GiteaQuerier {
+	return &GiteaQuerier{
+		owner:   owner,
+		repo:    repo,
+		apiBase: strings.TrimRight(apiBase, "/"),
+		token:   token,
+		client:  &http.Client{Timeout: timeout},
+	}
+}
+
+func (q *GiteaQuerier) get(ctx context.Context, url string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	if q.token != "" {
+		req.Header.Set("Authorization", "token "+q.token)
+	}
+	return q.client.Do(req)
+}
+
+// ListReadyIssues returns all open issues labelled ready-for-agent.
+func (q *GiteaQuerier) ListReadyIssues(ctx context.Context) ([]*IssueData, error) {
+	var all []IssueItem
+	for page := 1; ; page++ {
+		pageURL := fmt.Sprintf("%s/api/v1/repos/%s/%s/issues?state=open&type=issues&limit=%d&page=%d&labels=ready-for-agent",
+			q.apiBase, q.owner, q.repo, querierPageSize, page)
+		resp, err := q.get(ctx, pageURL)
+		if err != nil {
+			return nil, fmt.Errorf("listing issues page %d: %w", page, err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			return nil, fmt.Errorf("gitea API returned %d", resp.StatusCode)
+		}
+		var items []IssueItem
+		decodeErr := json.NewDecoder(resp.Body).Decode(&items)
+		resp.Body.Close()
+		if decodeErr != nil {
+			return nil, fmt.Errorf("decoding issues page %d: %w", page, decodeErr)
+		}
+		all = append(all, items...)
+		if len(items) < querierPageSize {
+			break
+		}
+	}
+	return ParseIssueItems(all), nil
+}
+
+// IsOpen reports whether issue number is in the open state.
+func (q *GiteaQuerier) IsOpen(ctx context.Context, number int) (bool, error) {
+	url := fmt.Sprintf("%s/api/v1/repos/%s/%s/issues/%d", q.apiBase, q.owner, q.repo, number)
+	resp, err := q.get(ctx, url)
+	if err != nil {
+		return false, fmt.Errorf("checking issue #%d: %w", number, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("gitea API returned %d for issue #%d", resp.StatusCode, number)
+	}
+	var issue struct {
+		State string `json:"state"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&issue); err != nil {
+		return false, fmt.Errorf("decoding issue #%d: %w", number, err)
+	}
+	return issue.State == "open", nil
+}
+
+// GitHubQuerier implements an issue querier using the gh CLI.
+type GitHubQuerier struct{}
+
+// NewGitHubQuerier creates a GitHubQuerier.
+func NewGitHubQuerier() *GitHubQuerier {
+	return &GitHubQuerier{}
+}
+
+// ListReadyIssues returns all open issues labelled ready-for-agent via the gh CLI.
+func (q *GitHubQuerier) ListReadyIssues(ctx context.Context) ([]*IssueData, error) {
+	out, err := exec.CommandContext(ctx, "gh", "issue", "list",
+		"--label", "ready-for-agent",
+		"--state", "open",
+		"--json", "number,title,body,labels",
+		"--limit", "1000",
+	).Output()
+	if err != nil {
+		return nil, fmt.Errorf("gh issue list: %w", err)
+	}
+	var items []IssueItem
+	if err := json.Unmarshal(out, &items); err != nil {
+		return nil, fmt.Errorf("parsing gh output: %w", err)
+	}
+	return ParseIssueItems(items), nil
+}
+
+// IsOpen reports whether issue number is in the open state via the gh CLI.
+func (q *GitHubQuerier) IsOpen(ctx context.Context, number int) (bool, error) {
+	out, err := exec.CommandContext(ctx, "gh", "issue", "view",
+		fmt.Sprintf("%d", number),
+		"--json", "state",
+	).Output()
+	if err != nil {
+		return false, fmt.Errorf("gh issue view %d: %w", number, err)
+	}
+	var result struct {
+		State string `json:"state"`
+	}
+	if err := json.Unmarshal(out, &result); err != nil {
+		return false, fmt.Errorf("parsing gh output: %w", err)
+	}
+	return strings.ToLower(result.State) == "open", nil
+}

@@ -224,9 +224,9 @@ func runRun(args []string) error {
 		if err != nil {
 			return fmt.Errorf("resolving Gitea config: %w", err)
 		}
-		querier = newGiteaQuerier(giteaOwner, giteaRepo, giteaAPIBase, os.Getenv("GITEA_TOKEN"))
+		querier = tracker.NewGiteaQuerier(giteaOwner, giteaRepo, giteaAPIBase, os.Getenv("GITEA_TOKEN"), giteaClientTimeout)
 	case "github":
-		querier = &GitHubQuerier{}
+		querier = tracker.NewGitHubQuerier()
 	}
 
 	var fetcher tracker.Fetcher
