@@ -21,3 +21,11 @@ verify:
 docs:
   standards: CODING_STANDARDS.md
   glossary: UBIQUITOUS_LANGUAGE.md
+  # Documented surfaces: a change touching any of these triggers the Docs step;
+  # changes that touch none of them (e.g. templates/, factory/, tooling) skip it.
+  surfaces:
+    - cmd/themis/
+    - internal/
+    - README.md
+    - ARCHITECTURE.md
+    - docs/

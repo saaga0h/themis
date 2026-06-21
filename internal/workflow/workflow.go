@@ -25,6 +25,10 @@ type Docs struct {
 	Standards    string `yaml:"standards"`
 	Glossary     string `yaml:"glossary"`
 	Architecture string `yaml:"architecture"`
+	// Surfaces are path globs (relative to the project root) that, when a changed
+	// file matches one, trigger the Docs step. When empty, Docs always runs; when
+	// set, the Docs step is skipped for changes that touch no documented surface.
+	Surfaces []string `yaml:"surfaces"`
 }
 
 // Descriptor is the per-project pipeline configuration loaded from

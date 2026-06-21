@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -130,6 +131,37 @@ func blockIssue(ctx context.Context, cfg Config, reason error) error {
 		return fmt.Errorf("adding blocked label: %w", err)
 	}
 	return nil
+}
+
+// docsSurfaceTouched reports whether the Docs step should run: true when no
+// surfaces are declared (Docs always runs), or when a changed file matches a
+// declared surface glob. A surface ending in "/" matches files under that
+// directory; otherwise it is matched as a path glob (and as an exact path).
+func docsSurfaceTouched(surfaces []string, changedFiles string) bool {
+	if len(surfaces) == 0 {
+		return true
+	}
+	for _, f := range strings.Split(changedFiles, "\n") {
+		f = strings.TrimSpace(f)
+		if f == "" {
+			continue
+		}
+		for _, s := range surfaces {
+			if strings.HasSuffix(s, "/") {
+				if strings.HasPrefix(f, s) {
+					return true
+				}
+				continue
+			}
+			if f == s {
+				return true
+			}
+			if ok, _ := path.Match(s, f); ok {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // branchHasTestFiles reports whether the branch's changed-files list (relative to

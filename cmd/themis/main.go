@@ -197,6 +197,7 @@ func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir strin
 		ReviewResultsLoader: review.ReadReviewResults,
 		TestRunner:          verifyRunner(desc.Verify),
 		StandardsDocs:       desc.StandardsDocs(),
+		DocSurfaces:         desc.Docs.Surfaces,
 	}, nil
 }
 

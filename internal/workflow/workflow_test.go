@@ -60,6 +60,25 @@ docs:
 	}
 }
 
+// Doc surfaces parse into a glob list used to trigger the Docs step.
+func TestLoad_ParsesDocSurfaces(t *testing.T) {
+	dir := t.TempDir()
+	writeDescriptor(t, dir, `docs:
+  standards: CODING_STANDARDS.md
+  surfaces:
+    - cmd/themis/
+    - README.md
+    - "docs/*.md"
+`)
+	d, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(d.Docs.Surfaces) != 3 || d.Docs.Surfaces[0] != "cmd/themis/" {
+		t.Errorf("surfaces: got %v", d.Docs.Surfaces)
+	}
+}
+
 // StandardsDocs skips unset doc fields and preserves reading order.
 func TestStandardsDocs_SkipsUnset(t *testing.T) {
 	d := &Descriptor{Docs: Docs{Standards: "S.md", Architecture: "A.md"}}

@@ -87,9 +87,14 @@ type Config struct {
 	// architecture. Declared per-project in .themis/workflow.yaml; the factory is
 	// stack-agnostic and hardcodes none of these. Surfaced as {{STANDARDS_DOCS}}.
 	StandardsDocs []string
-	Logger        io.Writer
-	CodeVersion   string
-	MaxTurns      int
+	// DocSurfaces are path globs (relative to WorkDir) that trigger the Docs
+	// step: the step is skipped (no agent spawned) when the change touches none
+	// of them. Empty means Docs always runs. Declared per-project in
+	// .themis/workflow.yaml.
+	DocSurfaces []string
+	Logger      io.Writer
+	CodeVersion string
+	MaxTurns    int
 }
 
 // Result holds the outcome of a successful pipeline run.
@@ -241,6 +246,23 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		// Ship step: push branch, invoke agent for PR body, create PR.
 		if step == pipeline.StepShip {
 			return runShipStep(ctx, cfg, issue, state, prof, stepStart, log)
+		}
+
+		// Docs step: surface-triggered. Skip without spawning an agent when the
+		// change touches none of the project's declared documented surfaces.
+		if step == pipeline.StepDocs && cfg.Git != nil &&
+			!docsSurfaceTouched(cfg.DocSurfaces, cfg.Git.ChangedFiles(ctx, cfg.WorkDir)) {
+			fmt.Fprintf(log, "%s: skipped (no documented surface touched)\n", step)
+			next, err := state.Advance(pipeline.StepResult{Success: true})
+			if err != nil {
+				return nil, fmt.Errorf("advancing step %v: %w", step, err)
+			}
+			if err := pipeline.SaveState(cfg.WorkDir, state); err != nil {
+				return nil, fmt.Errorf("saving state at step %v: %w", step, err)
+			}
+			state.CurrentStep = next
+			fmt.Fprintf(log, "%s: done (%dms)\n", step, time.Since(stepStart).Milliseconds())
+			continue
 		}
 
 		// Agent steps: load template, substitute, invoke, checkpoint.

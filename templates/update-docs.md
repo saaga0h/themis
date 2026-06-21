@@ -14,33 +14,24 @@ so read them before writing or changing code:
 
 ## Instructions
 
-Update documentation scoped to what this issue changed — not a full audit,
-just the diff. Do not rewrite sections unrelated to the changed code.
+Update only the documentation this change affects — scope to the diff, not a full
+audit. Do not rewrite sections unrelated to the changed code.
 
-### Determine scope
+This project's documentation conventions and structure are described by its
+standards docs above (and by the existing docs in the repo); follow them rather
+than imposing a new structure. Mirror how sibling code is already documented.
 
-Group changed files by package or subsystem.
+Typical updates to look for:
 
-### Check for required updates
+- A changed or new **public/exported surface** (a CLI flag, an exported function,
+  type, or config field) → update the doc that describes it.
+- **Changed user-facing behaviour** → update the README or the relevant guide.
+- A **new package or subsystem**, *if this project documents those* → add or
+  extend its doc following the project's existing pattern.
 
-For each changed package:
-
-1. Does `docs/subsystems/<package-name>/README.md` exist? If the package is
-   new and substantial (new types, interfaces, or functions), it MUST be created.
-2. Does `ARCHITECTURE.md` list this package in its component inventory?
-   If not, it MUST be updated.
-3. Does `docs/content-plan.md` reference any new docs? If not, update it.
-
-### Update drifted docs
-
-For each doc that needs updating:
-- Update only the drifted sections — do not rewrite the whole doc
-- New package → update `ARCHITECTURE.md` component inventory and create
-  `docs/subsystems/<name>/README.md` if the package is substantial
-- New public type or function → update the relevant subsystem README
-- Existing behaviour changed → update any doc that describes that behaviour
-
-Do not create module-level docs per issue — that is a separate documentation pass.
+Use `grep -n` to find the doc sections that mention the changed code and edit
+only those. Do not invent documentation structure the project does not already
+use, and do not create per-issue module docs.
 
 ## Commit
 
