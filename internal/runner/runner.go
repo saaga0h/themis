@@ -57,6 +57,10 @@ type PROptions struct {
 	Body  string
 	Base  string
 	Head  string
+	// Draft opens the PR as a draft / work-in-progress (not mergeable as-is).
+	// The factory sets this when the review gate found blocking findings, so a
+	// human must resolve them before merge.
+	Draft bool
 }
 
 // Config holds all dependencies for a pipeline run.
@@ -388,7 +392,12 @@ func runShipStep(ctx context.Context, cfg Config, issue *tracker.IssueData, stat
 		}
 	}
 
-	prBody := buildPRBody(cfg.IssueNumber, issue.Title, acs)
+	// The review gate's findings decide ready vs draft deterministically (the
+	// runner owns this, not the ship agent). The verdict also seeds the fallback
+	// PR body so it carries the gate result even when the ship agent is skipped.
+	findings, _ := cfg.ReviewResultsLoader(ctx, cfg.WorkDir)
+	draft, verdict := reviewVerdict(findings)
+	prBody := buildPRBody(cfg.IssueNumber, issue.Title, acs) + verdict
 
 	shipTmplPath := filepath.Join(cfg.TemplateDir, "ship.md")
 	shipTmplContent, readErr := os.ReadFile(shipTmplPath)
@@ -429,11 +438,16 @@ func runShipStep(ctx context.Context, cfg Config, issue *tracker.IssueData, stat
 		Body:  prBody,
 		Base:  base,
 		Head:  branch,
+		Draft: draft,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating PR: %w", err)
 	}
-	fmt.Fprintf(log, "%s: PR URL %s\n", pipeline.StepShip, prURL)
+	readiness := "ready"
+	if draft {
+		readiness = "draft (blocking review findings — needs a maintainer before merge)"
+	}
+	fmt.Fprintf(log, "%s: PR URL %s [%s]\n", pipeline.StepShip, prURL, readiness)
 	if err := pipeline.SaveState(cfg.WorkDir, state); err != nil {
 		return nil, fmt.Errorf("saving final state: %w", err)
 	}

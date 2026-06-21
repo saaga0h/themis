@@ -19,6 +19,7 @@ import (
 
 	"github.com/saaga0h/themis/internal/agent"
 	"github.com/saaga0h/themis/internal/pipeline"
+	"github.com/saaga0h/themis/internal/review"
 )
 
 // pipelineAgentCallCount is the number of agent steps that run before Ship in the
@@ -523,5 +524,76 @@ func TestRunner_ShipGuard_ProceedsWhenCommitsExistOnBranch(t *testing.T) {
 	}
 	if w.prBodySeen == "" {
 		t.Error("CreatePR must be called when commits exist on branch")
+	}
+}
+
+// A blocking (critical/high) review finding opens the PR as a draft and the
+// verdict is carried in the PR body — the factory never auto-fixes or
+// auto-merges; it flags for a maintainer.
+func TestRunner_ShipMarksPRDraftWhenBlockingFindings(t *testing.T) {
+	workDir := t.TempDir()
+	saveStateAt(t, workDir, pipeline.StepDocs) // resume past review; ship reads the existing JSON
+	writeReviewResults(t, workDir, []review.ReviewFinding{
+		{Severity: "high", Description: "acceptance criterion has no test", File: "run.go", Line: 12},
+	})
+
+	tDir := makeTemplateDir(t, map[string]string{
+		"update-docs.md": "Docs {{ISSUE_NUMBER}}",
+		"ship.md":        "Ship {{ISSUE_NUMBER}}\n{{AC_STATUS}}",
+	})
+	inv := &recordingInvoker{} // empty stdout → fallback PR body (carries the verdict)
+	w := &stubIssueWriter{prURL: "https://example.com/pr/draft"}
+	cfg := Config{
+		WorkDir:      workDir,
+		IssueNumber:  42,
+		Fetcher:      &stubFetcher{issue: sampleIssue()},
+		Invoker:      inv,
+		IssueWriter:  w,
+		TemplateDir:  tDir,
+		CheckpointFn: noopCheckpoint,
+	}
+
+	if _, err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !w.prDraftSeen {
+		t.Error("PR must be a draft when review-results.json has a blocking (high) finding")
+	}
+	if !strings.Contains(w.prBodySeen, "blocking") {
+		t.Errorf("fallback PR body must carry the review verdict; got:\n%s", w.prBodySeen)
+	}
+}
+
+// With no blocking findings the PR is ready (not a draft).
+func TestRunner_ShipMarksPRReadyWhenNoBlockingFindings(t *testing.T) {
+	workDir := t.TempDir()
+	saveStateAt(t, workDir, pipeline.StepDocs)
+	writeReviewResults(t, workDir, []review.ReviewFinding{
+		{Severity: "low", Description: "consider a clearer variable name"},
+	})
+
+	tDir := makeTemplateDir(t, map[string]string{
+		"update-docs.md": "Docs {{ISSUE_NUMBER}}",
+		"ship.md":        "Ship {{ISSUE_NUMBER}}\n{{AC_STATUS}}",
+	})
+	w := &stubIssueWriter{prURL: "https://example.com/pr/ready"}
+	cfg := Config{
+		WorkDir:      workDir,
+		IssueNumber:  42,
+		Fetcher:      &stubFetcher{issue: sampleIssue()},
+		Invoker:      &recordingInvoker{},
+		IssueWriter:  w,
+		TemplateDir:  tDir,
+		CheckpointFn: noopCheckpoint,
+	}
+
+	if _, err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if w.prDraftSeen {
+		t.Error("PR must be ready (not draft) when there are no blocking findings")
+	}
+	if !strings.Contains(w.prBodySeen, "Reviewer observations") {
+		t.Errorf("PR body must list the low finding under reviewer observations; got:\n%s", w.prBodySeen)
 	}
 }

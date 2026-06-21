@@ -32,23 +32,17 @@ Use the `/pr-composition` skill to compose the PR description. Follow the pr-com
 
 ### Review findings — authoritative source
 
-Read `.themis/review-results.json` for the review findings. This file was written
-by the review command during the Review step and contains the authoritative
-severity classifications. **Do not re-analyze the code or re-classify findings.**
+Read `.themis/review-results.json` for the review findings. The review step wrote
+it and it is authoritative. **Do not re-analyze the code or re-classify findings.**
 
-Use the severities from the JSON file as-is:
-- **CRITICAL / HIGH / MEDIUM** findings that were fixed during review cycles
-  should be listed under "Fixed during review cycles"
-- **CRITICAL / HIGH / MEDIUM** findings still present should be listed under
-  "Blocking — not fixed" (this should be rare — the fix cycle should have
-  resolved them)
-- **LOW** findings should be listed under "Non-blocking — deferred" with brief
-  justification for deferral
-
-Pre-existing issues (violations that existed before this PR, not introduced by
-this change) are classified LOW by the review command per CODING_STANDARDS.md.
-Report them as LOW. Do not reclassify pre-existing issues as CRITICAL or HIGH —
-that is the review command's job, and it already made the classification.
+The factory never auto-fixes and never auto-merges — it hands findings to the
+human. Report the severities from the JSON as-is:
+- **CRITICAL / HIGH** findings (concrete security vulnerabilities, or acceptance
+  criteria with no test) are **blocking**. List them under "Blocking findings —
+  must be resolved before merge". When any exist, this PR is opened as a **draft**
+  (WIP) so it cannot be merged until a maintainer resolves them.
+- **LOW** findings are non-blocking notes. List them under "Reviewer observations
+  (not addressed — for maintainer triage)".
 
 If `.themis/review-results.json` is absent or empty, state "No review findings"
 in the review section. Do not invent findings.

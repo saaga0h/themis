@@ -156,6 +156,7 @@ type stubIssueWriter struct {
 	prBodySeen    string
 	prBaseSeen    string
 	prHeadSeen    string
+	prDraftSeen   bool
 	prURL         string
 }
 
@@ -178,6 +179,7 @@ func (s *stubIssueWriter) CreatePR(_ context.Context, opts PROptions) (string, e
 	s.prBodySeen = opts.Body
 	s.prBaseSeen = opts.Base
 	s.prHeadSeen = opts.Head
+	s.prDraftSeen = opts.Draft
 	if s.prURL != "" {
 		return s.prURL, nil
 	}

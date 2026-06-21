@@ -10,8 +10,45 @@ import (
 
 	"github.com/saaga0h/themis/internal/agent"
 	"github.com/saaga0h/themis/internal/pipeline"
+	"github.com/saaga0h/themis/internal/review"
 	"github.com/saaga0h/themis/internal/tracker"
 )
+
+// reviewVerdict summarises the review gate for the PR body and decides whether
+// the PR opens as a draft. Any blocking finding (critical/high) makes it a draft
+// for a maintainer to resolve before merge; everything else is a non-blocking
+// note. This is the deterministic ready/draft signal — the runner owns it rather
+// than trusting the ship agent's prose.
+func reviewVerdict(findings []review.ReviewFinding) (draft bool, section string) {
+	blocking, nonBlocking := review.CountFindingsBySeverity(findings)
+	var sb strings.Builder
+	sb.WriteString("\n## Review verdict\n\n")
+	if blocking == 0 {
+		sb.WriteString("Security & AC gate: **clean** — no blocking findings.\n")
+	} else {
+		fmt.Fprintf(&sb, "Security & AC gate: **%d blocking finding(s)** — opened as a draft for a maintainer to resolve before merge:\n\n", blocking)
+		sb.WriteString(review.FormatBlockingFindings(findings))
+	}
+	if nonBlocking > 0 {
+		sb.WriteString("\n### Reviewer observations (not addressed — for maintainer triage)\n\n")
+		for _, f := range findings {
+			switch f.Severity {
+			case "critical", "high", review.BlockingThreshold:
+				continue
+			}
+			fmt.Fprintf(&sb, "- %s", f.Description)
+			if f.File != "" {
+				fmt.Fprintf(&sb, " (%s", f.File)
+				if f.Line > 0 {
+					fmt.Fprintf(&sb, ":%d", f.Line)
+				}
+				sb.WriteString(")")
+			}
+			sb.WriteString("\n")
+		}
+	}
+	return blocking > 0, sb.String()
+}
 
 // deriveStepResult maps an agent invocation outcome onto a pipeline.StepResult,
 // applying the per-step success contract: TestRed wants failing tests present,

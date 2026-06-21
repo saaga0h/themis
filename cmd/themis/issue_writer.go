@@ -35,11 +35,11 @@ func (g *ghIssueWriter) CreatePR(ctx context.Context, opts runner.PROptions) (st
 	if base == "" {
 		base = "main"
 	}
-	out, err := exec.CommandContext(ctx, "gh", "pr", "create",
-		"--title", opts.Title,
-		"--body", opts.Body,
-		"--base", base,
-	).Output()
+	args := []string{"pr", "create", "--title", opts.Title, "--body", opts.Body, "--base", base}
+	if opts.Draft {
+		args = append(args, "--draft")
+	}
+	out, err := exec.CommandContext(ctx, "gh", args...).Output()
 	if err != nil {
 		return "", fmt.Errorf("gh pr create: %w", err)
 	}
@@ -102,8 +102,14 @@ func (g *giteaIssueWriter) CreatePR(ctx context.Context, opts runner.PROptions) 
 	if base == "" {
 		base = "main"
 	}
+	title := opts.Title
+	if opts.Draft {
+		// Gitea has no draft flag on the create-PR API; a "WIP:" title prefix is
+		// the idiomatic marker and blocks merge until a human removes it.
+		title = "WIP: " + title
+	}
 	payload, err := json.Marshal(map[string]string{
-		"title": opts.Title,
+		"title": title,
 		"body":  opts.Body,
 		"base":  base,
 		"head":  opts.Head,
