@@ -48,6 +48,9 @@ func parseRunArgs(args []string) (runArgs, error) {
 			if err != nil {
 				return runArgs{}, fmt.Errorf("--max-turns must be an integer, got %q", args[i])
 			}
+			if n <= 0 {
+				return runArgs{}, fmt.Errorf("--max-turns must be a positive integer, got %d", n)
+			}
 			maxTurns = n
 		default:
 			return runArgs{}, fmt.Errorf("unknown flag %q", args[i])

@@ -41,6 +41,9 @@ func parseIssueArgs(args []string) (issueArgs, error) {
 			if err != nil {
 				return issueArgs{}, fmt.Errorf("--max-turns must be an integer, got %q", args[i])
 			}
+			if maxTurns <= 0 {
+				return issueArgs{}, fmt.Errorf("--max-turns must be a positive integer, got %d", maxTurns)
+			}
 		}
 	}
 

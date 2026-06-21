@@ -99,6 +99,14 @@ func TestParseRunArgs_MaxTurnsFlag(t *testing.T) {
 	}
 }
 
+func TestParseRunArgs_MaxTurnsRejectsNonPositive(t *testing.T) {
+	for _, v := range []string{"0", "-1"} {
+		if _, err := parseRunArgs([]string{"--provider", "gitea", "--max-turns", v}); err == nil {
+			t.Errorf("parseRunArgs(--max-turns %s) should error on a non-positive value", v)
+		}
+	}
+}
+
 func TestParseRunArgs_DefaultMaxTurns(t *testing.T) {
 	args, err := parseRunArgs([]string{"--provider", "gitea"})
 	if err != nil {
