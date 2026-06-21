@@ -368,3 +368,157 @@ func TestParseIssueItems_ItemWithMultipleLabels(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// AC2, AC6: GiteaQuerier and GitHubQuerier defined in internal/tracker
+// with httptest-based assertions (issue #68).
+// ---------------------------------------------------------------------------
+
+func TestNewGiteaQuerier_ListReadyIssues_ReturnsErrorOnTimeout(t *testing.T) {
+	block := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-block
+	}))
+	t.Cleanup(srv.Close)
+	t.Cleanup(func() { close(block) })
+
+	q := tracker.NewGiteaQuerier("owner", "repo", srv.URL, "", time.Millisecond)
+	_, err := q.ListReadyIssues(context.Background())
+	if err == nil {
+		t.Error("ListReadyIssues: expected non-nil error when server does not respond, got nil")
+	}
+}
+
+func TestNewGiteaQuerier_IsOpen_ReturnsErrorOnTimeout(t *testing.T) {
+	block := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-block
+	}))
+	t.Cleanup(srv.Close)
+	t.Cleanup(func() { close(block) })
+
+	q := tracker.NewGiteaQuerier("owner", "repo", srv.URL, "", time.Millisecond)
+	_, err := q.IsOpen(context.Background(), 1)
+	if err == nil {
+		t.Error("IsOpen: expected non-nil error when server does not respond, got nil")
+	}
+}
+
+func TestNewGiteaQuerier_ListReadyIssues_MapsFieldsViaParseIssueItems(t *testing.T) {
+	payload := []tracker.IssueItem{
+		{
+			Number: 42,
+			Title:  "Implement thing",
+			Body:   "- [ ] AC one",
+			Labels: []tracker.IssueItemLabel{{Name: "ready-for-agent"}, {Name: "enhancement"}},
+		},
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(payload); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
+	}))
+	defer srv.Close()
+
+	q := tracker.NewGiteaQuerier("owner", "repo", srv.URL, "", 5*time.Second)
+	result, err := q.ListReadyIssues(context.Background())
+	if err != nil {
+		t.Fatalf("ListReadyIssues: unexpected error: %v", err)
+	}
+	expected := tracker.ParseIssueItems(payload)
+	if len(result) != len(expected) {
+		t.Fatalf("ListReadyIssues: got %d issues, want %d", len(result), len(expected))
+	}
+	got, want := result[0], expected[0]
+	if got.Number != want.Number {
+		t.Errorf("Number: got %d, want %d", got.Number, want.Number)
+	}
+	if got.Title != want.Title {
+		t.Errorf("Title: got %q, want %q", got.Title, want.Title)
+	}
+	if got.Body != want.Body {
+		t.Errorf("Body: got %q, want %q", got.Body, want.Body)
+	}
+	if len(got.Labels) != len(want.Labels) {
+		t.Fatalf("Labels: got %v (len %d), want %v", got.Labels, len(got.Labels), want.Labels)
+	}
+	for i := range want.Labels {
+		if got.Labels[i] != want.Labels[i] {
+			t.Errorf("Labels[%d]: got %q, want %q", i, got.Labels[i], want.Labels[i])
+		}
+	}
+}
+
+func TestNewGiteaQuerier_IsOpen_ReturnsTrueForOpenIssue(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if _, err := w.Write([]byte(`{"state":"open"}`)); err != nil {
+			t.Errorf("write response: %v", err)
+		}
+	}))
+	defer srv.Close()
+
+	q := tracker.NewGiteaQuerier("owner", "repo", srv.URL, "", 5*time.Second)
+	open, err := q.IsOpen(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("IsOpen: unexpected error: %v", err)
+	}
+	if !open {
+		t.Error("IsOpen: expected true for open issue, got false")
+	}
+}
+
+func TestNewGiteaQuerier_IsOpen_ReturnsFalseForClosedIssue(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if _, err := w.Write([]byte(`{"state":"closed"}`)); err != nil {
+			t.Errorf("write response: %v", err)
+		}
+	}))
+	defer srv.Close()
+
+	q := tracker.NewGiteaQuerier("owner", "repo", srv.URL, "", 5*time.Second)
+	open, err := q.IsOpen(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("IsOpen: unexpected error: %v", err)
+	}
+	if open {
+		t.Error("IsOpen: expected false for closed issue, got true")
+	}
+}
+
+func TestNewGiteaQuerier_ListReadyIssues_ReturnsErrorOnNon200(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	q := tracker.NewGiteaQuerier("owner", "repo", srv.URL, "", 5*time.Second)
+	_, err := q.ListReadyIssues(context.Background())
+	if err == nil {
+		t.Error("ListReadyIssues: expected error on non-200 response, got nil")
+	}
+}
+
+func TestNewGiteaQuerier_IsOpen_ReturnsErrorOnNon200(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	q := tracker.NewGiteaQuerier("owner", "repo", srv.URL, "", 5*time.Second)
+	_, err := q.IsOpen(context.Background(), 99)
+	if err == nil {
+		t.Error("IsOpen: expected error on non-200 response, got nil")
+	}
+}
+
+// AC2: GitHubQuerier is defined in internal/tracker.
+// This compile-time assertion fails until tracker.NewGitHubQuerier is defined.
+func TestNewGitHubQuerier_IsNotNil(t *testing.T) {
+	q := tracker.NewGitHubQuerier()
+	if q == nil {
+		t.Error("NewGitHubQuerier returned nil")
+	}
+}
