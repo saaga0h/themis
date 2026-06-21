@@ -1,37 +1,35 @@
 # Update documentation for issue #{{ISSUE_NUMBER}}
 
-## What changed
+## What this issue changed
+
+{{ISSUE_TITLE}}
+
+{{ACCEPTANCE_CRITERIA}}
+
+### Files changed
 
 {{CHANGED_FILES}}
 
-## Project standards
-
-Follow this project's coding standards, terminology, and architecture. They are
-authoritative — projects differ in style, naming, error handling, and structure,
-so read them before writing or changing code:
+## Project standards (terminology and conventions)
 
 {{STANDARDS_DOCS}}
 
 ## Instructions
 
-Update only the documentation this change affects — scope to the diff, not a full
-audit. Do not rewrite sections unrelated to the changed code.
+This is a **minimal, issue-scoped** documentation pass — not an audit. A full
+documentation sweep (thoroughness, drift cleanup) is a separate `/document` run;
+that is its job, not yours.
 
-This project's documentation conventions and structure are described by its
-standards docs above (and by the existing docs in the repo); follow them rather
-than imposing a new structure. Mirror how sibling code is already documented.
+Ask one question: **does what this issue changed alter something a documentation
+reader needs to know?** — a CLI flag, an exported function or type, a config
+field, or user-facing behaviour.
 
-Typical updates to look for:
-
-- A changed or new **public/exported surface** (a CLI flag, an exported function,
-  type, or config field) → update the doc that describes it.
-- **Changed user-facing behaviour** → update the README or the relevant guide.
-- A **new package or subsystem**, *if this project documents those* → add or
-  extend its doc following the project's existing pattern.
-
-Use `grep -n` to find the doc sections that mention the changed code and edit
-only those. Do not invent documentation structure the project does not already
-use, and do not create per-issue module docs.
+- **If yes:** find the single doc (or few) that describe that surface and make the
+  minimal edit. Use `grep -n` to locate the exact section and edit only it.
+  Mirror the project's existing doc structure — do not invent new docs or sections.
+- **If the change is internal-only** (no reader-facing surface changed), output
+  `STEP COMPLETE — no changes`. Do not document internal refactors and do not
+  scan for unrelated doc drift — that is the full documentation run's job.
 
 ## Commit
 

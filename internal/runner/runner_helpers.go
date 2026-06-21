@@ -221,8 +221,10 @@ var defaultStepTurns = map[pipeline.Step]int{
 	pipeline.StepTestRed:   80,
 	pipeline.StepImplement: 120,
 	pipeline.StepReview:    80,
-	pipeline.StepDocs:      40,
-	pipeline.StepShip:      60,
+	// Docs is a minimal, issue-scoped pass — a tight ceiling keeps it from doing
+	// implement-scale work for a doc note (see issue #75's docs over-run).
+	pipeline.StepDocs: 20,
+	pipeline.StepShip: 60,
 }
 
 // turnsForStep returns the per-step turn budget: the step's default when it is
