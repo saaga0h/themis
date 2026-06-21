@@ -44,6 +44,8 @@ run-issue: ## Run a single issue: make run-issue ISSUE=3
 	echo '/issue $(ISSUE) --provider $(PROVIDER)' | $(PODMAN_RUN)
 
 run-v2-issue: factory-cc ## Run v2.0 binary against a single issue
+	@orig=$$(git rev-parse --abbrev-ref HEAD); \
+	echo "factory: originating branch = $$orig"; \
 	podman run -i --userns=keep-id \
 		--entrypoint bash \
 		-v $(PWD):/home/agent/workspace \
@@ -52,7 +54,14 @@ run-v2-issue: factory-cc ## Run v2.0 binary against a single issue
 		-w /home/agent/workspace \
 		--memory=12g \
 		$(IMAGE) \
-		-c 'go build -o /tmp/themis ./cmd/themis/ && /tmp/themis issue $(ISSUE) --provider gitea'
+		-c 'go build -o /tmp/themis ./cmd/themis/ && /tmp/themis issue $(ISSUE) --provider gitea'; \
+	rc=$$?; \
+	cur=$$(git rev-parse --abbrev-ref HEAD); \
+	if [ "$$cur" != "$$orig" ]; then \
+		echo "factory: restoring originating branch '$$orig' (run left HEAD on '$$cur')"; \
+		git switch "$$orig" || echo "factory: WARNING could not switch back to '$$orig' — resolve manually (uncommitted changes?)"; \
+	fi; \
+	exit $$rc
 
 shell: ## Open an interactive shell inside the factory container
 	podman run -it --userns=keep-id --entrypoint /bin/bash \
