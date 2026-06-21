@@ -13,7 +13,7 @@ import (
 func TestDeriveStepResult_TestRed_NewCommitSucceeds(t *testing.T) {
 	cfg := Config{WorkDir: "/x", Git: &fakeGitOps{}}
 	r := &agent.InvokeResult{ExitCode: 0, CommitsMade: []string{"abc123"}}
-	sr := deriveStepResult(context.Background(), pipeline.StepTestRed, r, cfg)
+	sr, _ := deriveStepResult(context.Background(), pipeline.StepTestRed, r, cfg)
 	if !sr.Success {
 		t.Error("TestRed must succeed when a new commit was made")
 	}
@@ -29,7 +29,7 @@ func TestDeriveStepResult_TestRed_TestsAlreadyOnBranchSucceeds(t *testing.T) {
 		Git:     &fakeGitOps{changedFiles: "internal/review/review.go\ninternal/review/review_test.go"},
 	}
 	r := &agent.InvokeResult{ExitCode: 0, Completed: false} // no commit, no completion
-	sr := deriveStepResult(context.Background(), pipeline.StepTestRed, r, cfg)
+	sr, _ := deriveStepResult(context.Background(), pipeline.StepTestRed, r, cfg)
 	if !sr.Success {
 		t.Error("TestRed must succeed when failing tests already exist on the branch")
 	}
@@ -44,7 +44,7 @@ func TestDeriveStepResult_TestRed_NoCommitNoTestsFails(t *testing.T) {
 		Git:     &fakeGitOps{changedFiles: "internal/review/review.go"}, // no _test.go
 	}
 	r := &agent.InvokeResult{ExitCode: 0, Completed: false}
-	sr := deriveStepResult(context.Background(), pipeline.StepTestRed, r, cfg)
+	sr, _ := deriveStepResult(context.Background(), pipeline.StepTestRed, r, cfg)
 	if sr.Success {
 		t.Error("TestRed must fail when there is no commit, no completion, and no test file on the branch")
 	}

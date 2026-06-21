@@ -193,6 +193,11 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		prof.ReviewModel = "sonnet"
 	}
 
+	// lastGreenGateFailure carries the Implement green gate's verify output into
+	// the next attempt's prompt, so a retry targets the actual failure (e.g. an
+	// unformatted file) instead of re-deriving the same defect blind.
+	var lastGreenGateFailure string
+
 	for {
 		step := state.CurrentStep
 		stepStart := time.Now()
@@ -289,7 +294,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			}
 		}
 
-		allArgs := buildTemplateArgs(ctx, cfg, issue, branchName)
+		allArgs := buildTemplateArgs(ctx, cfg, issue, branchName, lastGreenGateFailure)
 
 		filteredArgs := filterArgs(string(tmplContent), allArgs)
 
@@ -328,9 +333,14 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			fmt.Fprintf(log, "%s: checkpoint pass\n", step)
 		}
 
-		stepResult := deriveStepResult(ctx, step, invokeResult, cfg)
+		stepResult, verifyOutput := deriveStepResult(ctx, step, invokeResult, cfg)
 		if step == pipeline.StepImplement && cfg.TestRunner != nil {
-			logGreenGate(log, step, stepResult.Success, invokeResult.Completed, turns)
+			logGreenGate(log, step, stepResult.Success, invokeResult.Completed, turns, verifyOutput)
+			if stepResult.Success {
+				lastGreenGateFailure = ""
+			} else {
+				lastGreenGateFailure = lastLines(verifyOutput, 30)
+			}
 		}
 		if step == pipeline.StepReview {
 			findings, found := cfg.ReviewResultsLoader(ctx, cfg.WorkDir)
@@ -426,7 +436,7 @@ func runShipStep(ctx context.Context, cfg Config, issue *tracker.IssueData, stat
 	if readErr != nil {
 		fmt.Fprintf(log, "warning: ship template read failed: %v — using fallback PR body\n", readErr)
 	} else {
-		shipArgs := buildTemplateArgs(ctx, cfg, issue, branch)
+		shipArgs := buildTemplateArgs(ctx, cfg, issue, branch, "")
 		filteredArgs := filterArgs(string(shipTmplContent), shipArgs)
 		substituted, subErr := prompt.Substitute(string(shipTmplContent), filteredArgs)
 		if subErr != nil {

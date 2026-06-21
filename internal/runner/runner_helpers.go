@@ -55,7 +55,10 @@ func reviewVerdict(findings []review.ReviewFinding) (draft bool, section string)
 // applying the per-step success contract: TestRed wants failing tests present,
 // and Implement gates on a green suite (the TestRunner). Other steps (Review,
 // Docs) never gate the pipeline — they always succeed.
-func deriveStepResult(ctx context.Context, step pipeline.Step, r *agent.InvokeResult, cfg Config) pipeline.StepResult {
+// deriveStepResult also returns the verify output for the Implement green gate
+// (empty for other steps), so the runner can surface which verify command failed
+// and feed that output back into the retry prompt.
+func deriveStepResult(ctx context.Context, step pipeline.Step, r *agent.InvokeResult, cfg Config) (pipeline.StepResult, string) {
 	switch step {
 	case pipeline.StepTestRed:
 		key := cfg.TestACKey
@@ -63,7 +66,7 @@ func deriveStepResult(ctx context.Context, step pipeline.Step, r *agent.InvokeRe
 			key = "tests"
 		}
 		if len(r.CommitsMade) > 0 || r.Completed {
-			return pipeline.StepResult{Success: true}
+			return pipeline.StepResult{Success: true}, ""
 		}
 		// A resumed or rebased run can reach TestRed with the failing tests
 		// already committed on the branch. The agent then correctly makes no new
@@ -71,21 +74,22 @@ func deriveStepResult(ctx context.Context, step pipeline.Step, r *agent.InvokeRe
 		// is already met. Treat that as success rather than scoring a failed
 		// attempt, which would otherwise stall the pipeline on the retry ceiling.
 		if cfg.Git != nil && branchHasTestFiles(cfg.Git.ChangedFiles(ctx, cfg.WorkDir)) {
-			return pipeline.StepResult{Success: true}
+			return pipeline.StepResult{Success: true}, ""
 		}
-		return pipeline.StepResult{Success: false, TestACKey: key}
+		return pipeline.StepResult{Success: false, TestACKey: key}, ""
 
 	case pipeline.StepImplement:
-		// GREEN gate: Implement is "done" only when the suite passes. Without a
-		// TestRunner configured, fall back to the legacy commit-only contract.
+		// GREEN gate: Implement is "done" only when the project's verify suite
+		// passes. Without a TestRunner configured, fall back to the legacy
+		// commit-only contract.
 		if cfg.TestRunner == nil {
-			return pipeline.StepResult{Success: true}
+			return pipeline.StepResult{Success: true}, ""
 		}
-		passed, _ := cfg.TestRunner(ctx, cfg.WorkDir)
-		return pipeline.StepResult{Success: passed}
+		passed, output := cfg.TestRunner(ctx, cfg.WorkDir)
+		return pipeline.StepResult{Success: passed}, output
 
 	default:
-		return pipeline.StepResult{Success: true}
+		return pipeline.StepResult{Success: true}, ""
 	}
 }
 
@@ -93,15 +97,35 @@ func deriveStepResult(ctx context.Context, step pipeline.Step, r *agent.InvokeRe
 // a stuck implementation (completed but red) from a truncated one (no completion
 // signal, likely out of turns) so the operator can tell a budget problem from a
 // capability problem.
-func logGreenGate(log io.Writer, step pipeline.Step, passed, completed bool, turns int) {
-	switch {
-	case passed:
-		fmt.Fprintf(log, "%s: green gate passed (test suite passes)\n", step)
-	case completed:
-		fmt.Fprintf(log, "%s: green gate failed — tests red though agent signalled completion (implementation may be stuck), retrying\n", step)
-	default:
-		fmt.Fprintf(log, "%s: green gate failed — tests red and no completion signal (likely hit the %d-turn limit), retrying\n", step, turns)
+func logGreenGate(log io.Writer, step pipeline.Step, passed, completed bool, turns int, output string) {
+	if passed {
+		fmt.Fprintf(log, "%s: green gate passed (verify suite passes)\n", step)
+		return
 	}
+	// The verify suite is build/format/lint/test — not just "tests". Report that
+	// plainly and echo the output (which names the failing command), so neither
+	// the operator nor the retry is misled into thinking it was a test failure.
+	if completed {
+		fmt.Fprintf(log, "%s: green gate failed — verify suite did not pass though the agent signalled completion (e.g. a missed format/vet step); retrying with the failure output\n", step)
+	} else {
+		fmt.Fprintf(log, "%s: green gate failed — verify suite did not pass and no completion signal (likely hit the %d-turn limit); retrying\n", step, turns)
+	}
+	if out := lastLines(strings.TrimSpace(output), 20); out != "" {
+		fmt.Fprintf(log, "%s: verify output (tail):\n%s\n", step, out)
+	}
+}
+
+// lastLines returns the final n lines of s (all of s when it has fewer), used to
+// cap verify output echoed to the log and fed into the retry prompt.
+func lastLines(s string, n int) string {
+	if s == "" {
+		return ""
+	}
+	lines := strings.Split(s, "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "\n")
 }
 
 // logAgentResult records the commit count and completion status of an agent
@@ -266,6 +290,7 @@ func buildTemplateArgs(
 	cfg Config,
 	issue *tracker.IssueData,
 	branchName string,
+	greenGateFailure string,
 ) map[string]string {
 	acs := tracker.ParseCheckboxes(issue.Body)
 	acList := formatACs(acs)
@@ -284,6 +309,7 @@ func buildTemplateArgs(
 		"CHANGED_FILES":       changedFilesResult,
 		"TEST_FILES":          filterTestFiles(changedFilesResult),
 		"STANDARDS_DOCS":      formatStandardsDocs(cfg.StandardsDocs),
+		"GREEN_GATE_FAILURE":  greenGateFailure,
 		"PIPELINE_SHAPE":      pipelineShape(commitLog),
 		"COMMIT_LOG":          commitLog,
 	}

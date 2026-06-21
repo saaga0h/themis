@@ -19,6 +19,16 @@ so read them before writing or changing code:
 These test files were written in the TestRed step. Make them pass.
 Focus on the functions and types referenced in these files.
 
+## Previous green-gate failure (if any)
+
+{{GREEN_GATE_FAILURE}}
+
+If the section above is non-empty, your previous attempt committed but the
+project's **verify gate** (build / format / lint / tests) did not pass — often a
+missed formatter or linter run, not a test failure. Read the output, run the
+relevant tool to see specifics, fix exactly what it reports, and make the full
+verify pass. Re-committing without addressing it will fail the same way.
+
 ## Instructions
 
 Implement the code needed to make the failing tests pass.
@@ -51,7 +61,11 @@ feat(<scope>): implement issue #{{ISSUE_NUMBER}} — {{ISSUE_TITLE}}
 
 ## Completion
 
-When the full test suite passes (GREEN) and changes are committed, output:
+Before completing, make the project's **full verify pass — not just the tests**:
+build, formatter, linter (e.g. `gofmt` / `go vet` for Go), and the test suite. A
+green test run with unformatted or un-vetted code still fails the green gate.
+
+When the full verify passes and changes are committed, output:
 
 STEP COMPLETE
 
