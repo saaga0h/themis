@@ -1,4 +1,4 @@
-package main
+package tracker
 
 import (
 	"context"
@@ -8,10 +8,10 @@ import (
 	"github.com/saaga0h/themis/internal/git"
 )
 
-// resolveGiteaConfig determines owner, repo, and apiBase by inferring from the
+// ResolveGiteaConfig determines owner, repo, and apiBase by inferring from the
 // git remote first, then letting environment variables override individual fields.
 // Returns an error only when neither source provides a value.
-func resolveGiteaConfig(ctx context.Context, dir string) (owner, repo, apiBase string, err error) {
+func ResolveGiteaConfig(ctx context.Context, dir string) (owner, repo, apiBase string, err error) {
 	inferred, inferErr := git.InferGiteaConfig(ctx, dir)
 	if inferErr == nil {
 		owner = inferred.Owner

@@ -143,7 +143,7 @@ func runIssue(args []string) error {
 
 	var giteaOwner, giteaRepo, giteaAPIBase string
 	if parsed.provider == "gitea" {
-		giteaOwner, giteaRepo, giteaAPIBase, err = resolveGiteaConfig(context.Background(), repoRoot)
+		giteaOwner, giteaRepo, giteaAPIBase, err = tracker.ResolveGiteaConfig(context.Background(), repoRoot)
 		if err != nil {
 			return fmt.Errorf("resolving Gitea config: %w", err)
 		}
@@ -220,7 +220,7 @@ func runRun(args []string) error {
 
 	switch parsed.provider {
 	case "gitea":
-		giteaOwner, giteaRepo, giteaAPIBase, err = resolveGiteaConfig(context.Background(), repoRoot)
+		giteaOwner, giteaRepo, giteaAPIBase, err = tracker.ResolveGiteaConfig(context.Background(), repoRoot)
 		if err != nil {
 			return fmt.Errorf("resolving Gitea config: %w", err)
 		}
