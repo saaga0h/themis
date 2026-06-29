@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/saaga0h/themis/internal/labels"
 )
 
 // IssueData holds the data extracted from an issue tracker.
@@ -237,7 +239,7 @@ func (q *GiteaQuerier) get(ctx context.Context, url string) (*http.Response, err
 func (q *GiteaQuerier) ListReadyIssues(ctx context.Context) ([]*IssueData, error) {
 	var all []IssueItem
 	for page := 1; ; page++ {
-		pageURL := fmt.Sprintf("%s/api/v1/repos/%s/%s/issues?state=open&type=issues&limit=%d&page=%d&labels=ready-for-agent",
+		pageURL := fmt.Sprintf("%s/api/v1/repos/%s/%s/issues?state=open&type=issues&limit=%d&page=%d&labels="+labels.ReadyForAgent,
 			q.apiBase, q.owner, q.repo, querierPageSize, page)
 		resp, err := q.get(ctx, pageURL)
 		if err != nil {
@@ -292,7 +294,7 @@ func NewGitHubQuerier() *GitHubQuerier {
 // ListReadyIssues returns all open issues labelled ready-for-agent via the gh CLI.
 func (q *GitHubQuerier) ListReadyIssues(ctx context.Context) ([]*IssueData, error) {
 	out, err := exec.CommandContext(ctx, "gh", "issue", "list",
-		"--label", "ready-for-agent",
+		"--label", labels.ReadyForAgent,
 		"--state", "open",
 		"--json", "number,title,body,labels",
 		"--limit", "1000",
