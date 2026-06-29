@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/saaga0h/themis/internal/agent"
+	"github.com/saaga0h/themis/internal/labels"
 	"github.com/saaga0h/themis/internal/pipeline"
 	"github.com/saaga0h/themis/internal/review"
 	"github.com/saaga0h/themis/internal/tracker"
@@ -151,7 +152,7 @@ func blockIssue(ctx context.Context, cfg Config, reason error) error {
 	if err := cfg.IssueWriter.Comment(ctx, cfg.IssueNumber, comment); err != nil {
 		return fmt.Errorf("posting block comment: %w", err)
 	}
-	if err := cfg.IssueWriter.AddLabel(ctx, cfg.IssueNumber, "blocked"); err != nil {
+	if err := cfg.IssueWriter.AddLabel(ctx, cfg.IssueNumber, labels.Blocked); err != nil {
 		return fmt.Errorf("adding blocked label: %w", err)
 	}
 	return nil
