@@ -68,6 +68,23 @@ If you can't write a test name from the AC, the AC is too vague. The factory wil
 
 Negative, placement, and delegation ACs map to static or compile-time checks. Write them with the verification spelled out (the grep, the package, the constructor) — the same way behavioural ACs spell out the assertion.
 
+### Declaring the check (machine-extractable)
+
+For negative, placement, and delegation ACs, do not stop at describing the verification in prose — **declare it as a runnable command** the factory can extract and run as part of the green gate for this issue's run. Put it in a fenced block tagged `check`, holding a shell command that **exits 0 exactly when the AC is satisfied**:
+
+```check
+! grep -rq 'type GiteaQuerier' cmd/themis/
+```
+
+The negated `grep` exits 0 when the type is absent — i.e. the move is complete. The factory appends each `check` block to the verify gate for that run only; it is **never committed** (these checks are scaffolding for "done," not permanent tests — see the Refactor/Move/Rename/Delete rules and #81). Rules:
+
+- One `check` block per negative/placement/delegation AC. A deterministic meta-check fails the issue if a destructive ("Removed …") AC has no `check`.
+- The command runs via `bash -c` like every verify command — exit 0 on success, non-zero on failure.
+- Make it specific and hard to satisfy by accident, and pair it with the behavioural/"added" AC so renaming or hiding the old code cannot pass both.
+- Behavioural ACs do **not** get a `check` block — they stay committed runtime tests.
+
+(Strict convention is a deliberate starting point to keep extraction deterministic — observe and tune; see #81.)
+
 ## Rules for Exhaustive Enumeration
  
 This is the most common source of incomplete fixes. The factory does not generalize — it implements exactly the sites listed. When a fix applies to multiple call sites, every site must be named.

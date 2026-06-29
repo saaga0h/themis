@@ -19,6 +19,14 @@ delete (refactoring), write the failing tests directly — do NOT delegate to
 test-architect or test-writer. The targets are already enumerated in the ACs.
 Skip to the Verification phase once the tests are written.
 
+**Negative / structural ACs are not tests you write here.** An AC that asserts
+something no longer exists, lives in a specific package, or is constructed via a
+specific path carries its own `check` block (a runnable command) in the issue body —
+the factory extracts those and runs them at the green gate. Do not try to encode them
+as Go tests (you cannot unit-test that a type does not exist). Write only the
+**behavioural** tests (the "added / moved-to" half); the `check` blocks enforce the
+removal and placement.
+
 If the acceptance criteria describe new behaviour that requires target discovery
 (feature work with "all", "every", "each" language), follow the test-red skill
 and delegate to test-architect → test-writer as described below.

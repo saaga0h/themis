@@ -40,6 +40,24 @@ specific functions or types you need to modify.
 Work AC by AC — implement the minimum to pass each test, then move to the next.
 Do not implement anything not required by an AC.
 
+### Refactor / move / rename / delete issues — remove first
+
+If the ACs move, rename, delete, or consolidate code (signalled by "Removed" ACs or
+`check` commands asserting that something no longer exists), **do the removal first**:
+
+1. Delete the targeted old code first. The build and behavioural tests will break —
+   that breakage is expected and correct; it is what drives the rebuild.
+2. Rebuild until the behavioural tests pass again, **without re-adding the old code**
+   (the `check` commands forbid bringing it back to pass the gate).
+3. Be conservative about what you delete — only the targeted symbols and the
+   references now dead because of the move. Do not speculatively delete shared
+   helpers; if a behavioural test needs one, you will have to re-add it. When unsure,
+   delete less.
+
+Removing first matters: adding-first leaves the old code lingering and the issue ships
+half-done; removing-first makes any over-deletion loud and self-correcting — a failing
+behavioural test names exactly what to restore.
+
 **Do NOT modify test files during implementation.** If a test is wrong, that
 is a signal the AC needs clarification — comment on the issue and stop;
 do not silently fix the test to match your implementation.
