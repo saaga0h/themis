@@ -256,11 +256,32 @@ When backend and frontend must change together (renamed field, new API
 contract), they are one issue. Splitting them means the first PR breaks
 the second's tests.
  
+### Destructive change is a first-class slice
+
+When a topic moves, renames, deletes, or consolidates code, the *removal* is part
+of the work — not an afterthought. Decompose so the removal is asserted, and hand
+issue-writer the negative AC for it ("the old thing no longer exists, verify with
+grep"). If the resolved design does not say what must be removed, that is a missing
+decision, not a detail — step back to the grill (see below). Do not slice only the
+additive half; a tidy "add the new thing" issue that never asserts the old is gone
+is precisely the #68 failure.
+
 ### Before marking needs-thinking, check the codebase
  
 If an open question can be answered by reading the code — existing patterns,
 current interfaces, file structure — read the code instead of deferring.
 The codebase is available; use it.
+
+### Step back with the diagnostic, not blank
+
+If you cannot cut a clean vertical slice, or cannot write a concrete AC for one,
+that is evidence the previous stage (the grilling) did not resolve enough — the
+design has a gap. Step back to the grill, but carry the **specific** missing thing:
+"can't write the removal AC because the design doesn't say which package the old
+type must vanish from," not a blank "needs more thinking." A blind step-back
+re-derives the same gap; a step-back fed the actual diagnostic gets it resolved.
+Stepping back is the flow working — it catches an under-resolved design before it
+becomes a half-done implementation.
  
 ---
  
@@ -278,6 +299,9 @@ The codebase is available; use it.
   single function is not an issue — it's part of one.
 - **Do not skip the test question.** Every slice must answer "what test
   exercises this slice alone?" before becoming an issue.
+- **Do not slice only the additive half of a move.** If a topic moves,
+  renames, or deletes, the removal is part of the work — assert the old
+  thing is gone, or step back if the design didn't decide what's removed.
 ---
  
 ## Example: walking a topic

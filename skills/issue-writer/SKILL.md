@@ -53,6 +53,21 @@ ACs are the most important part of the issue. The factory implements exactly wha
 ### Every AC must answer: "What does the test assert?"
 If you can't write a test name from the AC, the AC is too vague. The factory will write a test for each AC — if the AC says "error handling works," the test will check "no error" and nothing else.
  
+### Kinds of AC — not every AC becomes a runtime test
+
+"What does the test assert?" is the right question for *behavioural* ACs, but some ACs are verified statically or at compile time, not by a runtime test. Name the kind so the factory checks it the right way — you cannot unit-test that a type does *not* exist, because a runtime test for absence has nothing to assert against.
+
+- **Behavioural** — an observable runtime outcome. Becomes a runtime test.
+  `CreateItem returns 400 for invalid itemType values`
+- **Negative / absence** — something must NOT exist after the change. Becomes a static check (grep / go-analysis), not a runtime test.
+  `No GiteaQuerier struct remains in cmd/themis — verify: grep -rn 'type GiteaQuerier' cmd/themis/ returns zero hits`
+- **Placement / structural** — a type, interface, or function must live in a specific package or stay at a boundary. Becomes a compile-time guard.
+  `The IssueQuerier interface stays in cmd/themis (the consumer), not in internal/tracker`
+- **Delegation** — a value must be obtained through a specific path. Becomes a compile-time guard or a behavioural test.
+  `cmd/themis constructs the querier via tracker.NewGiteaQuerier, not by composing the struct directly`
+
+Negative, placement, and delegation ACs map to static or compile-time checks. Write them with the verification spelled out (the grep, the package, the constructor) — the same way behavioural ACs spell out the assertion.
+
 ## Rules for Exhaustive Enumeration
  
 This is the most common source of incomplete fixes. The factory does not generalize — it implements exactly the sites listed. When a fix applies to multiple call sites, every site must be named.
@@ -85,6 +100,19 @@ Good: "Every handler that accepts `itemType` as a query parameter must validate 
 Good: "All `json.NewDecoder(resp.Body)` and `xml.NewDecoder(resp.Body)` calls in `internal/koha/` must use `io.LimitReader`. Verify: `grep -rn 'NewDecoder(resp.Body)' internal/koha/` returns zero hits after the change — all should be `NewDecoder(io.LimitReader(resp.Body, ...))`"
 → Factory can verify its own work
  
+## Rules for Refactor / Move / Rename / Delete Issues
+
+A move is not done when the new thing exists — it is done when the OLD thing is GONE. The factory implements exactly what the ACs say; if no AC asserts the original's absence, the original survives and the issue is half-done. Duplicate types compile, pass vet, and pass stale tests, so the green gate does not catch it. This is exactly what happened in #68: the queriers were copied into `internal/tracker` but never deleted from `cmd/themis`, and the PR shipped half-done.
+
+For any issue that moves, extracts, renames, or deletes, write the ACs as a **pair**:
+
+- **What is added / moved to** — behavioural or placement AC:
+  `tracker.GiteaQuerier exists in internal/tracker and satisfies the IssueQuerier interface`
+- **What is removed** — negative / absence AC (this is the one that gets forgotten):
+  `No GiteaQuerier type remains in cmd/themis — verify: grep -rn 'type GiteaQuerier' cmd/themis/ returns zero hits`
+
+State explicitly, per moved/renamed/deleted thing: where it now lives, and that the original is gone. A rename needs a negative AC for the old name. "Consolidate A and B into C" needs negative ACs for both A and B. The removal AC is a check the factory must satisfy before the work counts as done — not a politeness.
+
 ## Rules for Coordinated Changes
  
 When a change requires both backend and frontend updates (e.g., renaming a JSON field), both must be in the same issue. If they're in separate issues, the first one breaks the second one's tests until both merge.
