@@ -148,7 +148,7 @@ resolves the repo root, selects a tracker fetcher based on provider (from args),
 wires the production `Config` via `newIssueConfig` (which calls
 `checkpoint.NewStepCheckpoint` and sets it as `CheckpointFn`), and delegates to
 `runner.Run`. Gitea connection details (`owner`, `repo`, `apiBase`) are inferred
-from the `origin` git remote via `resolveGiteaConfig` (which calls
+from the `origin` git remote via `tracker.ResolveGiteaConfig` (which calls
 `git.InferGiteaConfig`); `GITEA_OWNER`, `GITEA_REPO`, and `GITEA_API_URL`
 environment variables override individual fields when set. `GITEA_TOKEN` is always
 read from the environment and is required for Gitea.

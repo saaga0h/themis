@@ -64,7 +64,7 @@ Lists all open issues labelled `ready-for-agent`, sorts them by issue number (as
 | `github` | `gh issue list --label ready-for-agent` (via `GitHubQuerier`) | `gh issue view N --json state` |
 | `gitea` | Gitea REST API paginated at 50 issues/page (via `GiteaQuerier`) | Gitea REST `GET /api/v1/repos/{owner}/{repo}/issues/{N}` |
 
-Gitea connection details are resolved via `resolveGiteaConfig` (same as `themis issue`) and can be overridden with `GITEA_OWNER`, `GITEA_REPO`, `GITEA_API_URL`, and `GITEA_TOKEN`.
+Gitea connection details are inferred from the `origin` git remote and can be overridden with `GITEA_OWNER`, `GITEA_REPO`, `GITEA_API_URL`, and `GITEA_TOKEN`.
 
 ## Build, Test, and Lint
 
@@ -84,7 +84,6 @@ Module: `github.com/saaga0h/themis`, Go 1.22.
 | `cmd/themis/issue.go` | `parseIssueArgs` — parses `<number>` and `--provider` |
 | `cmd/themis/run.go` | `parseRunArgs` and the `run` loop — sequential backlog processing |
 | `cmd/themis/issue_writer.go` | `ghIssueWriter` and `giteaIssueWriter` — label, comment, PR creation |
-| `cmd/themis/gitea_config.go` | `resolveGiteaConfig` — infers Gitea owner/repo/apiBase from git remote, overridable via env vars |
 
 ## Dependencies
 
