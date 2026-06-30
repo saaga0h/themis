@@ -351,6 +351,23 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 				DurationMs:  time.Since(stepStart).Milliseconds(),
 				Detail:      lastLines(err.Error(), 30),
 			})
+			// Docs is best-effort: it is already skippable (surface-gated), runs
+			// last on the weakest model, and a flake there must not discard a
+			// validated, ready-to-ship PR. Log the cause (emitted above) and
+			// advance to Ship — same graceful path as a surface skip. Every other
+			// agent step stays fatal: its output is load-bearing.
+			if step == pipeline.StepDocs {
+				fmt.Fprintf(log, "%s: agent failed (%v) — Docs is best-effort, proceeding to Ship without doc changes\n", step, err)
+				next, advErr := state.Advance(pipeline.StepResult{Success: true})
+				if advErr != nil {
+					return nil, fmt.Errorf("advancing step %v after non-fatal failure: %w", step, advErr)
+				}
+				if saveErr := pipeline.SaveState(cfg.WorkDir, state); saveErr != nil {
+					return nil, fmt.Errorf("saving state at step %v: %w", step, saveErr)
+				}
+				state.CurrentStep = next
+				continue
+			}
 			return nil, fmt.Errorf("agent invocation at step %v: %w", step, err)
 		}
 
