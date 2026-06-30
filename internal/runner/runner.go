@@ -95,6 +95,14 @@ type Config struct {
 	Logger      io.Writer
 	CodeVersion string
 	MaxTurns    int
+	// Emitter receives per-step StepRecords (the factory's own diagnostic
+	// narrative). Nil means no emission. Wired by cmd/themis to an OTLP sink when
+	// OTEL_* env is set; nil otherwise (and in tests).
+	Emitter Emitter
+	// EmitterShutdown flushes the Emitter at the end of the run. Run defers it
+	// (bounded), so the async batch exporter delivers the final records. Nil when
+	// there is no Emitter.
+	EmitterShutdown func(context.Context) error
 }
 
 // Result holds the outcome of a successful pipeline run.
@@ -145,6 +153,15 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 	log := cfg.Logger
 	if log == nil {
 		log = os.Stderr
+	}
+	// Flush the diagnostic emitter on the way out (bounded), so the async batch
+	// exporter delivers the final records even on an early return. Best-effort.
+	if cfg.EmitterShutdown != nil {
+		defer func() {
+			sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = cfg.EmitterShutdown(sctx)
+		}()
 	}
 	// Normalize ReviewResultsLoader once so step-processing code never needs to
 	// nil-check it. cmd/themis injects review.ReadReviewResults at construction
@@ -197,6 +214,9 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 	// the next attempt's prompt, so a retry targets the actual failure (e.g. an
 	// unformatted file) instead of re-deriving the same defect blind.
 	var lastGreenGateFailure string
+
+	// rid groups every diagnostic record from this run (stable across resume).
+	rid := runID(cfg.IssueNumber, state.StartedAt.Unix())
 
 	for {
 		step := state.CurrentStep
@@ -320,6 +340,17 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		}
 		invokeResult, err := cfg.Invoker.Invoke(ctx, opts)
 		if err != nil {
+			// Emit the failure (Detail carries the agent stderr surfaced by
+			// internal/agent) so a step crash is diagnosable from the sink, not
+			// just stdout. This is the path the Docs-step crash took on #88.
+			emitStep(ctx, cfg, log, StepRecord{
+				IssueNumber: cfg.IssueNumber,
+				RunID:       rid,
+				Stage:       step.String(),
+				Outcome:     "error",
+				DurationMs:  time.Since(stepStart).Milliseconds(),
+				Detail:      lastLines(err.Error(), 30),
+			})
 			return nil, fmt.Errorf("agent invocation at step %v: %w", step, err)
 		}
 
@@ -334,12 +365,22 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		}
 
 		stepResult, verifyOutput := deriveStepResult(ctx, step, invokeResult, cfg)
+		rec := StepRecord{
+			IssueNumber: cfg.IssueNumber,
+			RunID:       rid,
+			Stage:       step.String(),
+			Completed:   invokeResult.Completed,
+			Commits:     len(invokeResult.CommitsMade),
+		}
 		if step == pipeline.StepImplement && cfg.TestRunner != nil {
 			logGreenGate(log, step, stepResult.Success, invokeResult.Completed, turns, verifyOutput)
 			if stepResult.Success {
 				lastGreenGateFailure = ""
+				rec.GreenGate = "pass"
 			} else {
 				lastGreenGateFailure = lastLines(verifyOutput, 30)
+				rec.GreenGate = "fail"
+				rec.VerifyOutput = lastGreenGateFailure
 			}
 		}
 		if step == pipeline.StepReview {
@@ -348,12 +389,17 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 				fmt.Fprintf(log, "warning: review-results.json not found after review step\n")
 			} else {
 				blocking, nonBlocking := review.CountFindingsBySeverity(findings)
+				rec.ReviewBlocking, rec.ReviewNonBlocking = blocking, nonBlocking
 				fmt.Fprintf(log, "%s: review findings: %d blocking, %d non-blocking (recorded for the PR; does not gate the pipeline)\n", step, blocking, nonBlocking)
 			}
 		}
 
 		next, advErr := state.Advance(stepResult)
 		if advErr != nil {
+			rec.Outcome = "blocked"
+			rec.Detail = lastLines(advErr.Error(), 30)
+			rec.DurationMs = time.Since(stepStart).Milliseconds()
+			emitStep(ctx, cfg, log, rec)
 			blockErr := blockIssue(ctx, cfg, advErr)
 			if blockErr != nil {
 				return nil, fmt.Errorf("blocking issue after %v: %w", advErr, blockErr)
@@ -366,6 +412,9 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		}
 
 		state.CurrentStep = next
+		rec.Outcome = "ok"
+		rec.DurationMs = time.Since(stepStart).Milliseconds()
+		emitStep(ctx, cfg, log, rec)
 		fmt.Fprintf(log, "%s: done (%dms)\n", step, time.Since(stepStart).Milliseconds())
 	}
 }
@@ -392,100 +441,4 @@ func runBranchStep(ctx context.Context, cfg Config, issue *tracker.IssueData, lo
 		return fmt.Errorf("seeding review-results.json: %w", wfErr)
 	}
 	return nil
-}
-
-// runShipStep pushes the branch, invokes the ship agent for a PR description,
-// creates the PR, and returns the Result. It also saves final pipeline state and
-// removes the review-results.json artifact.
-func runShipStep(ctx context.Context, cfg Config, issue *tracker.IssueData, state *pipeline.PipelineState, prof ProfileData, stepStart time.Time, log io.Writer) (*Result, error) {
-	var branch string
-	var branchErr error
-	if cfg.Git != nil {
-		branch, branchErr = cfg.Git.CurrentBranch(ctx, cfg.WorkDir)
-		if branchErr != nil {
-			branch = "main"
-		}
-	}
-	acs := tracker.ParseCheckboxes(issue.Body)
-	base := issue.Ref
-	if base == "" {
-		base = "main"
-	}
-
-	if cfg.Git != nil {
-		if branchErr == nil && branch == base {
-			return nil, fmt.Errorf("current branch is the base branch — no issue branch was created")
-		}
-		if n, countErr := cfg.Git.CommitsAheadOfBase(ctx, cfg.WorkDir, base); countErr == nil && n == 0 {
-			return nil, fmt.Errorf("no commits on branch %s — nothing to ship", branch)
-		}
-		if err := cfg.Git.PushBranch(ctx, cfg.WorkDir, branch); err != nil {
-			return nil, fmt.Errorf("pushing branch %s: %w", branch, err)
-		}
-	}
-
-	// The review gate's findings decide ready vs draft deterministically (the
-	// runner owns this, not the ship agent). The verdict also seeds the fallback
-	// PR body so it carries the gate result even when the ship agent is skipped.
-	findings, _ := cfg.ReviewResultsLoader(ctx, cfg.WorkDir)
-	draft, verdict := reviewVerdict(findings)
-	prBody := buildPRBody(cfg.IssueNumber, issue.Title, acs) + verdict
-
-	shipTmplPath := filepath.Join(cfg.TemplateDir, "ship.md")
-	shipTmplContent, readErr := os.ReadFile(shipTmplPath)
-	if readErr != nil {
-		fmt.Fprintf(log, "warning: ship template read failed: %v — using fallback PR body\n", readErr)
-	} else {
-		shipArgs := buildTemplateArgs(ctx, cfg, issue, branch, "")
-		filteredArgs := filterArgs(string(shipTmplContent), shipArgs)
-		substituted, subErr := prompt.Substitute(string(shipTmplContent), filteredArgs)
-		if subErr != nil {
-			fmt.Fprintf(log, "warning: ship template substitution failed: %v — using fallback PR body\n", subErr)
-		} else {
-			model := modelForStep(pipeline.StepShip, prof)
-			turns := turnsForStep(pipeline.StepShip, cfg.MaxTurns)
-			fmt.Fprintf(log, "%s: invoking agent model=%s maxTurns=%d\n", pipeline.StepShip, model, turns)
-			shipOpts := agent.InvokeOptions{
-				Prompt:       substituted,
-				Model:        model,
-				MaxTurns:     turns,
-				WorkDir:      cfg.WorkDir,
-				IssueNumber:  cfg.IssueNumber,
-				PipelineStep: pipeline.StepShip.String(),
-			}
-			if cfg.Git != nil {
-				shipOpts.CommitCountFn = cfg.Git.CommitSHAs
-			}
-			invokeResult, invokeErr := cfg.Invoker.Invoke(ctx, shipOpts)
-			if invokeErr != nil {
-				fmt.Fprintf(log, "warning: ship agent invocation failed: %v; falling back to buildPRBody\n", invokeErr)
-			} else if invokeResult.Stdout != "" {
-				prBody = stripCodeFences(invokeResult.Stdout)
-			}
-		}
-	}
-
-	prURL, err := cfg.IssueWriter.CreatePR(ctx, PROptions{
-		Title: fmt.Sprintf("Closes #%d — %s", cfg.IssueNumber, issue.Title),
-		Body:  prBody,
-		Base:  base,
-		Head:  branch,
-		Draft: draft,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("creating PR: %w", err)
-	}
-	readiness := "ready"
-	if draft {
-		readiness = "draft (blocking review findings — needs a maintainer before merge)"
-	}
-	fmt.Fprintf(log, "%s: PR URL %s [%s]\n", pipeline.StepShip, prURL, readiness)
-	if err := pipeline.SaveState(cfg.WorkDir, state); err != nil {
-		return nil, fmt.Errorf("saving final state: %w", err)
-	}
-	if rmErr := os.Remove(filepath.Join(cfg.WorkDir, ".themis", "review-results.json")); rmErr != nil && !os.IsNotExist(rmErr) {
-		fmt.Fprintf(log, "warning: removing review-results.json: %v\n", rmErr)
-	}
-	fmt.Fprintf(log, "%s: done (%dms)\n", pipeline.StepShip, time.Since(stepStart).Milliseconds())
-	return &Result{PRURL: prURL}, nil
 }
