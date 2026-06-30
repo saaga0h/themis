@@ -62,13 +62,22 @@ func (c *ClaudeCodeInvoker) Invoke(ctx context.Context, opts InvokeOptions) (*In
 	cmd.Env = buildCmdEnv(os.Environ(), opts.IssueNumber, opts.PipelineStep)
 	cmd.Stdin = strings.NewReader(opts.Prompt)
 
-	var stdout bytes.Buffer
+	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
 		// Non-zero exit or context cancellation.
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("agent killed by context: %w", ctx.Err())
+		}
+		// cmd.Run only yields the exit status ("exit status 1"); the actual
+		// cause (API error, model error, crash) is in claude's stderr — which
+		// was previously discarded, making step failures undiagnosable. Surface
+		// a bounded tail of stderr (falling back to stdout) so the cause is
+		// visible to operators and to the diagnostic emitter.
+		if detail := failureDetail(stderr.String(), stdout.String()); detail != "" {
+			return nil, fmt.Errorf("claude exited with error: %w\n%s", err, detail)
 		}
 		return nil, fmt.Errorf("claude exited with error: %w", err)
 	}
@@ -106,6 +115,29 @@ func commitSetDiff(before, after []string) []string {
 		}
 	}
 	return added
+}
+
+// failureDetail formats the captured output of a failed agent invocation so the
+// cause is visible. claude writes its real error to stderr; stdout may hold
+// partial --print output. Prefer stderr, fall back to stdout, and bound both to
+// the last lines so a large transcript can't flood the error.
+func failureDetail(stderrOut, stdoutOut string) string {
+	if s := strings.TrimSpace(stderrOut); s != "" {
+		return "stderr (last lines):\n" + tailLines(s, 30)
+	}
+	if s := strings.TrimSpace(stdoutOut); s != "" {
+		return "stdout (last lines):\n" + tailLines(s, 30)
+	}
+	return ""
+}
+
+// tailLines returns the last n lines of s (trailing newline trimmed first).
+func tailLines(s string, n int) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (c *ClaudeCodeInvoker) buildArgs(opts InvokeOptions) []string {
