@@ -14,6 +14,16 @@ func TestParseRunArgs_ProviderGitea(t *testing.T) {
 	}
 }
 
+func TestParseRunArgs_TemplatesFlag(t *testing.T) {
+	args, err := parseRunArgs([]string{"--provider", "gitea", "--templates", "/tmp/tpl"})
+	if err != nil {
+		t.Fatalf("parseRunArgs error: %v", err)
+	}
+	if args.templates != "/tmp/tpl" {
+		t.Errorf("templates: got %q, want %q", args.templates, "/tmp/tpl")
+	}
+}
+
 func TestParseRunArgs_ProviderGitHub(t *testing.T) {
 	args, err := parseRunArgs([]string{"--provider", "github"})
 	if err != nil {

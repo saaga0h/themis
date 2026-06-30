@@ -18,7 +18,11 @@ PODMAN_RUN := podman run -i \
 	--dangerously-skip-permissions \
 	--max-turns $(MAX_TURNS)
 
-.PHONY: run-factory dry-run run-issue run-v2-issue factory-cc shell build-image build test lint
+.PHONY: run-factory dry-run run-issue run-v2-issue factory-cc shell build-image build factory-bin test lint
+
+# Architecture of the sandbox containers the factory binary runs in. arm64 matches
+# Apple-silicon podman; override (e.g. FACTORY_ARCH=amd64) for other hosts.
+FACTORY_ARCH ?= arm64
 
 factory-cc: ## Materialize the curated .claude/ the factory container overlays (from factory/manifest.txt)
 	@rm -rf .themis/factory-cc/.claude
@@ -76,6 +80,10 @@ build-image: ## Build the factory container image
 build: ## Build the themis binary
 	mkdir -p $(BUILD_DIR)
 	go build -o $(BUILD_DIR)/$(BINARY) $(CMD)
+
+factory-bin: ## Build the static linux factory binary (-> ./themis) that target sandboxes mount
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(FACTORY_ARCH) go build -o $(BINARY) $(CMD)
+	@file $(BINARY) 2>/dev/null || true
 
 run: build ## Build and run
 	$(BUILD_DIR)/$(BINARY)

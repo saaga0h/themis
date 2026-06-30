@@ -15,16 +15,18 @@ import (
 )
 
 type runArgs struct {
-	provider string
-	dryRun   bool
-	maxTurns int
+	provider  string
+	dryRun    bool
+	maxTurns  int
+	templates string
 }
 
-// parseRunArgs parses [--provider github|gitea] [--dry-run] [--max-turns N] from args.
+// parseRunArgs parses [--provider github|gitea] [--dry-run] [--max-turns N] [--templates DIR] from args.
 func parseRunArgs(args []string) (runArgs, error) {
 	provider := "github"
 	dryRun := false
 	maxTurns := defaultMaxTurns
+	templates := ""
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -34,6 +36,12 @@ func parseRunArgs(args []string) (runArgs, error) {
 			}
 			i++
 			provider = args[i]
+		case "--templates":
+			if i+1 >= len(args) {
+				return runArgs{}, fmt.Errorf("--templates requires a value")
+			}
+			i++
+			templates = args[i]
 		case "--dry-run":
 			dryRun = true
 		case "--max-turns":
@@ -60,7 +68,7 @@ func parseRunArgs(args []string) (runArgs, error) {
 		return runArgs{}, fmt.Errorf("unknown provider %q (must be github or gitea)", provider)
 	}
 
-	return runArgs{provider: provider, dryRun: dryRun, maxTurns: maxTurns}, nil
+	return runArgs{provider: provider, dryRun: dryRun, maxTurns: maxTurns, templates: templates}, nil
 }
 
 // IssueQuerier lists issues ready for processing and checks individual issue state.

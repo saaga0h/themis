@@ -81,6 +81,24 @@ func TestParseIssueArgs_MaxTurnsFlag(t *testing.T) {
 	}
 }
 
+func TestParseIssueArgs_TemplatesFlag(t *testing.T) {
+	args, err := parseIssueArgs([]string{"42", "--provider", "gitea", "--templates", "/tmp/tpl"})
+	if err != nil {
+		t.Fatalf("parseIssueArgs error: %v", err)
+	}
+	if args.templates != "/tmp/tpl" {
+		t.Errorf("templates: got %q, want %q", args.templates, "/tmp/tpl")
+	}
+	// Default is empty (binary uses its embedded templates).
+	def, err := parseIssueArgs([]string{"42", "--provider", "gitea"})
+	if err != nil {
+		t.Fatalf("parseIssueArgs error: %v", err)
+	}
+	if def.templates != "" {
+		t.Errorf("templates default: got %q, want empty", def.templates)
+	}
+}
+
 func TestParseIssueArgs_MaxTurnsRejectsNonPositive(t *testing.T) {
 	for _, v := range []string{"0", "-1"} {
 		if _, err := parseIssueArgs([]string{"42", "--max-turns", v}); err == nil {

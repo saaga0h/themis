@@ -139,7 +139,11 @@ func runIssue(args []string) error {
 	}
 
 	repoRoot := findRepoRoot(workDir)
-	templateDir := filepath.Join(repoRoot, "templates")
+	templateDir, cleanup, err := resolveTemplateDir(parsed.templates)
+	if err != nil {
+		return fmt.Errorf("resolving templates: %w", err)
+	}
+	defer cleanup()
 
 	var giteaOwner, giteaRepo, giteaAPIBase string
 	if parsed.provider == "gitea" {
@@ -219,7 +223,11 @@ func runRun(args []string) error {
 	}
 
 	repoRoot := findRepoRoot(workDir)
-	templateDir := filepath.Join(repoRoot, "templates")
+	templateDir, cleanup, err := resolveTemplateDir(parsed.templates)
+	if err != nil {
+		return fmt.Errorf("resolving templates: %w", err)
+	}
+	defer cleanup()
 
 	var querier IssueQuerier
 	var giteaOwner, giteaRepo, giteaAPIBase string
