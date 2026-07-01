@@ -18,7 +18,7 @@ PODMAN_RUN := podman run -i \
 	--dangerously-skip-permissions \
 	--max-turns $(MAX_TURNS)
 
-.PHONY: run-factory dry-run run-issue run-v2-issue factory-cc shell build-image build factory-bin test lint
+.PHONY: run-factory dry-run run-issue run-v2-issue factory-cc shell build-image build test lint
 
 # Architecture of the sandbox containers the factory binary runs in. arm64 matches
 # Apple-silicon podman; override (e.g. FACTORY_ARCH=amd64) for other hosts.
@@ -77,16 +77,10 @@ shell: ## Open an interactive shell inside the factory container
 build-image: ## Build the factory container image
 	podman build -t $(IMAGE) --memory=16g .
 
-build: ## Build the themis binary
+build: ## Build the static linux/$(FACTORY_ARCH) factory binary (-> bin/themis) that target sandboxes mount
 	mkdir -p $(BUILD_DIR)
-	go build -o $(BUILD_DIR)/$(BINARY) $(CMD)
-
-factory-bin: ## Build the static linux factory binary (-> ./themis) that target sandboxes mount
-	CGO_ENABLED=0 GOOS=linux GOARCH=$(FACTORY_ARCH) go build -o $(BINARY) $(CMD)
-	@file $(BINARY) 2>/dev/null || true
-
-run: build ## Build and run
-	$(BUILD_DIR)/$(BINARY)
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(FACTORY_ARCH) go build -o $(BUILD_DIR)/$(BINARY) $(CMD)
+	@file $(BUILD_DIR)/$(BINARY) 2>/dev/null || true
 
 test: ## Run Go tests
 	go test ./...
