@@ -6,8 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/saaga0h/themis/internal/agent"
@@ -137,13 +135,8 @@ func validateResumedState(ctx context.Context, state *pipeline.PipelineState, cf
 	if cfg.CodeVersion != "" && state.CodeVersion != "" && state.CodeVersion != cfg.CodeVersion {
 		fmt.Fprintf(log, "warning: state was created by version %s, current version is %s\n", state.CodeVersion, cfg.CodeVersion)
 	}
-	if state.CurrentStep > pipeline.StepBranch && cfg.Git != nil {
-		if branch, brErr := cfg.Git.CurrentBranch(ctx, cfg.WorkDir); brErr == nil {
-			if !strings.Contains(branch, strconv.Itoa(cfg.IssueNumber)) {
-				fmt.Fprintf(log, "warning: current branch %q does not contain issue number %d\n", branch, cfg.IssueNumber)
-			}
-		}
-	}
+	// The issue branch is restored after the issue is fetched (see Run) — the
+	// branch name needs the title, which isn't available here.
 	fmt.Fprintf(log, "resuming from step %s\n", state.CurrentStep.String())
 	return state
 }
@@ -208,6 +201,20 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 	}
 	if prof.ReviewModel == "" {
 		prof.ReviewModel = "sonnet"
+	}
+
+	// On resume past Branch, the Branch step (which creates/checks out the issue
+	// branch) is skipped, and the caller may have left us on the base branch (the
+	// run loop checks out main before each issue). Restore the issue branch so no
+	// step — Ship's push or an agent's commits — ever runs on the base branch.
+	if state.CurrentStep > pipeline.StepBranch && cfg.Git != nil {
+		branch := issueBranchName(cfg.IssueNumber, issue.Title)
+		if cur, curErr := cfg.Git.CurrentBranch(ctx, cfg.WorkDir); curErr != nil || cur != branch {
+			if coErr := cfg.Git.Checkout(ctx, cfg.WorkDir, branch); coErr != nil {
+				return nil, fmt.Errorf("resuming issue #%d at step %s: cannot check out its branch %q (created by the Branch step): %w", cfg.IssueNumber, state.CurrentStep, branch, coErr)
+			}
+			fmt.Fprintf(log, "resume: checked out issue branch %s\n", branch)
+		}
 	}
 
 	// lastGreenGateFailure carries the Implement green gate's verify output into
@@ -436,11 +443,18 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 	}
 }
 
+// issueBranchName is the branch the factory works an issue on: issue/<n>-<slug>.
+// Derived deterministically from the issue number and title so the Branch step and
+// the resume path (which must re-check-out the same branch) always agree.
+func issueBranchName(issueNumber int, title string) string {
+	return fmt.Sprintf("issue/%d-%s", issueNumber, slugify(title))
+}
+
 // runBranchStep creates or checks out the issue branch and seeds
 // .themis/review-results.json with empty findings so the Review step is
 // non-blocking unless the review agent itself writes blocking findings.
 func runBranchStep(ctx context.Context, cfg Config, issue *tracker.IssueData, log io.Writer) error {
-	branchName := fmt.Sprintf("issue/%d-%s", cfg.IssueNumber, slugify(issue.Title))
+	branchName := issueBranchName(cfg.IssueNumber, issue.Title)
 	if cfg.Git != nil {
 		if err := cfg.Git.CheckoutNewBranch(ctx, cfg.WorkDir, branchName); err != nil {
 			if checkoutErr := cfg.Git.Checkout(ctx, cfg.WorkDir, branchName); checkoutErr != nil {

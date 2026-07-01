@@ -98,48 +98,17 @@ func TestValidateResumedState_VersionMismatch_LogsWarning(t *testing.T) {
 	}
 }
 
-// TestValidateResumedState_BranchMismatch_LogsWarning asserts that when the
-// current git branch does not contain the issue number,
-// validateResumedState logs a warning that includes the branch name.
-func TestValidateResumedState_BranchMismatch_LogsWarning(t *testing.T) {
-	state := &pipeline.PipelineState{
-		IssueNumber:     42,
-		CurrentStep:     pipeline.StepImplement, // > StepBranch
-		TestFixAttempts: map[string]int{},
-	}
-
-	// currentBranchFn returns a branch name that does not contain "42".
-	git := &fakeGitOps{
-		currentBranchFn: func(_ context.Context, _ string) (string, error) {
-			return "issue/99-some-other-issue", nil
-		},
-	}
-	cfg := Config{
-		IssueNumber: 42,
-		Git:         git,
-	}
-	var log bytes.Buffer
-
-	validateResumedState(context.Background(), state, cfg, &log)
-
-	out := log.String()
-	if !strings.Contains(out, "issue/99-some-other-issue") {
-		t.Errorf("expected branch name in warning log; got: %q", out)
-	}
-}
-
 // ---------------------------------------------------------------------------
-// AC6: integration test — resume-validation path is reachable via Run()
+// Resume restores the issue branch (via Run), rather than merely warning. #94
 // ---------------------------------------------------------------------------
 
-// TestRun_ResumeValidationDelegatesToHelper verifies the resume-validation
-// path by exercising it through Run() with a GitOps stub that returns a
-// branch not containing the issue number. Run() must log a warning containing
-// the mismatched branch name and still complete successfully.
-func TestRun_ResumeValidationDelegatesToHelper(t *testing.T) {
+// TestRun_Resume_RestoresIssueBranch verifies that resuming at a post-Branch step
+// re-checks-out the issue branch — so an agent step (Implement here) never runs on
+// the wrong/base branch — instead of the old behaviour of only logging a warning.
+func TestRun_Resume_RestoresIssueBranch(t *testing.T) {
 	workDir := t.TempDir()
 
-	// Save state at a step after Branch so the branch-check path is triggered.
+	// Save state at an agent step after Branch, so Branch's checkout is skipped.
 	state := &pipeline.PipelineState{
 		IssueNumber:     42,
 		CurrentStep:     pipeline.StepImplement,
@@ -149,22 +118,22 @@ func TestRun_ResumeValidationDelegatesToHelper(t *testing.T) {
 		t.Fatalf("SaveState: %v", err)
 	}
 
-	const wrongBranch = "issue/99-some-other-issue"
+	// The workspace is left on some other branch (as the run loop's checkout-main
+	// leaves it); the resume must switch to this issue's branch.
 	git := &fakeGitOps{
 		currentBranchFn: func(_ context.Context, _ string) (string, error) {
-			return wrongBranch, nil
+			return "issue/99-some-other-issue", nil
 		},
 		commitsAhead: 1,
 	}
 
 	var log bytes.Buffer
-	w := &stubIssueWriter{prURL: "https://example.com/pr/validate"}
 	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
 		Fetcher:      &stubFetcher{issue: sampleIssue()},
 		Invoker:      &stubInvoker{},
-		IssueWriter:  w,
+		IssueWriter:  &stubIssueWriter{prURL: "https://example.com/pr/validate"},
 		TemplateDir:  templateDir(t),
 		CheckpointFn: noopCheckpoint,
 		Git:          git,
@@ -175,8 +144,14 @@ func TestRun_ResumeValidationDelegatesToHelper(t *testing.T) {
 		t.Fatalf("Run error: %v", err)
 	}
 
-	out := log.String()
-	if !strings.Contains(out, wrongBranch) {
-		t.Errorf("expected branch name %q in warning log; got:\n%s", wrongBranch, out)
+	want := issueBranchName(42, sampleIssue().Title)
+	found := false
+	for _, b := range git.checkedOut {
+		if b == want {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("resume must restore issue branch %q so no step runs on the wrong branch; checkedOut=%v\nlog:\n%s", want, git.checkedOut, log.String())
 	}
 }
