@@ -226,7 +226,7 @@ func TestRunRun_MaxTurnsIsPassedFromRunArgsToRunnerConfig(t *testing.T) {
 	}
 
 	// newIssueConfig must accept maxTurns and write it into runner.Config.MaxTurns.
-	cfg, err := newIssueConfig(ctx, 1, dir, dir, &stubMainFetcher{}, &stubMainIssueWriter{}, parsed.maxTurns)
+	cfg, err := newIssueConfig(ctx, 1, dir, dir, &stubMainFetcher{}, &stubMainIssueWriter{}, &cmdGitOps{}, parsed.maxTurns)
 	if err != nil {
 		t.Fatalf("newIssueConfig: %v", err)
 	}

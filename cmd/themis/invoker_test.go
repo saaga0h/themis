@@ -11,7 +11,7 @@ import (
 // This test fails before the implementation because newIssueConfig currently uses &claudeInvoker{}.
 func TestNewIssueConfig_UsesClaudeCodeInvokerDirectly(t *testing.T) {
 	dir := initGitRepoCheckpointTest(t)
-	cfg, err := newIssueConfig(context.Background(), 42, dir, dir, &stubMainFetcher{}, &stubMainIssueWriter{}, defaultMaxTurns)
+	cfg, err := newIssueConfig(context.Background(), 42, dir, dir, &stubMainFetcher{}, &stubMainIssueWriter{}, &cmdGitOps{}, defaultMaxTurns)
 	if err != nil {
 		t.Fatalf("newIssueConfig: %v", err)
 	}

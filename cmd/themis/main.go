@@ -46,7 +46,29 @@ func verifyRunner(verify []string) func(ctx context.Context, dir string) (bool, 
 }
 
 // cmdGitOps wraps internal/git functions and satisfies runner.GitOps.
-type cmdGitOps struct{}
+// pushURL and token, when set (gitea), make PushBranch authenticate with the
+// factory's GITEA_TOKEN over https — so the target repo needs no push
+// credentials in its git remote (no SSH key, no token baked into .git/config).
+type cmdGitOps struct {
+	pushURL string
+	token   string
+}
+
+// newCmdGitOps builds the GitOps for a provider. For gitea it derives the https
+// push URL from the resolved config and takes the token from GITEA_TOKEN, so
+// pushes authenticate the same way the API does. For other providers (or when the
+// URL can't be derived) it leaves them empty and PushBranch falls back to pushing
+// to origin with whatever auth the remote is configured for.
+func newCmdGitOps(provider, owner, repo, apiBase string) *cmdGitOps {
+	g := &cmdGitOps{}
+	if provider == "gitea" {
+		if pushURL, err := git.GiteaPushURL(apiBase, owner, repo); err == nil {
+			g.pushURL = pushURL
+			g.token = os.Getenv("GITEA_TOKEN")
+		}
+	}
+	return g
+}
 
 func (g *cmdGitOps) CheckoutNewBranch(ctx context.Context, dir, name string) error {
 	return git.CheckoutNewBranch(ctx, dir, name)
@@ -57,6 +79,9 @@ func (g *cmdGitOps) Checkout(ctx context.Context, dir, name string) error {
 }
 
 func (g *cmdGitOps) PushBranch(ctx context.Context, dir, branch string) error {
+	if g.pushURL != "" && g.token != "" {
+		return git.PushBranchWithToken(ctx, dir, g.pushURL, branch, g.token)
+	}
 	return git.PushBranch(ctx, dir, branch)
 }
 
@@ -160,8 +185,9 @@ func runIssue(args []string) error {
 	}
 
 	issueWriter := newIssueWriter(parsed.provider, giteaOwner, giteaRepo, giteaAPIBase)
+	gitOps := newCmdGitOps(parsed.provider, giteaOwner, giteaRepo, giteaAPIBase)
 
-	cfg, err := newIssueConfig(context.Background(), parsed.number, repoRoot, templateDir, fetcher, issueWriter, parsed.maxTurns)
+	cfg, err := newIssueConfig(context.Background(), parsed.number, repoRoot, templateDir, fetcher, issueWriter, gitOps, parsed.maxTurns)
 	if err != nil {
 		return fmt.Errorf("creating issue config: %w", err)
 	}
@@ -174,7 +200,7 @@ func runIssue(args []string) error {
 	return nil
 }
 
-func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir string, fetcher tracker.Fetcher, issueWriter runner.IssueWriter, maxTurns int) (runner.Config, error) {
+func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir string, fetcher tracker.Fetcher, issueWriter runner.IssueWriter, gitOps runner.GitOps, maxTurns int) (runner.Config, error) {
 	checkpointFn, err := checkpoint.NewStepCheckpoint(ctx, workDir)
 	if err != nil {
 		return runner.Config{}, fmt.Errorf("creating checkpoint: %w", err)
@@ -200,7 +226,7 @@ func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir strin
 		CheckpointFn:        checkpointFn,
 		CodeVersion:         version,
 		MaxTurns:            maxTurns,
-		Git:                 &cmdGitOps{},
+		Git:                 gitOps,
 		ProfileLoader:       profileLoader,
 		ReviewResultsLoader: review.ReadReviewResults,
 		TestRunner:          verifyRunner(desc.Verify),
@@ -258,7 +284,8 @@ func runRun(args []string) error {
 				return fmt.Errorf("checkout main before issue #%d: %w", issue.Number, err)
 			}
 			issueWriter := newIssueWriter(parsed.provider, giteaOwner, giteaRepo, giteaAPIBase)
-			issueCfg, err := newIssueConfig(ctx, issue.Number, repoRoot, templateDir, fetcher, issueWriter, parsed.maxTurns)
+			gitOps := newCmdGitOps(parsed.provider, giteaOwner, giteaRepo, giteaAPIBase)
+			issueCfg, err := newIssueConfig(ctx, issue.Number, repoRoot, templateDir, fetcher, issueWriter, gitOps, parsed.maxTurns)
 			if err != nil {
 				return fmt.Errorf("creating config for issue #%d: %w", issue.Number, err)
 			}

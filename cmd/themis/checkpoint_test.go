@@ -55,7 +55,7 @@ func TestNewIssueConfig_SetsCheckpointFn(t *testing.T) {
 	dir := initGitRepoCheckpointTest(t)
 	ctx := context.Background()
 
-	cfg, err := newIssueConfig(ctx, 42, dir, dir, &stubMainFetcher{}, &stubMainIssueWriter{}, defaultMaxTurns)
+	cfg, err := newIssueConfig(ctx, 42, dir, dir, &stubMainFetcher{}, &stubMainIssueWriter{}, &cmdGitOps{}, defaultMaxTurns)
 	if err != nil {
 		t.Fatalf("newIssueConfig: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestNewIssueConfig_SetsTestRunner(t *testing.T) {
 	dir := initGitRepoCheckpointTest(t)
 	ctx := context.Background()
 
-	cfg, err := newIssueConfig(ctx, 42, dir, dir, &stubMainFetcher{}, &stubMainIssueWriter{}, defaultMaxTurns)
+	cfg, err := newIssueConfig(ctx, 42, dir, dir, &stubMainFetcher{}, &stubMainIssueWriter{}, &cmdGitOps{}, defaultMaxTurns)
 	if err != nil {
 		t.Fatalf("newIssueConfig: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestNewIssueConfig_PropagatesMaxTurnsToRunnerConfig(t *testing.T) {
 	dir := initGitRepoCheckpointTest(t)
 	ctx := context.Background()
 
-	cfg, err := newIssueConfig(ctx, 42, dir, dir, &stubMainFetcher{}, &stubMainIssueWriter{}, 300)
+	cfg, err := newIssueConfig(ctx, 42, dir, dir, &stubMainFetcher{}, &stubMainIssueWriter{}, &cmdGitOps{}, 300)
 	if err != nil {
 		t.Fatalf("newIssueConfig: %v", err)
 	}

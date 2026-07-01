@@ -48,3 +48,19 @@ func InferGiteaConfig(ctx context.Context, dir string) (*GiteaConfig, error) {
 		APIBase: apiBase,
 	}, nil
 }
+
+// GiteaPushURL builds the https clone/push URL for owner/repo from a Gitea API
+// base. Only the scheme and host of apiBase are used, so it works whether apiBase
+// is "https://host" or "https://host/api/v1". The URL carries no credentials —
+// authentication is supplied separately (see PushBranchWithToken).
+func GiteaPushURL(apiBase, owner, repo string) (string, error) {
+	u, err := url.Parse(apiBase)
+	if err != nil || u.Host == "" {
+		return "", fmt.Errorf("cannot derive push URL from api base %q", apiBase)
+	}
+	scheme := u.Scheme
+	if scheme == "" {
+		scheme = "https"
+	}
+	return fmt.Sprintf("%s://%s/%s/%s.git", scheme, u.Host, owner, repo), nil
+}

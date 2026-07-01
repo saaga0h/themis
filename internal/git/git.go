@@ -3,7 +3,9 @@ package git
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -195,6 +197,42 @@ func PushBranch(ctx context.Context, dir, branch string) error {
 	_, err := runGit(ctx, dir, "push", "-u", "origin", branch)
 	if err != nil {
 		return fmt.Errorf("git push origin %s: %w", branch, err)
+	}
+	return nil
+}
+
+// giteaTokenAuthHeader builds the HTTP Basic-auth header value that authenticates
+// a git-over-HTTPS request to Gitea with a personal access token. Gitea accepts a
+// token as the Basic-auth username (the `https://<token>@host/...` form), so the
+// credential is base64("<token>:").
+func giteaTokenAuthHeader(token string) string {
+	return "Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte(token+":"))
+}
+
+// PushBranchWithToken pushes branch to an explicit https remote URL, authenticating
+// with a Gitea token. The token is passed as an HTTP Authorization header injected
+// through git's environment config (GIT_CONFIG_*), so it never appears in the
+// remote URL, the process arguments, or any on-disk git config — and a push error
+// cannot echo it. This lets the factory push with the same GITEA_TOKEN it uses for
+// the API, requiring no credentials stored in any repo's remote (SSH keys or a
+// token baked into .git/config).
+func PushBranchWithToken(ctx context.Context, dir, remoteURL, branch, token string) error {
+	if !filepath.IsAbs(dir) {
+		return fmt.Errorf("dir must be an absolute path, got %q", dir)
+	}
+	cmd := exec.CommandContext(ctx, "git", "-C", dir, "push", remoteURL, branch)
+	cmd.Env = append(os.Environ(),
+		"GIT_CONFIG_COUNT=1",
+		"GIT_CONFIG_KEY_0=http.extraheader",
+		"GIT_CONFIG_VALUE_0="+giteaTokenAuthHeader(token),
+	)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		// stderr may name the remote URL (which holds no token — auth is in the
+		// header) but never the credential, so it is safe to surface.
+		return fmt.Errorf("git push (token auth) %s: %w: %s", branch, err, strings.TrimSpace(stderr.String()))
 	}
 	return nil
 }
