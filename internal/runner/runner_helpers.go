@@ -149,6 +149,9 @@ var conventionalPrefixRE = regexp.MustCompile(`^[0-9a-f]+\s+([a-z]+)[\(:]`)
 
 func blockIssue(ctx context.Context, cfg Config, reason error) error {
 	comment := fmt.Sprintf("Pipeline blocked on issue #%d: %v", cfg.IssueNumber, reason)
+	if cfg.Scrub != nil {
+		comment = cfg.Scrub(comment)
+	}
 	if err := cfg.IssueWriter.Comment(ctx, cfg.IssueNumber, comment); err != nil {
 		return fmt.Errorf("posting block comment: %w", err)
 	}

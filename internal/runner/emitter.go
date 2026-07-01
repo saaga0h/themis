@@ -44,6 +44,12 @@ func emitStep(ctx context.Context, cfg Config, log io.Writer, rec StepRecord) {
 	if cfg.Emitter == nil {
 		return
 	}
+	// Scrub the free-text fields before they leave the process (the detail can
+	// carry a git/transport error with an embedded credential or host).
+	if cfg.Scrub != nil {
+		rec.Detail = cfg.Scrub(rec.Detail)
+		rec.VerifyOutput = cfg.Scrub(rec.VerifyOutput)
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Fprintf(log, "warning: diagnostic emitter panicked (record dropped): %v\n", r)

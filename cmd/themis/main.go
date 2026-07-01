@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,9 +15,24 @@ import (
 	"github.com/saaga0h/themis/internal/profile"
 	"github.com/saaga0h/themis/internal/review"
 	"github.com/saaga0h/themis/internal/runner"
+	"github.com/saaga0h/themis/internal/scrub"
 	"github.com/saaga0h/themis/internal/tracker"
 	"github.com/saaga0h/themis/internal/workflow"
 )
+
+// newScrubber builds the redactor for text the factory publishes (block comments,
+// telemetry detail): the Gitea token plus the Gitea host derived from apiBase, so
+// a leaked git/API error carries neither the credential nor the internal host.
+// Empty inputs are ignored, so this is safe for the github provider too.
+func newScrubber(apiBase string) func(string) string {
+	host := ""
+	if apiBase != "" {
+		if u, err := url.Parse(apiBase); err == nil {
+			host = u.Hostname()
+		}
+	}
+	return scrub.New(os.Getenv("GITEA_TOKEN"), host)
+}
 
 // verifyRunner returns a runner.Config.TestRunner that runs the project's
 // declared verify commands (the Green Gate) in order, each via `bash -c`, in
@@ -194,6 +210,7 @@ func runIssue(args []string) error {
 	if err != nil {
 		return fmt.Errorf("creating issue config: %w", err)
 	}
+	cfg.Scrub = newScrubber(giteaAPIBase)
 
 	result, err := runner.Run(context.Background(), cfg)
 	if err != nil {
@@ -295,6 +312,7 @@ func runRun(args []string) error {
 			if err != nil {
 				return fmt.Errorf("creating config for issue #%d: %w", issue.Number, err)
 			}
+			issueCfg.Scrub = newScrubber(giteaAPIBase)
 			result, err := runner.Run(ctx, issueCfg)
 			if err != nil {
 				return err

@@ -101,6 +101,11 @@ type Config struct {
 	// (bounded), so the async batch exporter delivers the final records. Nil when
 	// there is no Emitter.
 	EmitterShutdown func(context.Context) error
+	// Scrub redacts secrets and sensitive infrastructure values from free-text
+	// that leaves the process — block comments posted to the tracker and the
+	// StepRecord detail/verify-output sent to the sink. Nil means no scrubbing
+	// (tests); cmd/themis wires a scrubber built from the token + Gitea host.
+	Scrub func(string) string
 }
 
 // Result holds the outcome of a successful pipeline run.
