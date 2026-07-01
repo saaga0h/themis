@@ -237,6 +237,29 @@ func PushBranchWithToken(ctx context.Context, dir, remoteURL, branch, token stri
 	return nil
 }
 
+// CheckIdentity verifies that a git author identity is configured — user.name and
+// user.email both resolve to non-empty values in dir. It returns an actionable
+// error when either is missing so the factory can fail fast before the first
+// commit-producing step, rather than letting `git commit` fail deep in the
+// pipeline and surface as a misleading "uncommitted changes" checkpoint error.
+func CheckIdentity(ctx context.Context, dir string) error {
+	// `git config user.name` exits non-zero when unset; treat that as empty.
+	name, _ := runGit(ctx, dir, "config", "user.name")
+	email, _ := runGit(ctx, dir, "config", "user.email")
+	return identityError(name, email)
+}
+
+// identityError reports whether a resolved (name, email) pair is a usable git
+// identity, returning a fix-it error when either side is blank.
+func identityError(name, email string) error {
+	if strings.TrimSpace(name) == "" || strings.TrimSpace(email) == "" {
+		return fmt.Errorf("git identity not configured: user.name and user.email must be set — " +
+			"configure them in the repo's .git/config, pass GIT_AUTHOR_NAME/GIT_AUTHOR_EMAIL/" +
+			"GIT_COMMITTER_NAME/GIT_COMMITTER_EMAIL, or bake a default into the sandbox image")
+	}
+	return nil
+}
+
 func runGit(ctx context.Context, dir string, args ...string) (string, error) {
 	if !filepath.IsAbs(dir) {
 		return "", fmt.Errorf("dir must be an absolute path, got %q", dir)

@@ -164,6 +164,9 @@ func runIssue(args []string) error {
 	}
 
 	repoRoot := findRepoRoot(workDir)
+	if err := git.CheckIdentity(context.Background(), repoRoot); err != nil {
+		return err
+	}
 	templateDir, cleanup, err := resolveTemplateDir(parsed.templates)
 	if err != nil {
 		return fmt.Errorf("resolving templates: %w", err)
@@ -249,6 +252,9 @@ func runRun(args []string) error {
 	}
 
 	repoRoot := findRepoRoot(workDir)
+	if err := git.CheckIdentity(context.Background(), repoRoot); err != nil {
+		return err
+	}
 	templateDir, cleanup, err := resolveTemplateDir(parsed.templates)
 	if err != nil {
 		return fmt.Errorf("resolving templates: %w", err)

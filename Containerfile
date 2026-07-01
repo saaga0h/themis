@@ -20,6 +20,17 @@ RUN GOARCH=$(dpkg --print-architecture) && \
     curl -fsSL "https://dl.gitea.com/tea/${TEA_VERSION}/tea-${TEA_VERSION}-linux-${GOARCH}" \
     -o /usr/local/bin/tea && chmod +x /usr/local/bin/tea
 
+# Git environment defaults so a freshly-cloned target repo works out of the box:
+# trust the mounted workspace (--userns=keep-id makes the bind-mount's owner differ
+# from the in-container user, tripping git's dubious-ownership guard) and provide a
+# default commit identity (the factory's commits fail with "author identity unknown"
+# otherwise). --system is written while root so it applies whatever UID keep-id maps
+# to; both are overridable per-repo (.git/config) or per-run (GIT_* env). The sandbox
+# only ever mounts the operator's own repos.
+RUN git config --system --add safe.directory /home/agent/workspace && \
+    git config --system user.name "Themis Factory" && \
+    git config --system user.email "[email protected]"
+
 # Rename the base image's "node" user to "agent" and align UID/GID.
 # At runtime, --userns=keep-id maps the host user into the container.
 ARG AGENT_UID=1000
