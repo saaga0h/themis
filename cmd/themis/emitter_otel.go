@@ -22,7 +22,15 @@ type otelEmitter struct {
 
 func (e *otelEmitter) Emit(ctx context.Context, r runner.StepRecord) {
 	var rec otellog.Record
-	rec.SetTimestamp(time.Now())
+	// Stamp BOTH the event Timestamp and the ObservedTimestamp at emit time (step
+	// completion). Otherwise the SDK sets ObservedTimestamp at *export* time —
+	// which, behind the async batch processor, can be many minutes after the step
+	// actually ran — and the collector keys the record's time off ObservedTimestamp,
+	// so a step that ran at T shows up in Loki at T+lag. Pinning both here makes the
+	// factory's timeline reconstructable regardless of delivery lag.
+	now := time.Now()
+	rec.SetTimestamp(now)
+	rec.SetObservedTimestamp(now)
 	rec.SetBody(otellog.StringValue(fmt.Sprintf("factory %s: %s", r.Stage, r.Outcome)))
 	attrs := []otellog.KeyValue{
 		otellog.Int("issue_number", r.IssueNumber),
