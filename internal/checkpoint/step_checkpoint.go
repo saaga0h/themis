@@ -22,8 +22,15 @@ var optionalCommit = map[pipeline.Step]bool{
 	pipeline.StepDocs:     true,
 }
 
-// NewStepCheckpoint returns a checkpoint function that verifies each pipeline
-// step produced the correct commit type and left a clean working tree.
+// NewStepCheckpoint returns a checkpoint function that verifies each committing
+// pipeline step produced the correct commit type and left a clean working tree.
+//
+// The clean-tree guard is scoped to steps that are expected to commit (those in
+// stepPrefix). Non-committing steps — Fetch, Scan, Branch, Review, Ship — produce
+// no commit, so a dirty tree there is leftover tooling output (e.g. a binary from
+// a `go build`/`go test` the Review agent ran to verify the code), not work the
+// step failed to save. Enforcing clean-tree on them blocks the run for something
+// no step is responsible for committing.
 //
 // Instead of tracking a "before" snapshot, it checks whether a commit with the
 // expected prefix exists anywhere on the branch (relative to the base). This
@@ -31,13 +38,16 @@ var optionalCommit = map[pipeline.Step]bool{
 // checkpoint passes without requiring a new commit.
 func NewStepCheckpoint(ctx context.Context, dir string) (func(context.Context, pipeline.Step, string) error, error) {
 	return func(ctx context.Context, step pipeline.Step, workDir string) error {
-		if err := VerifyCleanWorkingTree(ctx, workDir); err != nil {
-			return err
-		}
-
 		prefix, hasPrefix := stepPrefix[step]
 		if !hasPrefix {
+			// Non-committing step: nothing to verify (see doc comment above).
 			return nil
+		}
+
+		// Committing step: its work must be saved — a clean tree (nothing left
+		// uncommitted) and, for required-commit steps, the expected commit type.
+		if err := VerifyCleanWorkingTree(ctx, workDir); err != nil {
+			return err
 		}
 
 		if optionalCommit[step] {

@@ -13,10 +13,9 @@ import (
 // initGitRepo and makeCommit helpers are defined in checkpoint_test.go (same package).
 
 // checkpoint function maps pipeline steps to expected commit prefixes.
-// checkpoint function calls VerifyCleanWorkingTree after every agent step.
+// It calls VerifyCleanWorkingTree only for committing steps (those with a
+// prefix); non-committing steps (Review, Ship, ...) skip the clean-tree guard.
 // Refactor and Docs steps allow no new commit (may be no-ops).
-//
-// NewStepCheckpoint does not exist yet — these tests will fail to compile until implemented.
 
 func TestNewStepCheckpoint_TestRed_CorrectPrefix(t *testing.T) {
 	dir := initGitRepo(t)
@@ -182,5 +181,42 @@ func TestNewStepCheckpoint_Refactor_NoNewCommit_DirtyTree_Fails(t *testing.T) {
 	}
 	if err := fn(ctx, pipeline.StepRefactor, dir); err == nil {
 		t.Error("checkpoint should fail when working tree is dirty, even for a no-op Refactor step")
+	}
+}
+
+// Review commits nothing, so a dirty tree there — e.g. a binary left by a
+// `go build`/`go test` the Review agent ran to verify the code — must NOT block
+// the run. Regression for issue #53's "checkpoint failed after step Review".
+func TestNewStepCheckpoint_Review_DirtyTree_Passes(t *testing.T) {
+	dir := initGitRepo(t)
+	ctx := context.Background()
+	fn, err := checkpoint.NewStepCheckpoint(ctx, dir)
+	if err != nil {
+		t.Fatalf("NewStepCheckpoint: %v", err)
+	}
+	// A newly created, uncommitted build artifact — the exact case from #53.
+	artifact := filepath.Join(dir, "heimdall")
+	if err := os.WriteFile(artifact, []byte("\x7fELF binary-ish"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := fn(ctx, pipeline.StepReview, dir); err != nil {
+		t.Errorf("Review commits nothing; a dirty tree must not fail its checkpoint, got: %v", err)
+	}
+}
+
+// Ship likewise produces no commit of its own — a dirty tree must not block it.
+func TestNewStepCheckpoint_Ship_DirtyTree_Passes(t *testing.T) {
+	dir := initGitRepo(t)
+	ctx := context.Background()
+	fn, err := checkpoint.NewStepCheckpoint(ctx, dir)
+	if err != nil {
+		t.Fatalf("NewStepCheckpoint: %v", err)
+	}
+	dirty := filepath.Join(dir, "artifact.bin")
+	if err := os.WriteFile(dirty, []byte("dirty"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := fn(ctx, pipeline.StepShip, dir); err != nil {
+		t.Errorf("Ship commits nothing; a dirty tree must not fail its checkpoint, got: %v", err)
 	}
 }
