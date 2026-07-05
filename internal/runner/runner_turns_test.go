@@ -69,7 +69,7 @@ func TestTurnsForStep(t *testing.T) {
 		{pipeline.StepTestRed, 1000, 80},
 		{pipeline.StepImplement, 1000, 120},
 		{pipeline.StepReview, 1000, 80},
-		{pipeline.StepDocs, 1000, 20},
+		{pipeline.StepDocs, 1000, 80},
 		{pipeline.StepShip, 1000, 60},
 		// Ceiling below every default → ceiling binds everywhere.
 		{pipeline.StepImplement, 25, 25},

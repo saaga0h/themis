@@ -249,9 +249,11 @@ var defaultStepTurns = map[pipeline.Step]int{
 	pipeline.StepTestRed:   80,
 	pipeline.StepImplement: 120,
 	pipeline.StepReview:    80,
-	// Docs is a minimal, issue-scoped pass — a tight ceiling keeps it from doing
-	// implement-scale work for a doc note (see issue #75's docs over-run).
-	pipeline.StepDocs: 20,
+	// Docs is a minimal, issue-scoped pass, but 20 turns proved too tight — a
+	// real doc pass (locate the surfaces, read them, edit) hit the ceiling and
+	// aborted best-effort without writing anything. 80 leaves room to finish
+	// while still capping it well below implement-scale work (issue #75's over-run).
+	pipeline.StepDocs: 80,
 	pipeline.StepShip: 60,
 }
 
