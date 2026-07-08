@@ -6,9 +6,9 @@
 
 ## Overview
 
-`internal/tracker` provides a provider-agnostic interface for fetching issue data from GitHub or Gitea. It defines the `Fetcher` interface, two concrete implementations, supporting types for list-issues API shapes, and a `ParseCheckboxes` helper for extracting acceptance criteria from issue bodies.
+`internal/tracker` provides a provider-agnostic interface for fetching issue data from GitHub or Gitea. It defines the `Fetcher` interface, two concrete implementations, supporting types for list-issues API shapes, and helpers for parsing issue bodies: `ParseCheckboxes` for acceptance criteria, `ParseCheckBlocks` for issue-declared verification commands, `IsDestructiveAC` for identifying destructive criteria, and `ValidateDestructiveChecks` for enforcing the pairing rule.
 
-The package is consumed by `cmd/themis` (wiring) and `internal/runner` (issue fetch at pipeline start).
+The package is consumed by `cmd/themis` (wiring, issue validation at fetch time) and `internal/runner` (issue fetch at pipeline start).
 
 ## Key Files & Entry Points
 
@@ -111,6 +111,42 @@ Extracts the text of all markdown checkbox items from `body` using the pattern `
 
 Used by `internal/runner` to derive the acceptance criteria list from `IssueData.Body`.
 
+## ParseCheckBlocks
+
+```go
+func ParseCheckBlocks(body string) []string
+```
+
+Extracts each fenced ` ```check ... ``` ` block's inner command from a markdown issue body. These are issue-declared verification commands the factory appends to the green gate for per-run verification only — never committed to `.themis/workflow.yaml`.
+
+- Returns the inner text of each fenced block, trimmed of leading/trailing whitespace.
+- Returns `nil` (not an empty slice) when no blocks are found.
+- Preserves document order.
+- Used by `cmd/themis` to extend the `.themis/workflow.yaml` `verify` contract for each run.
+
+## IsDestructiveAC
+
+```go
+func IsDestructiveAC(ac string) bool
+```
+
+Reports whether an acceptance criterion is destructive/negative — asserting that something must NO LONGER exist after the change. Matches the phrasings: "No X remains", "X no longer exists", "Removed X" (case-insensitive, anchored to the start after trimming).
+
+- Destructive ACs must be paired with a `check` block (enforced by `ValidateDestructiveChecks`).
+- Examples: "No GiteaQuerier struct remains in cmd/themis", "Removed hardcoded Finna config from GetSources handler".
+
+## ValidateDestructiveChecks
+
+```go
+func ValidateDestructiveChecks(body string) error
+```
+
+Deterministic meta-check that enforces every destructive AC has an accompanying `check` block. Returns an error naming the offending AC (the first destructive AC beyond the number of declared check blocks) when the rule is violated.
+
+- Returns `nil` when all destructive ACs are paired with check blocks, or when the body has no destructive ACs.
+- Pairing is by count, in source order: AC 1 pairs with check block 1, AC 2 with check block 2, etc. (per `skills/issue-writer/SKILL.md`).
+- Called by `cmd/themis/main.go` at issue fetch time to fail fast if the issue structure is invalid.
+
 ## List-Issue Types
 
 These types exist to support paginated list-issues responses consumed by `cmd/themis` queriers.
@@ -190,4 +226,5 @@ No internal package dependencies.
 
 - `ARCHITECTURE.md` — system-level design
 - `docs/subsystems/runner/README.md` — consumes `Fetcher` and `ParseCheckboxes` at pipeline start
-- `docs/subsystems/themis/README.md` — wires `NewFetcher` and handles provider-specific configuration
+- `docs/subsystems/themis/README.md` — wires `NewFetcher`, handles provider-specific configuration, and calls `ValidateDestructiveChecks` at fetch time
+- `skills/issue-writer/SKILL.md` — user-facing guide for check block syntax and destructive AC rules
