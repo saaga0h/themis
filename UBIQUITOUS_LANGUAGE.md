@@ -19,10 +19,10 @@ here prevents ambiguity in agent-implemented code.
 
 | Term | Definition | Aliases to avoid |
 |------|------------|-----------------|
-| **Pipeline** | The fixed sequence of steps that transforms an issue into a PR: Fetch → Scan → Branch → TestRed → Implement → Refactor → Review → Fix → Docs → Ship. Encoded in Go code in `internal/pipeline/`. The pipeline is deterministic — step transitions are computed, not prompted | "workflow" (rejected — workflows imply configurable DAGs; the pipeline is a fixed sequence), "process" |
+| **Pipeline** | The fixed sequence of steps that transforms an issue into a PR: Fetch → Scan → Branch → TestRed → Implement → Review → Docs → Ship. Encoded in Go code in `internal/pipeline/`. The pipeline is deterministic — step transitions are computed, not prompted. The step enum retains `Refactor` and `Fix` slots for state-file/resume compatibility, but the linear pipeline no longer reaches them — Review is single-pass and never routes to a fix | "workflow" (rejected — workflows imply configurable DAGs; the pipeline is a fixed sequence), "process" |
 | **Step** | A single stage in the pipeline. Each step has a name, a required commit prefix (or none), and a transition rule. Steps are the unit of state persistence — the pipeline resumes at the last completed step | "stage", "phase", "task" |
 | **Runner** | The orchestrator that executes the pipeline for a single issue. `runner.Run` in `internal/runner/` loads or resumes state, advances through steps, invokes agents for creative steps, and enforces limits. The runner is deterministic — it does not make creative decisions | "executor", "processor", "handler" |
-| **State** | The persisted pipeline state for a single issue run. Stored as `.themis/state.json`. Contains the current step, review cycle count, test-fix attempt counts, issue number, and code version. Enables crash recovery — a killed run resumes at the last completed step | "progress", "status" |
+| **State** | The persisted pipeline state for a single issue run. Stored as `.themis/state.json`. Contains the current step, test-fix and implement attempt counts, issue number, and code version. Enables crash recovery — a killed run resumes at the last completed step | "progress", "status" |
 | **Checkpoint** | Verification that an agent step completed successfully. Checks that the working tree is clean and that the expected conventional-commit prefix exists on the latest commit. Implemented in `internal/checkpoint/` | "gate", "guard", "validation" |
 | **Loop** | The `themis run` outer loop that processes multiple issues sequentially. Lists `ready-for-agent` issues, sorts by number, runs the pipeline for each, logs failures and continues. Distinct from the pipeline — the loop manages issue selection, the pipeline manages step execution | "batch", "queue" |
 
@@ -50,7 +50,7 @@ here prevents ambiguity in agent-implemented code.
 | **Invoker** | The interface between deterministic pipeline control and LLM creative work. `agent.Invoker` with `Invoke(ctx, InvokeOptions) (*InvokeResult, error)`. `ClaudeCodeInvoker` is the production implementation. Tests use `fakeInvoker` | "caller", "client", "executor" |
 | **Template** | A markdown file in `templates/` with `{{KEY}}` placeholders. One per pipeline step. The template is the parameterised instruction; the rendered output (after substitution) is the prompt sent to the agent | "prompt" (when referring to the file) |
 | **Prompt** | The rendered output of a template after `{{KEY}}` substitution. What the agent actually receives. Templates are authored; prompts are computed at runtime | "template" (when referring to the rendered output) |
-| **Profile** | Per-project YAML configuration at `.themis/profile.yaml`. Controls model assignments per review agent, round-3 gate behaviour, test-fix attempt limits, and optional step enablement. Loaded by `internal/profile/` with sensible defaults when absent | "config", "settings", "preferences" |
+| **Profile** | Per-project YAML configuration at `.themis/profile.yaml`. Controls per-step model assignments, test-fix attempt limits, and optional step enablement. Loaded by `internal/profile/` with sensible defaults when absent | "config", "settings", "preferences" |
 | **Skill** | A reusable prompt fragment in `skills/<name>/SKILL.md`. Composed into agents and commands. Skills provide domain expertise (pr-review, issue-writer, deepening) without pipeline awareness | "plugin", "extension", "module" |
 | **Command** | A slash command prompt in `commands/<name>.md`. Executed directly by the user in a Claude Code session. Commands are user-facing entry points; the factory pipeline is one command among many | "action", "task" |
 
@@ -60,15 +60,15 @@ here prevents ambiguity in agent-implemented code.
 
 | Term | Definition | Aliases to avoid |
 |------|------------|-----------------|
-| **Review Battery** | The set of specialised review agents that evaluate code during the Review step. Includes architecture, convention, coverage, complexity, depth, and security reviewers. Run sequentially (v2.0 may parallelise read-only agents) | "review pipeline", "review chain" |
+| **Review Step** | The factory pipeline's single-pass safety gate (`templates/review.md`): one security-reviewer delegation plus an inline AC-coverage check, writing findings to `.themis/review-results.json` (severity `critical`/`high`/`low`; never `medium`). It runs **once**, edits nothing, never loops, and never routes to a fix — findings inform the PR verdict at Ship, not control flow | "review battery" (that is the interactive tier) |
+| **Review Battery** | The full set of specialised review agents (architecture, convention, coverage, complexity, depth, security) available to the **interactive** `/review` command and human PR review. The autonomous factory does **not** run the battery — its Review Step is the single-pass gate above | "review pipeline", "review chain" |
 | **Finding** | Something a reviewer identified in the code. Every finding is classified as blocking, non-blocking, or observation. The PR body's Review Notes section must document all non-blocking findings | "issue" (ambiguous — means a tracker issue), "comment" |
-| **Blocking Finding** | A finding that must be resolved before merge. Contract violations (CODING_STANDARDS.md), missing test coverage, swallowed errors, hardcoded infrastructure. Always produces a fix commit | "critical", "P0" |
+| **Blocking Finding** | A finding that must be resolved before merge. Contract violations (CODING_STANDARDS.md), an AC with no test, swallowed errors, hardcoded infrastructure. In the factory these are the `critical`/`high` findings in `review-results.json`; they gate the PR verdict at Ship — the autonomous pipeline does **not** auto-fix them (there is no Fix step), so resolution is the human's at PR review | "critical", "P0" |
 | **Non-blocking Finding** | A finding that is real but can be deferred. Becomes a follow-up candidate. The factory labels its own findings blocking/non-blocking — the reviewer audits these labels as claims, not decisions | "minor", "nice-to-have" |
 | **Follow-up** | A non-blocking finding worth tracking as a future issue. Includes improvements beyond the contract floor and pre-existing debt the PR exposed. Captured in the review's Follow-ups section | "TODO", "tech debt" (too vague) |
 | **Observation** | A finding that is style-only, merely-different, or already owned by a known future issue. Mentioned but not actionable | "nit" |
 | **Review Notes** | The section of a PR body where the factory documents every non-blocking finding it waved through. Sparse review notes on a non-trivial diff are suspect — the factory found nothing, or it under-reported | "review comments" |
-| **Fix Cycle** | A fix commit that resolves blocking findings from a review round. The pipeline supports up to 2 review cycles by default (extendable to 3 via round-3 gate). Each cycle produces a `fix(<scope>):` commit | "iteration", "revision" |
-| **Review Cycle** | One pass of the review battery over the current code state. If blocking findings exist, a fix cycle follows and a new review cycle begins. Max 2 by default | "review round", "review pass" |
+| **Fix Cycle** / **Review Cycle** | **v1 constructs, removed in v2.** The factory no longer loops the Review Step or runs a Fix step (the `Refactor`/`Fix` enum slots persist only for state-file/resume compatibility). Blocking findings gate the PR verdict rather than triggering an automated fix round; iterative fixing is the human/interactive tier's job | "review round", "iteration" |
 
 ---
 
@@ -125,8 +125,8 @@ here prevents ambiguity in agent-implemented code.
 - Creative **Steps** render **Templates** into **Prompts** and pass them to the **Invoker**
 - The **Invoker** delegates to **Claude Code**, which does the creative work
 - After each creative **Step**, the **Checkpoint** verifies the **Agent** committed correctly
-- The **Review Battery** evaluates the code and classifies **Findings**
-- **Blocking Findings** trigger a **Fix Cycle**; **Non-blocking Findings** become **Follow-ups**
+- The single-pass **Review Step** evaluates the code and records **Findings** to `review-results.json`
+- **Blocking Findings** gate the PR verdict at Ship (no automated fix round); **Non-blocking Findings** become **Follow-ups**
 - The **Ship** step creates a **PR** with **Review Notes** documenting all findings
 - The **Human** reviews the PR using the **pr-review** skill, auditing finding classifications
 - After merge, agreed **Follow-ups** become new **Issues**
@@ -150,7 +150,7 @@ here prevents ambiguity in agent-implemented code.
   but they are different things at different lifecycle stages.
 - **"Pipeline" vs "Commit Pipeline"** — the pipeline is the state machine (Fetch through Ship).
   The commit pipeline is the ordered sequence of conventional commits the pipeline produces.
-  The pipeline has 10 steps; the commit pipeline typically has 4–6 commits.
+  The pipeline has 8 reachable steps (Fetch through Ship, past the retained Refactor/Fix slots); the commit pipeline typically has 2–3 commits (test, feat, and docs when docs changed).
 - **"Factory" vs "Runner" vs "Loop"** — the factory is the overall system. The loop (`themis run`)
   selects and sequences issues. The runner (`runner.Run`) executes the pipeline for a single
   issue. Factory ⊃ Loop ⊃ Runner.

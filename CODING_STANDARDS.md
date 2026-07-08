@@ -195,22 +195,26 @@ require justification and a CODING_STANDARDS update.
 
 ### Pipeline shape
 
-Every factory-processed issue produces commits in this order. Stages must appear
+A factory-processed issue produces commits in this order. Stages must appear
 in sequence; a `fix` with no preceding `test` is suspect.
 
 ```
 test(<scope>):     add failing tests for issue #N
 feat(<scope>):     implement issue #N — <title>
-refactor(<scope>): clean up implementation               (if needed)
-fix(<scope>):      resolve review findings cycle M        (if needed, repeatable)
 docs(<scope>):     update documentation                   (if docs changed)
 ```
+
+The autonomous pipeline is linear (TestRed → Implement → Review → Docs → Ship) and
+produces `test`, `feat`, and `docs` commits. `refactor(<scope>):` and `fix(<scope>):`
+remain valid conventional-commit prefixes — the checkpoint recognises them — but the
+factory has no Refactor or Fix step, so they appear only on interactive or human
+follow-up commits, never in an autonomous run.
 
 ### Rules
 - Scope is the package or subsystem touched (e.g., `cmd`, `runner`, `tracker`, `git`)
 - Use comma-separated scopes when a commit spans packages: `feat(tracker,runner):`
 - The issue number appears in the first `test` and `feat` commit messages
-- Fix commits reference the review cycle number: `fix(<scope>): resolve review findings cycle 2`
+- `fix` commits describe what they resolve: `fix(<scope>): <what was fixed>` (v2 has no autonomous review-cycle numbering)
 - Refactor and docs commits are optional — only required when meaningful changes were made
 - The Ship step does not produce a commit — it creates the PR
 
@@ -240,8 +244,6 @@ docs(<scope>):     update documentation                   (if docs changed)
 | `{{ACCEPTANCE_CRITERIA}}` | Parsed AC checkboxes | Agent-step templates |
 | `{{AC_STATUS}}` | Same as ACCEPTANCE_CRITERIA | `ship.md` only |
 | `{{REVIEW_OUTPUT}}` | Last Review step stdout | `ship.md` |
-| `{{BLOCKING_FINDINGS}}` | Blocking findings from `.themis/review-results.json`, formatted as severity-ordered human-readable list (critical → high → medium, low omitted) | `fix-findings.md` |
-| `{{REVIEW_CYCLE}}` | Current review cycle number (1-indexed) | `fix-findings.md` |
 | `{{PIPELINE_SHAPE}}` | Distinct commit prefixes | `ship.md` |
 | `{{COMMIT_LOG}}` | Branch commit log | `ship.md` |
 | `{{CHANGED_FILES}}` | Files changed on branch | Templates that use it |
@@ -288,6 +290,14 @@ or through the `runner.Config` struct — not through a direct import.
 
 ## Review Classification
 
+These rules define the *contract* — what counts as blocking — independent of who
+catches it. Enforcement is tiered: the autonomous factory **Review Step** is a
+single-pass gate that catches a subset (a concrete security vulnerability, or an AC
+with no test); the full classification below is applied by the human/interactive
+review tier (`/review`, the pr-review skill) and, where a rule has a deterministic
+checker, by the project's verify gate. A blocking category is not "what the factory
+review agent greps for" — it is what must hold before merge, wherever it is caught.
+
 ### Blocking (fix before merge)
 - Any terminology violation against `UBIQUITOUS_LANGUAGE.md` in code, comments, or commits
 - Any AC without a correctness-asserting test
@@ -322,10 +332,12 @@ Contract violations are always blocking — never downgrade one for convenience.
 
 ## Review Checklist
 
-The reviewer must verify all of the following before approving:
+This is the checklist for the human/interactive review tier (`/review`, pr-review),
+not the factory's single-pass Review Step. The reviewer must verify all of the
+following before approving:
 
 - [ ] All terms match `UBIQUITOUS_LANGUAGE.md` — no aliased terms in code, comments, or commits
-- [ ] Commit pipeline follows the required order (test → feat → refactor → fix → docs)
+- [ ] Commit pipeline follows the required order (test → feat → docs; refactor/fix are interactive-only)
 - [ ] Every acceptance criterion in the issue has a corresponding correctness-asserting test
 - [ ] Every new error path has a test that triggers it
 - [ ] `go build ./...` passes
