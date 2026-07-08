@@ -232,6 +232,14 @@ func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir strin
 	if len(desc.Verify) == 0 {
 		fmt.Fprintf(os.Stderr, "warning: no verify commands declared in .themis/workflow.yaml; green gate will be a no-op\n")
 	}
+	issue, err := fetcher.Fetch(ctx, issueNumber)
+	if err != nil {
+		return runner.Config{}, fmt.Errorf("fetching issue #%d: %w", issueNumber, err)
+	}
+	if err := tracker.ValidateDestructiveChecks(issue.Body); err != nil {
+		return runner.Config{}, fmt.Errorf("issue #%d: %w", issueNumber, err)
+	}
+	verify := append(append([]string{}, desc.Verify...), tracker.ParseCheckBlocks(issue.Body)...)
 	// Diagnostic emitter: ships the factory's own per-step narrative to the OTLP
 	// collector when OTEL_* env is set (same gating as Claude Code's telemetry);
 	// nil otherwise. Run defers EmitterShutdown to flush the batch on exit.
@@ -249,7 +257,7 @@ func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir strin
 		Git:                 gitOps,
 		ProfileLoader:       profileLoader,
 		ReviewResultsLoader: review.ReadReviewResults,
-		TestRunner:          verifyRunner(desc.Verify),
+		TestRunner:          verifyRunner(verify),
 		StandardsDocs:       desc.StandardsDocs(),
 		DocSurfaces:         desc.Docs.Surfaces,
 		Emitter:             emitter,

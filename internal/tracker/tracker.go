@@ -58,38 +58,64 @@ func ParseCheckboxes(body string) []string {
 	return items
 }
 
+// checkBlockRE matches fenced ```check ... ``` blocks, capturing the inner content.
+var checkBlockRE = regexp.MustCompile("(?s)```check\n(.*?)```")
+
 // ParseCheckBlocks extracts each fenced ```check ... ``` block's inner command
 // from a markdown issue body, trimmed, in source order. These are the
 // issue-declared negative/placement/delegation-AC verifications described in
 // skills/issue-writer/SKILL.md: the factory appends each to the Green Gate for
 // that run only — issue checks are never committed and never touch the
 // project's .themis/workflow.yaml verify contract.
-//
-// TODO(#98): not yet implemented — always returns nil.
 func ParseCheckBlocks(body string) []string {
-	return nil
+	matches := checkBlockRE.FindAllStringSubmatch(body, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	blocks := make([]string, 0, len(matches))
+	for _, m := range matches {
+		blocks = append(blocks, strings.TrimSpace(m[1]))
+	}
+	return blocks
 }
+
+// destructiveACRE matches the AC phrasings skills/issue-writer/SKILL.md
+// prescribes for negative/absence ACs: "No X remains", "X no longer exists",
+// and "Removed X".
+var destructiveACRE = regexp.MustCompile(`(?i)^no\b.*\bremains?\b|\bno longer exists?\b|^removed\b`)
 
 // IsDestructiveAC reports whether ac describes a destructive/negative AC — one
 // asserting that something must no longer exist after the change (e.g. "No
 // GiteaQuerier struct remains in cmd/themis", "Removed hardcoded Finna config
 // from GetSources handler"). Destructive ACs require a paired check block; see
 // ValidateDestructiveChecks.
-//
-// TODO(#98): not yet implemented — always returns false.
 func IsDestructiveAC(ac string) bool {
-	return false
+	return destructiveACRE.MatchString(strings.TrimSpace(ac))
 }
 
 // ValidateDestructiveChecks returns an error naming the offending AC when body
 // contains a destructive AC (per IsDestructiveAC) with no accompanying check
 // block (per ParseCheckBlocks) anywhere in body. Returns nil when every
 // destructive AC is paired with a check block, or when body has no destructive
-// ACs at all.
-//
-// TODO(#98): not yet implemented — always returns nil.
+// ACs at all. Pairing is by count, in source order, per the "one check block
+// per negative/placement/delegation AC" rule in skills/issue-writer/SKILL.md —
+// the first destructive AC beyond the number of declared check blocks is the
+// offender.
 func ValidateDestructiveChecks(body string) error {
-	return nil
+	var destructiveACs []string
+	for _, ac := range ParseCheckboxes(body) {
+		if IsDestructiveAC(ac) {
+			destructiveACs = append(destructiveACs, ac)
+		}
+	}
+	if len(destructiveACs) == 0 {
+		return nil
+	}
+	checks := ParseCheckBlocks(body)
+	if len(checks) >= len(destructiveACs) {
+		return nil
+	}
+	return fmt.Errorf("destructive AC %q has no accompanying check block", destructiveACs[len(checks)])
 }
 
 // ghIssue mirrors the JSON shape returned by `gh issue view --json`.
