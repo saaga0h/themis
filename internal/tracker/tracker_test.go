@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -520,5 +521,108 @@ func TestNewGitHubQuerier_IsNotNil(t *testing.T) {
 	q := tracker.NewGitHubQuerier()
 	if q == nil {
 		t.Error("NewGitHubQuerier returned nil")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Issue #98: extract issue-declared `check` blocks into the green gate.
+// ParseCheckBlocks, IsDestructiveAC, and ValidateDestructiveChecks are stubs
+// today (see internal/tracker/tracker.go) — these tests specify the real
+// behaviour and fail against the stubs.
+// ---------------------------------------------------------------------------
+
+func TestParseCheckBlocks_ExtractsFencedCommand(t *testing.T) {
+	body := "## Acceptance Criteria\n- [ ] No Foo remains\n\n```check\n! grep -rq 'type Foo' pkg/\n```\n"
+	got := tracker.ParseCheckBlocks(body)
+	want := []string{"! grep -rq 'type Foo' pkg/"}
+	if len(got) != len(want) {
+		t.Fatalf("ParseCheckBlocks: got %d blocks %v, want %d %v", len(got), got, len(want), want)
+	}
+	if got[0] != want[0] {
+		t.Errorf("ParseCheckBlocks[0]: got %q, want %q", got[0], want[0])
+	}
+}
+
+func TestParseCheckBlocks_NoBlocksReturnsEmpty(t *testing.T) {
+	body := "## Acceptance Criteria\n- [ ] Something behavioural\n\n" +
+		"```\nplain fenced block, no tag\n```\n\n" +
+		"```text\nsome other tagged fence\n```\n"
+	got := tracker.ParseCheckBlocks(body)
+	if len(got) != 0 {
+		t.Errorf("ParseCheckBlocks (no check fences) = %v, want empty", got)
+	}
+}
+
+func TestParseCheckBlocks_MultipleBlocksPreserveOrder(t *testing.T) {
+	body := "```check\nfirst command\n```\n\nSome prose in between the two check blocks.\n\n```check\nsecond command\n```\n"
+	got := tracker.ParseCheckBlocks(body)
+	want := []string{"first command", "second command"}
+	if len(got) != len(want) {
+		t.Fatalf("ParseCheckBlocks: got %d blocks %v, want %d %v", len(got), got, len(want), want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("block[%d]: got %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestParseCheckBlocks_IgnoresNonCheckFences(t *testing.T) {
+	body := "```go\nfunc main() {}\n```\n\n```\nuntagged fence, not a check\n```\n\n```check\nreal check command\n```\n"
+	got := tracker.ParseCheckBlocks(body)
+	want := []string{"real check command"}
+	if len(got) != len(want) {
+		t.Fatalf("ParseCheckBlocks: got %d blocks %v, want %d %v (must ignore go/untagged fences)", len(got), got, len(want), want)
+	}
+	if got[0] != want[0] {
+		t.Errorf("ParseCheckBlocks[0]: got %q, want %q", got[0], want[0])
+	}
+}
+
+func TestIsDestructiveAC_TableDriven(t *testing.T) {
+	tests := []struct {
+		name string
+		ac   string
+		want bool
+	}{
+		{"no struct remains", "No GiteaQuerier struct remains in cmd/themis", true},
+		{"old thing no longer exists", "the old GiteaFetcher no longer exists in cmd/themis", true},
+		{"removed hardcoded config", "Removed hardcoded Finna config from GetSources handler", true},
+		{"plain behavioural AC", "CreateItem returns 400 for invalid itemType values", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tracker.IsDestructiveAC(tt.ac)
+			if got != tt.want {
+				t.Errorf("IsDestructiveAC(%q) = %v, want %v", tt.ac, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestValidateDestructiveChecks_ErrorsWhenNoCheckBlockPresent(t *testing.T) {
+	const offendingAC = "No GiteaQuerier struct remains in cmd/themis"
+	body := "## Acceptance Criteria\n- [ ] " + offendingAC + "\n"
+	err := tracker.ValidateDestructiveChecks(body)
+	if err == nil {
+		t.Fatal("ValidateDestructiveChecks: expected error when a destructive AC has no check block, got nil")
+	}
+	if !strings.Contains(err.Error(), offendingAC) {
+		t.Errorf("ValidateDestructiveChecks error must name the offending AC %q, got %q", offendingAC, err.Error())
+	}
+}
+
+func TestValidateDestructiveChecks_PassesWhenCheckBlockPresent(t *testing.T) {
+	body := "## Acceptance Criteria\n- [ ] No GiteaQuerier struct remains in cmd/themis\n\n" +
+		"```check\n! grep -rq 'type GiteaQuerier' cmd/themis/\n```\n"
+	if err := tracker.ValidateDestructiveChecks(body); err != nil {
+		t.Errorf("ValidateDestructiveChecks: got %v, want nil (destructive AC is paired with a check block)", err)
+	}
+}
+
+func TestValidateDestructiveChecks_PassesWhenNoDestructiveACs(t *testing.T) {
+	body := "## Acceptance Criteria\n- [ ] CreateItem returns 400 for invalid itemType values\n"
+	if err := tracker.ValidateDestructiveChecks(body); err != nil {
+		t.Errorf("ValidateDestructiveChecks: got %v, want nil (no destructive ACs present)", err)
 	}
 }
