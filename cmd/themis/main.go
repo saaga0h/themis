@@ -34,12 +34,48 @@ func newScrubber(apiBase string) func(string) string {
 	return scrub.New(os.Getenv("GITEA_TOKEN"), host)
 }
 
+// factorySecretEnv names the orchestration credentials the factory holds but
+// green-gate verify commands — builds, tests, greps, and issue-declared check
+// blocks — must never see. Those commands run arbitrary shell and their output is
+// published (tracker comments, telemetry), so a command that echoes or dumps env
+// would leak a secret. GITEA_TOKEN/GITHUB_TOKEN authenticate git push and the
+// tracker API; CLAUDE_CODE_OAUTH_TOKEN is held only to forward to the Claude Code
+// subprocess (internal/agent) and is read by no factory Go code.
+var factorySecretEnv = map[string]bool{
+	"GITEA_TOKEN":             true,
+	"GITHUB_TOKEN":            true,
+	"CLAUDE_CODE_OAUTH_TOKEN": true,
+}
+
+// verifyEnv returns the parent environment with factorySecretEnv removed. It is a
+// denylist, not an allowlist: everything else (PATH, HOME, GOCACHE, GOPATH, proxy
+// vars, …) is preserved so stack-agnostic builds and tests still run. Stripping at
+// the source is the right control — the scrubber cannot be relied on for the OAuth
+// token (the factory does not even own it), so no verify subprocess is handed the
+// credentials in the first place.
+func verifyEnv() []string {
+	parent := os.Environ()
+	filtered := make([]string, 0, len(parent))
+	for _, kv := range parent {
+		name := kv
+		if i := strings.IndexByte(kv, '='); i >= 0 {
+			name = kv[:i]
+		}
+		if factorySecretEnv[name] {
+			continue
+		}
+		filtered = append(filtered, kv)
+	}
+	return filtered
+}
+
 // verifyRunner returns a runner.Config.TestRunner that runs the project's
 // declared verify commands (the Green Gate) in order, each via `bash -c`, in
 // dir. The first non-zero exit fails the gate. With no commands declared it
 // no-ops to passing — the warning is emitted once at config time, not here.
 // The factory stays stack-agnostic: these commands come from
-// .themis/workflow.yaml, never hardcoded.
+// .themis/workflow.yaml, never hardcoded. Each command runs with the factory's
+// orchestration secrets stripped from its environment (see verifyEnv).
 func verifyRunner(verify []string) func(ctx context.Context, dir string) (bool, string) {
 	return func(ctx context.Context, dir string) (bool, string) {
 		if len(verify) == 0 {
@@ -50,6 +86,7 @@ func verifyRunner(verify []string) func(ctx context.Context, dir string) (bool, 
 			fmt.Fprintf(&out, "$ %s\n", cmd)
 			c := exec.CommandContext(ctx, "bash", "-c", cmd)
 			c.Dir = dir
+			c.Env = verifyEnv()
 			o, err := c.CombinedOutput()
 			out.Write(o)
 			if err != nil {

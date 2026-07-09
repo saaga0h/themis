@@ -89,3 +89,62 @@ func TestGreenGate_Issue68Scenario_RedOnDeclaredNegativeCheck_ThenGreenAfterDele
 		t.Fatalf("expected green gate to pass once cmd/themis/old.go is deleted, got failure: %s", out)
 	}
 }
+
+// #100: the factory's orchestration secrets must never reach a verify subprocess —
+// those commands run arbitrary shell and their output is published (tracker,
+// telemetry). A command that echoes all three factory secrets sees empty values,
+// and none of the secret values appears in the returned output.
+func TestVerifyRunner_StripsFactorySecrets(t *testing.T) {
+	t.Setenv("GITEA_TOKEN", "gitea-secret-xyz")
+	t.Setenv("GITHUB_TOKEN", "github-secret-xyz")
+	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "oauth-secret-xyz")
+	t.Setenv("THEMIS_TEST_SENTINEL", "sentinel-ok")
+
+	cmd := `echo "gitea=[$GITEA_TOKEN] github=[$GITHUB_TOKEN] oauth=[$CLAUDE_CODE_OAUTH_TOKEN] sentinel=[$THEMIS_TEST_SENTINEL]"`
+	passed, out := verifyRunner([]string{cmd})(context.Background(), t.TempDir())
+
+	if !passed {
+		t.Fatalf("gate should pass, got failure:\n%s", out)
+	}
+	for _, secret := range []string{"gitea-secret-xyz", "github-secret-xyz", "oauth-secret-xyz"} {
+		if strings.Contains(out, secret) {
+			t.Errorf("factory secret %q leaked into published verify output:\n%s", secret, out)
+		}
+	}
+	if !strings.Contains(out, "gitea=[] github=[] oauth=[]") {
+		t.Errorf("factory secrets should read empty in the subprocess, got:\n%s", out)
+	}
+	// A non-secret parent variable must survive — this is a denylist, not an allowlist.
+	if !strings.Contains(out, "sentinel=[sentinel-ok]") {
+		t.Errorf("non-secret parent env must be preserved, got:\n%s", out)
+	}
+}
+
+// PATH must survive the strip so builds/tests still resolve their tools.
+func TestVerifyRunner_PreservesPath(t *testing.T) {
+	passed, out := verifyRunner([]string{"command -v bash"})(context.Background(), t.TempDir())
+	if !passed {
+		t.Fatalf("PATH must survive so bash resolves; gate failed:\n%s", out)
+	}
+}
+
+// #100 AC4: the strip applies uniformly to every verify command — including the
+// issue-declared check blocks appended to the workflow.yaml verify list.
+func TestVerifyRunner_StripsSecretsForCheckBlocks(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "oauth-secret-xyz")
+
+	body := "## Acceptance Criteria\n- [ ] x\n\n```check\n" +
+		`echo "check-oauth=[$CLAUDE_CODE_OAUTH_TOKEN]"` + "\n```\n"
+	verify := composeVerify([]string{"true"}, body)
+
+	passed, out := verifyRunner(verify)(context.Background(), t.TempDir())
+	if !passed {
+		t.Fatalf("gate should pass, got failure:\n%s", out)
+	}
+	if strings.Contains(out, "oauth-secret-xyz") {
+		t.Errorf("check-block command leaked the OAuth token:\n%s", out)
+	}
+	if !strings.Contains(out, "check-oauth=[]") {
+		t.Errorf("check-block command should see an empty OAuth token, got:\n%s", out)
+	}
+}
