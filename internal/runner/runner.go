@@ -370,12 +370,9 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			// agent step stays fatal: its output is load-bearing.
 			if step == pipeline.StepDocs {
 				fmt.Fprintf(log, "%s: agent failed (%v) — Docs is best-effort, proceeding to Ship without doc changes\n", step, err)
-				next, advErr := state.Advance(pipeline.StepResult{Success: true})
+				next, advErr := advanceDocsBestEffort(cfg, state)
 				if advErr != nil {
-					return nil, fmt.Errorf("advancing step %v after non-fatal failure: %w", step, advErr)
-				}
-				if saveErr := pipeline.SaveState(cfg.WorkDir, state); saveErr != nil {
-					return nil, fmt.Errorf("saving state at step %v: %w", step, saveErr)
+					return nil, advErr
 				}
 				state.CurrentStep = next
 				continue
@@ -388,6 +385,19 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		if cfg.CheckpointFn != nil {
 			if chkErr := cfg.CheckpointFn(ctx, step, cfg.WorkDir); chkErr != nil {
 				fmt.Fprintf(log, "%s: checkpoint failed: %v\n", step, chkErr)
+				// Docs is best-effort (as in the agent-failure path above): an
+				// incidental dirty tree after a Docs run — e.g. a go.sum the
+				// toolchain rewrote and the weak model left uncommitted — must not
+				// discard a validated, ready-to-ship PR. Advance to Ship instead.
+				if step == pipeline.StepDocs {
+					fmt.Fprintf(log, "%s: checkpoint failed (%v) — Docs is best-effort, proceeding to Ship\n", step, chkErr)
+					next, advErr := advanceDocsBestEffort(cfg, state)
+					if advErr != nil {
+						return nil, advErr
+					}
+					state.CurrentStep = next
+					continue
+				}
 				return nil, fmt.Errorf("checkpoint failed after step %v: %w", step, chkErr)
 			}
 			fmt.Fprintf(log, "%s: checkpoint pass\n", step)

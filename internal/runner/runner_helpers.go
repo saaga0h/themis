@@ -167,6 +167,23 @@ func blockIssue(ctx context.Context, cfg Config, reason error) error {
 	return nil
 }
 
+// advanceDocsBestEffort moves the pipeline past a non-fatal Docs failure — an
+// agent flake or a dirty-tree checkpoint — to the next step (Ship), the same
+// graceful path as a surface skip. Docs is skippable, runs last on the weakest
+// model, and commits nothing load-bearing, so a hiccup there must never discard a
+// validated, ready-to-ship PR. It forces the success transition and persists
+// state; the caller sets state.CurrentStep to the returned step.
+func advanceDocsBestEffort(cfg Config, state *pipeline.PipelineState) (pipeline.Step, error) {
+	next, err := state.Advance(pipeline.StepResult{Success: true})
+	if err != nil {
+		return 0, fmt.Errorf("advancing past non-fatal Docs failure: %w", err)
+	}
+	if err := pipeline.SaveState(cfg.WorkDir, state); err != nil {
+		return 0, fmt.Errorf("saving state past non-fatal Docs failure: %w", err)
+	}
+	return next, nil
+}
+
 // docsSurfaceTouched reports whether the Docs step should run: true when no
 // surfaces are declared (Docs always runs), or when a changed file matches a
 // declared surface glob. A surface ending in "/" matches files under that

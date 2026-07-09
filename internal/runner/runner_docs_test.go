@@ -142,3 +142,50 @@ func TestRunner_DocsStep_AgentFailureIsNonFatal(t *testing.T) {
 		t.Errorf("the Docs failure should be logged; log:\n%s", buf.String())
 	}
 }
+
+// A Docs-step CHECKPOINT failure — the agent completed and committed, but the tree
+// is dirty (e.g. an incidental go.sum the toolchain rewrote and the weak model left
+// uncommitted, exactly the issue #101 run) — must also be non-fatal. Docs is
+// best-effort, so a dirty tree after it proceeds to Ship rather than discarding a
+// validated PR. Committing steps stay fatal on a dirty tree.
+func TestRunner_DocsStep_CheckpointFailureIsNonFatal(t *testing.T) {
+	workDir := t.TempDir()
+	saveStateAt(t, workDir, pipeline.StepDocs)
+
+	var buf bytes.Buffer
+	tDir := makeTemplateDir(t, map[string]string{
+		"update-docs.md": "Docs {{ISSUE_NUMBER}}",
+		"ship.md":        "Ship {{ISSUE_NUMBER}}",
+	})
+	w := &stubIssueWriter{prURL: "https://example.com/pr/docs-dirty"}
+	cfg := Config{
+		WorkDir:     workDir,
+		IssueNumber: 42,
+		Fetcher:     &stubFetcher{issue: sampleIssue()},
+		Invoker:     &recordingInvoker{}, // Docs agent completes (as in the real run)
+		IssueWriter: w,
+		TemplateDir: tDir,
+		// Checkpoint fails only for Docs, modelling the dirty-tree (uncommitted
+		// go.sum) case; every other step's checkpoint passes.
+		CheckpointFn: func(_ context.Context, step pipeline.Step, _ string) error {
+			if step == pipeline.StepDocs {
+				return errors.New("working tree has uncommitted changes")
+			}
+			return nil
+		},
+		Logger:      &buf,
+		DocSurfaces: []string{"cmd/themis/", "README.md"},
+		Git:         &fakeGitOps{changedFiles: "cmd/themis/run.go", commitsAhead: 1},
+	}
+
+	result, err := Run(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("a Docs checkpoint failure must be non-fatal; Run returned: %v", err)
+	}
+	if result == nil || result.PRURL == "" {
+		t.Fatal("expected a PR to be created despite the Docs checkpoint failure")
+	}
+	if !strings.Contains(buf.String(), "Docs is best-effort, proceeding to Ship") {
+		t.Errorf("the Docs checkpoint failure should be logged as best-effort; log:\n%s", buf.String())
+	}
+}
