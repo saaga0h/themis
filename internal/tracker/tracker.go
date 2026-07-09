@@ -94,28 +94,43 @@ func IsDestructiveAC(ac string) bool {
 }
 
 // ValidateDestructiveChecks returns an error naming the offending AC when body
-// contains a destructive AC (per IsDestructiveAC) with no accompanying check
-// block (per ParseCheckBlocks) anywhere in body. Returns nil when every
-// destructive AC is paired with a check block, or when body has no destructive
-// ACs at all. Pairing is by count, in source order, per the "one check block
-// per negative/placement/delegation AC" rule in skills/issue-writer/SKILL.md —
-// the first destructive AC beyond the number of declared check blocks is the
-// offender.
+// contains a destructive AC (per IsDestructiveAC) with no check block
+// positioned in its own span — from that AC's checkbox up to the next
+// checkbox (or end of body). Returns nil when every destructive AC has a
+// check block in its own span, or when body has no destructive ACs at all.
+// Pairing is by position rather than by count: two check blocks stacked after
+// one destructive AC do not satisfy a later destructive AC that has none of
+// its own, per the "one check block per negative/placement/delegation AC"
+// rule in skills/issue-writer/SKILL.md.
 func ValidateDestructiveChecks(body string) error {
-	var destructiveACs []string
-	for _, ac := range ParseCheckboxes(body) {
-		if IsDestructiveAC(ac) {
-			destructiveACs = append(destructiveACs, ac)
+	checkboxMatches := checkboxRE.FindAllStringSubmatchIndex(body, -1)
+	if len(checkboxMatches) == 0 {
+		return nil
+	}
+	checkBlockMatches := checkBlockRE.FindAllStringIndex(body, -1)
+
+	for i, m := range checkboxMatches {
+		ac := strings.TrimSpace(body[m[2]:m[3]])
+		if !IsDestructiveAC(ac) {
+			continue
+		}
+		spanStart := m[0]
+		spanEnd := len(body)
+		if i+1 < len(checkboxMatches) {
+			spanEnd = checkboxMatches[i+1][0]
+		}
+		paired := false
+		for _, cb := range checkBlockMatches {
+			if cb[0] >= spanStart && cb[0] < spanEnd {
+				paired = true
+				break
+			}
+		}
+		if !paired {
+			return fmt.Errorf("destructive AC %q has no accompanying check block", ac)
 		}
 	}
-	if len(destructiveACs) == 0 {
-		return nil
-	}
-	checks := ParseCheckBlocks(body)
-	if len(checks) >= len(destructiveACs) {
-		return nil
-	}
-	return fmt.Errorf("destructive AC %q has no accompanying check block", destructiveACs[len(checks)])
+	return nil
 }
 
 // ghIssue mirrors the JSON shape returned by `gh issue view --json`.
