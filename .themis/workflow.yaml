@@ -10,11 +10,16 @@
 stack: go
 
 # Green Gate: run in order, each must exit 0. The factory runs these via `bash -c`.
+# -mod=readonly stops the toolchain rewriting go.sum mid-run (a full-graph go.sum
+# rewrite would dirty the tree and trip a checkpoint — observed on issue #101); a
+# genuinely missing entry fails loudly instead. It is per-command, so it holds
+# regardless of any GOFLAGS, and it does not affect dependency-adding issues —
+# build/vet/test only read go.mod, never edit it.
 verify:
-  - go build ./...
+  - go build -mod=readonly ./...
   - test -z "$(gofmt -l .)"
-  - go vet ./...
-  - go test ./...
+  - go vet -mod=readonly ./...
+  - go test -mod=readonly ./...
 
 # Authoritative inputs the agents read for standards, terminology, architecture.
 # Kept lean so reading them fresh each step is cheap.
