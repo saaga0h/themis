@@ -626,3 +626,39 @@ func TestValidateDestructiveChecks_PassesWhenNoDestructiveACs(t *testing.T) {
 		t.Errorf("ValidateDestructiveChecks: got %v, want nil (no destructive ACs present)", err)
 	}
 }
+func TestValidateDestructiveChecks_FailsWhenBothCheckBlocksPrecedeSecondDestructiveAC(t *testing.T) {
+	const offendingAC = "No Bar remains in pkg/bar"
+	body := "## Acceptance Criteria\n" +
+		"- [ ] No Foo remains in pkg/foo\n\n" +
+		"```check\n! grep -rq 'type Foo' pkg/foo\n```\n\n" +
+		"```check\n! grep -rq 'type FooHelper' pkg/foo\n```\n\n" +
+		"- [ ] " + offendingAC + "\n"
+	err := tracker.ValidateDestructiveChecks(body)
+	if err == nil {
+		t.Fatal("ValidateDestructiveChecks: expected error when the second destructive AC has no check block of its own, got nil")
+	}
+	if !strings.Contains(err.Error(), offendingAC) {
+		t.Errorf("ValidateDestructiveChecks error must name the offending AC %q, got %q", offendingAC, err.Error())
+	}
+}
+
+func TestValidateDestructiveChecks_PassesWhenEachDestructiveACHasOwnCheckBlock(t *testing.T) {
+	body := "## Acceptance Criteria\n" +
+		"- [ ] No Foo remains in pkg/foo\n\n" +
+		"```check\n! grep -rq 'type Foo' pkg/foo\n```\n\n" +
+		"- [ ] No Bar remains in pkg/bar\n\n" +
+		"```check\n! grep -rq 'type Bar' pkg/bar\n```\n"
+	if err := tracker.ValidateDestructiveChecks(body); err != nil {
+		t.Errorf("ValidateDestructiveChecks: got %v, want nil (each destructive AC is paired with its own check block)", err)
+	}
+}
+
+func TestValidateDestructiveChecks_PassesWithMixedNonDestructiveAndDestructiveACs(t *testing.T) {
+	body := "## Acceptance Criteria\n" +
+		"- [ ] CreateItem returns 400 for invalid itemType values\n" +
+		"- [ ] No Foo remains in pkg/foo\n\n" +
+		"```check\n! grep -rq 'type Foo' pkg/foo\n```\n"
+	if err := tracker.ValidateDestructiveChecks(body); err != nil {
+		t.Errorf("ValidateDestructiveChecks: got %v, want nil (non-destructive AC excluded from pairing, sole destructive AC paired with sole check block)", err)
+	}
+}
