@@ -8,8 +8,8 @@ import (
 )
 
 // ReadReviewResults reads .themis/review-results.json from workDir.
-// This and ReadACTargets are the only filesystem I/O in the review package; every
-// other function is a pure analysis function operating on the loaded slices.
+// The Read/Write functions here are the review package's only filesystem access;
+// every other function is a pure analysis function operating on the loaded slices.
 // ctx is accepted per convention but os.ReadFile has no context-aware variant.
 func ReadReviewResults(_ context.Context, workDir string) ([]ReviewFinding, bool) {
 	path := filepath.Join(workDir, ".themis", "review-results.json")
@@ -39,4 +39,20 @@ func ReadACTargets(_ context.Context, workDir string) ([]ACTarget, bool) {
 		return nil, false
 	}
 	return at.ACs, true
+}
+
+// WriteReviewResults writes findings to .themis/review-results.json in workDir,
+// replacing any existing file. The runner uses it to persist the deterministic
+// AC-coverage findings it merges into the review agent's results, so the PR
+// verdict and pr-composer see the full set.
+func WriteReviewResults(workDir string, findings []ReviewFinding) error {
+	dir := filepath.Join(workDir, ".themis")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	data, err := json.Marshal(ReviewResults{Findings: findings})
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, "review-results.json"), data, 0o644)
 }

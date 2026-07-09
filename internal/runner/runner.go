@@ -74,6 +74,11 @@ type Config struct {
 	Git                 GitOps
 	ProfileLoader       func(dir string) (ProfileData, error)
 	ReviewResultsLoader func(ctx context.Context, workDir string) ([]review.ReviewFinding, bool)
+	// ACTargetsLoader reads test-architect's AC-to-test-target mapping
+	// (.themis/ac-targets.json). At Review the runner turns any behavioral AC with
+	// no target into a blocking finding — the deterministic AC-coverage check that
+	// replaces the review agent's grep. Defaults to review.ReadACTargets.
+	ACTargetsLoader func(ctx context.Context, workDir string) ([]review.ACTarget, bool)
 	// TestRunner runs the project's test suite in workDir and reports whether it
 	// passed, plus the captured output for diagnostics. It is the GREEN gate for
 	// the Implement and Fix steps: a step that committed but left tests red is
@@ -166,6 +171,9 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 	// time; this default covers callers (e.g. tests) that omit the field.
 	if cfg.ReviewResultsLoader == nil {
 		cfg.ReviewResultsLoader = review.ReadReviewResults
+	}
+	if cfg.ACTargetsLoader == nil {
+		cfg.ACTargetsLoader = review.ReadACTargets
 	}
 
 	loaded, err := pipeline.LoadState(cfg.WorkDir)
@@ -423,14 +431,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			}
 		}
 		if step == pipeline.StepReview {
-			findings, found := cfg.ReviewResultsLoader(ctx, cfg.WorkDir)
-			if !found {
-				fmt.Fprintf(log, "warning: review-results.json not found after review step\n")
-			} else {
-				blocking, nonBlocking := review.CountFindingsBySeverity(findings)
-				rec.ReviewBlocking, rec.ReviewNonBlocking = blocking, nonBlocking
-				fmt.Fprintf(log, "%s: review findings: %d blocking, %d non-blocking (recorded for the PR; does not gate the pipeline)\n", step, blocking, nonBlocking)
-			}
+			recordReviewFindings(ctx, cfg, log, &rec)
 		}
 
 		next, advErr := state.Advance(stepResult)

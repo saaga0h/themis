@@ -35,12 +35,14 @@ diff against the base. Include in the delegation:
 > (injection, hardcoded secret, unsafe input handling, exposed endpoint). Do not
 > report style, naming, or speculative concerns.
 
-### 2. AC coverage (one pass, yourself)
+### 2. AC coverage
 
-The test suite already passed (the green gate). For each acceptance criterion
-above, confirm a corresponding test exists — use `grep -n` to locate it. List any
-acceptance criterion that has **no** corresponding test as a finding; that is a
-real gap (the spec was not fully verified).
+AC coverage is checked **deterministically by the factory**, not here: the runner
+reads test-architect's `.themis/ac-targets.json` mapping at Review and records any
+behavioral AC with no test as a blocking finding. You do not need to grep for it.
+If you happen to notice an acceptance criterion whose test is obviously absent or
+vacuous and the mapping missed it, note it as a finding — but the mechanical check
+is the source of truth.
 
 ## Write the results
 

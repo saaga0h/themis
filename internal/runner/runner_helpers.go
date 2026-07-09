@@ -167,6 +167,34 @@ func blockIssue(ctx context.Context, cfg Config, reason error) error {
 	return nil
 }
 
+// recordReviewFindings loads the review agent's results, folds in the
+// deterministic AC-coverage check — any behavioral AC with no test target (from
+// test-architect's persisted mapping) becomes a blocking finding, and the merged
+// set is written back so the PR verdict and pr-composer see it — and records the
+// blocking/non-blocking counts on rec. Review never gates the pipeline; these
+// findings inform the PR verdict at Ship. Absent mapping or full coverage is a
+// no-op beyond the usual results load.
+func recordReviewFindings(ctx context.Context, cfg Config, log io.Writer, rec *StepRecord) {
+	findings, found := cfg.ReviewResultsLoader(ctx, cfg.WorkDir)
+	if targets, ok := cfg.ACTargetsLoader(ctx, cfg.WorkDir); ok {
+		if uncovered := review.UncoveredACFindings(targets); len(uncovered) > 0 {
+			findings = append(findings, uncovered...)
+			if werr := review.WriteReviewResults(cfg.WorkDir, findings); werr != nil {
+				fmt.Fprintf(log, "Review: warning: could not persist AC-coverage findings: %v\n", werr)
+			}
+			fmt.Fprintf(log, "Review: AC coverage: %d acceptance criteria have no test target (recorded as blocking findings)\n", len(uncovered))
+			found = true
+		}
+	}
+	if !found {
+		fmt.Fprintf(log, "warning: review-results.json not found after review step\n")
+		return
+	}
+	blocking, nonBlocking := review.CountFindingsBySeverity(findings)
+	rec.ReviewBlocking, rec.ReviewNonBlocking = blocking, nonBlocking
+	fmt.Fprintf(log, "Review: review findings: %d blocking, %d non-blocking (recorded for the PR; does not gate the pipeline)\n", blocking, nonBlocking)
+}
+
 // advanceDocsBestEffort moves the pipeline past a non-fatal Docs failure — an
 // agent flake or a dirty-tree checkpoint — to the next step (Ship), the same
 // graceful path as a surface skip. Docs is skippable, runs last on the weakest

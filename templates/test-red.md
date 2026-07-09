@@ -51,6 +51,24 @@ The test-architect must return an AC-to-targets mapping with explicit counts.
 For exhaustive ACs ("all", "every", "each"), it must grep the codebase and list
 every matching instance. Verify the mapping is complete before proceeding.
 
+**Persist the mapping for the factory's deterministic AC-coverage check.** Write it
+to `.themis/ac-targets.json`. The runner reads it at Review and flags any behavioral
+AC with no test as a blocking finding — ground truth, replacing an LLM
+re-derivation. One object per acceptance criterion:
+
+    {"acs": [
+      {"criterion": "<AC text>",   "kind": "behavioral", "targets": ["TestName"]},
+      {"criterion": "<removed X>", "kind": "structural",  "targets": []}
+    ]}
+
+- `behavioral` — an observable-outcome AC; `targets` are the Phase 2 test function
+  names. Every behavioral AC must have at least one, or Review blocks on it.
+- `structural` — a negative/placement/delegation AC; its `check` block (#98) proves
+  it, so `targets` is empty and it is not coverage-checked.
+
+Write this file whichever path you took (the refactoring fast-path above included),
+listing every acceptance criterion from the issue, classified.
+
 **Phase 2 — Test Implementation:**
 Delegate to **test-writer** via Task. Pass the AC-to-targets mapping from
 Phase 1, the issue number, and the coding standards.
