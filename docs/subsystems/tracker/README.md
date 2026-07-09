@@ -141,10 +141,10 @@ Reports whether an acceptance criterion is destructive/negative — asserting th
 func ValidateDestructiveChecks(body string) error
 ```
 
-Deterministic meta-check that enforces every destructive AC has an accompanying `check` block. Returns an error naming the offending AC (the first destructive AC beyond the number of declared check blocks) when the rule is violated.
+Deterministic meta-check that enforces every destructive AC has an accompanying `check` block positioned in its own span. Returns an error naming the offending AC when the rule is violated.
 
-- Returns `nil` when all destructive ACs are paired with check blocks, or when the body has no destructive ACs.
-- Pairing is by count, in source order: AC 1 pairs with check block 1, AC 2 with check block 2, etc. (per `skills/issue-writer/SKILL.md`).
+- Returns `nil` when all destructive ACs have check blocks in their own spans, or when the body has no destructive ACs.
+- Pairing is by position, not by count: each destructive AC must have a check block between its checkbox and the next checkbox (or end of body). Check blocks cannot be shared between destructive ACs. (per `skills/issue-writer/SKILL.md`).
 - Called by `cmd/themis/main.go` at issue fetch time to fail fast if the issue structure is invalid.
 
 ## List-Issue Types

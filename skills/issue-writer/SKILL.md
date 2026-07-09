@@ -78,7 +78,7 @@ For negative, placement, and delegation ACs, do not stop at describing the verif
 
 The negated `grep` exits 0 when the type is absent — i.e. the move is complete. The factory appends each `check` block to the verify gate for that run only; it is **never committed** (these checks are scaffolding for "done," not permanent tests — see the Refactor/Move/Rename/Delete rules and #81). Rules:
 
-- One `check` block per negative/placement/delegation AC. A deterministic meta-check fails the issue if a destructive ("Removed …") AC has no `check`.
+- One `check` block per negative/placement/delegation AC, positioned immediately after its AC (between the AC and the next checkbox, or end of body). A deterministic meta-check fails the issue if a destructive ("Removed …") AC has no `check` in its own span, or if multiple destructive ACs share check blocks.
 - The command runs via `bash -c` like every verify command — exit 0 on success, non-zero on failure.
 - Make it specific and hard to satisfy by accident, and pair it with the behavioural/"added" AC so renaming or hiding the old code cannot pass both.
 - Behavioural ACs do **not** get a `check` block — they stay committed runtime tests.
