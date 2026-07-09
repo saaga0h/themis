@@ -87,7 +87,11 @@ func deriveStepResult(ctx context.Context, step pipeline.Step, r *agent.InvokeRe
 			return pipeline.StepResult{Success: true}, ""
 		}
 		passed, output := cfg.TestRunner(ctx, cfg.WorkDir)
-		return pipeline.StepResult{Success: passed}, output
+		return pipeline.StepResult{
+			Success:    passed,
+			Completed:  r.Completed,
+			Progressed: len(r.CommitsMade) > 0,
+		}, output
 
 	default:
 		return pipeline.StepResult{Success: true}, ""
@@ -148,7 +152,9 @@ var placeholderRE = regexp.MustCompile(`\{\{([A-Z0-9_]+)\}\}`)
 var conventionalPrefixRE = regexp.MustCompile(`^[0-9a-f]+\s+([a-z]+)[\(:]`)
 
 func blockIssue(ctx context.Context, cfg Config, reason error) error {
-	comment := fmt.Sprintf("Pipeline blocked on issue #%d: %v", cfg.IssueNumber, reason)
+	d := pipeline.Classify(reason)
+	comment := fmt.Sprintf("Pipeline blocked on issue #%d\n\n**%s** — %s\n\n**What to do:** %s",
+		cfg.IssueNumber, d.Category, d.Reason, d.Action)
 	if cfg.Scrub != nil {
 		comment = cfg.Scrub(comment)
 	}

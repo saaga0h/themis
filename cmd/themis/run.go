@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/saaga0h/themis/internal/pipeline"
 	"github.com/saaga0h/themis/internal/tracker"
 )
 
@@ -113,6 +114,7 @@ func runLoop(ctx context.Context, cfg loopConfig) error {
 	})
 
 	var processed, blocked, skippedDep, skippedTurns int
+	var blockedRerun, blockedManual, blockedConfig int
 
 	for i, issue := range issues {
 		if m := dependsOnRE.FindStringSubmatch(issue.Body); m != nil {
@@ -143,34 +145,67 @@ func runLoop(ctx context.Context, cfg loopConfig) error {
 		}
 
 		if err := cfg.RunFn(ctx, issue); err != nil {
-			fmt.Fprintf(out, "issue #%d blocked: %v\n", issue.Number, err)
+			d := pipeline.Classify(err)
+			fmt.Fprintf(out, "issue #%d blocked [%s]: %s\n    → %s\n", issue.Number, d.Category, d.Reason, d.Action)
 			blocked++
+			switch d.Category {
+			case pipeline.BlockRerun:
+				blockedRerun++
+			case pipeline.BlockConfig:
+				blockedConfig++
+			default:
+				blockedManual++
+			}
 		} else {
 			processed++
 		}
 	}
 
-	printRunSummary(out, processed, blocked, skippedDep, skippedTurns, cfg.DryRun)
+	printRunSummary(out, runCounts{processed, blocked, blockedRerun, blockedManual, blockedConfig, skippedDep, skippedTurns}, cfg.DryRun)
 	return nil
+}
+
+// runCounts tallies a run's outcomes for the end-of-run summary. The blocked
+// total is broken down by category (re-run / manual / config) so the operator
+// sees at a glance how many failures are worth retrying vs need a human.
+type runCounts struct {
+	processed, blocked                         int
+	blockedRerun, blockedManual, blockedConfig int
+	skippedDep, skippedTurns                   int
 }
 
 // printRunSummary writes a single end-of-run summary line to out, combining all
 // non-zero counts. The processed count is always emitted first; in dry-run mode it
-// is labelled "would process" since no issues were actually processed.
-func printRunSummary(out io.Writer, processed, blocked, skippedDep, skippedTurns int, dryRun bool) {
+// is labelled "would process" since no issues were actually processed. When any
+// issues blocked, the blocked count carries a per-category breakdown.
+func printRunSummary(out io.Writer, c runCounts, dryRun bool) {
 	processedLabel := "processed"
 	if dryRun {
 		processedLabel = "would process"
 	}
-	parts := []string{fmt.Sprintf("%d %s", processed, processedLabel)}
-	if blocked > 0 {
-		parts = append(parts, fmt.Sprintf("%d blocked", blocked))
+	parts := []string{fmt.Sprintf("%d %s", c.processed, processedLabel)}
+	if c.blocked > 0 {
+		part := fmt.Sprintf("%d blocked", c.blocked)
+		var bd []string
+		if c.blockedRerun > 0 {
+			bd = append(bd, fmt.Sprintf("%d re-run", c.blockedRerun))
+		}
+		if c.blockedManual > 0 {
+			bd = append(bd, fmt.Sprintf("%d manual", c.blockedManual))
+		}
+		if c.blockedConfig > 0 {
+			bd = append(bd, fmt.Sprintf("%d config", c.blockedConfig))
+		}
+		if len(bd) > 0 {
+			part += " (" + strings.Join(bd, ", ") + ")"
+		}
+		parts = append(parts, part)
 	}
-	if skippedDep > 0 {
-		parts = append(parts, fmt.Sprintf("%d skipped (dependency)", skippedDep))
+	if c.skippedDep > 0 {
+		parts = append(parts, fmt.Sprintf("%d skipped (dependency)", c.skippedDep))
 	}
-	if skippedTurns > 0 {
-		parts = append(parts, fmt.Sprintf("%d skipped (turns)", skippedTurns))
+	if c.skippedTurns > 0 {
+		parts = append(parts, fmt.Sprintf("%d skipped (turns)", c.skippedTurns))
 	}
 	fmt.Fprintf(out, "run summary: %s\n", strings.Join(parts, ", "))
 }

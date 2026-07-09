@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -134,11 +135,12 @@ func TestAdvanceTestRedFailureAtMaxAttemptsErrors(t *testing.T) {
 
 // --- Implement green gate ---
 
-// A red Implement result re-runs Implement and increments the attempt counter,
-// rather than advancing to Review with a broken build.
+// A completed-but-red Implement result (agent finished, e.g. a missed format/vet)
+// re-runs Implement and increments the attempt counter, rather than advancing to
+// Review with a broken build.
 func TestAdvanceImplementFailureRetries(t *testing.T) {
 	ps := &PipelineState{CurrentStep: StepImplement, TestFixAttempts: map[string]int{}}
-	next, err := ps.Advance(StepResult{Success: false})
+	next, err := ps.Advance(StepResult{Success: false, Completed: true})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -154,8 +156,85 @@ func TestAdvanceImplementFailureRetries(t *testing.T) {
 // blocked for a human rather than looping forever.
 func TestAdvanceImplementFailureAtMaxErrors(t *testing.T) {
 	ps := &PipelineState{CurrentStep: StepImplement, ImplementAttempts: maxGreenGateAttempts, TestFixAttempts: map[string]int{}}
-	if _, err := ps.Advance(StepResult{Success: false}); err == nil {
+	if _, err := ps.Advance(StepResult{Success: false, Completed: true}); err == nil {
 		t.Fatal("expected error when Implement fails at the attempt ceiling")
+	}
+}
+
+// A stalled Implement — turn limit hit (not completed) with no commit progress and
+// still red — bails immediately with a MANUAL diagnosis rather than re-running the
+// full budget. This is the #58 non-convergence signature.
+func TestAdvanceImplementStallBailsImmediately(t *testing.T) {
+	ps := &PipelineState{CurrentStep: StepImplement, TestFixAttempts: map[string]int{}}
+	_, err := ps.Advance(StepResult{Success: false, Completed: false, Progressed: false})
+	var be *BlockError
+	if !errors.As(err, &be) {
+		t.Fatalf("expected *BlockError from a stall, got %v", err)
+	}
+	if be.Category != BlockManual {
+		t.Errorf("stall category = %q, want MANUAL", be.Category)
+	}
+	if ps.ImplementAttempts != 0 {
+		t.Errorf("a stall must not consume a retry; ImplementAttempts = %d, want 0", ps.ImplementAttempts)
+	}
+}
+
+// A truncated-but-progressing Implement (turn limit hit, but it committed) is still
+// converging, so it retries rather than bailing.
+func TestAdvanceImplementProgressedTruncatedRetries(t *testing.T) {
+	ps := &PipelineState{CurrentStep: StepImplement, TestFixAttempts: map[string]int{}}
+	next, err := ps.Advance(StepResult{Success: false, Completed: false, Progressed: true})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if next != StepImplement || ps.ImplementAttempts != 1 {
+		t.Errorf("a progressing run should retry: next=%v attempts=%d", next, ps.ImplementAttempts)
+	}
+}
+
+// Exhausting the retry ceiling while still progressing is RE-RUN (a bigger budget
+// may finish it), not MANUAL.
+func TestAdvanceImplementExhaustProgressedIsRerun(t *testing.T) {
+	ps := &PipelineState{CurrentStep: StepImplement, ImplementAttempts: maxGreenGateAttempts, TestFixAttempts: map[string]int{}}
+	_, err := ps.Advance(StepResult{Success: false, Completed: false, Progressed: true})
+	var be *BlockError
+	if !errors.As(err, &be) {
+		t.Fatalf("expected *BlockError, got %v", err)
+	}
+	if be.Category != BlockRerun {
+		t.Errorf("exhausted-but-progressing category = %q, want RE-RUN", be.Category)
+	}
+}
+
+// Exhausting the ceiling after a completed-but-red run is MANUAL — the agent
+// finished but the verify won't pass, which needs a human.
+func TestAdvanceImplementExhaustCompletedRedIsManual(t *testing.T) {
+	ps := &PipelineState{CurrentStep: StepImplement, ImplementAttempts: maxGreenGateAttempts, TestFixAttempts: map[string]int{}}
+	_, err := ps.Advance(StepResult{Success: false, Completed: true})
+	var be *BlockError
+	if !errors.As(err, &be) {
+		t.Fatalf("expected *BlockError, got %v", err)
+	}
+	if be.Category != BlockManual {
+		t.Errorf("exhausted-completed-red category = %q, want MANUAL", be.Category)
+	}
+}
+
+// Classify defaults an unrecognised error to MANUAL (the safe direction) and
+// recognises config and transient/infrastructure shapes.
+func TestClassifyHeuristics(t *testing.T) {
+	cases := []struct {
+		msg  string
+		want BlockCategory
+	}{
+		{"git identity not configured: user.name and user.email must be set", BlockConfig},
+		{"git push origin issue/1: connection refused", BlockRerun},
+		{"checkpoint failed after step Implement: working tree has uncommitted changes", BlockManual},
+	}
+	for _, c := range cases {
+		if got := Classify(errors.New(c.msg)).Category; got != c.want {
+			t.Errorf("Classify(%q).Category = %q, want %q", c.msg, got, c.want)
+		}
 	}
 }
 
