@@ -105,6 +105,7 @@ func ParseCheckboxes(body string) []string
 Extracts the text of all markdown checkbox items from `body` using the pattern `^- \[[ xX]\] (.+)$` (multiline).
 
 - Returns both unchecked (`- [ ]`) and checked (`- [x]`, `- [X]`) items.
+- Ignores checkbox lines inside fenced code blocks (``` or ~~~); only top-level checkboxes are extracted.
 - Text is trimmed of leading/trailing whitespace.
 - Returns `nil` (not an empty slice) when no matches are found.
 - Preserves document order.
@@ -119,7 +120,8 @@ func ParseCheckBlocks(body string) []string
 
 Extracts each fenced ` ```check ... ``` ` block's inner command from a markdown issue body. These are issue-declared verification commands the factory appends to the green gate for per-run verification only — never committed to `.themis/workflow.yaml`.
 
-- Returns the inner text of each fenced block, trimmed of leading/trailing whitespace.
+- Returns the inner text of each top-level fenced block (ignores check blocks nested inside other fenced blocks per CommonMark fence-length rules).
+- Text is trimmed of leading/trailing whitespace.
 - Returns `nil` (not an empty slice) when no blocks are found.
 - Preserves document order.
 - Used by `cmd/themis` to extend the `.themis/workflow.yaml` `verify` contract for each run.
@@ -141,7 +143,7 @@ Reports whether an acceptance criterion is destructive/negative — asserting th
 func ValidateDestructiveChecks(body string) error
 ```
 
-Deterministic meta-check that enforces every destructive AC has an accompanying `check` block positioned in its own span. Returns an error naming the offending AC when the rule is violated.
+Deterministic meta-check that enforces every destructive AC has an accompanying `check` block positioned in its own span. Returns an error naming the offending AC when the rule is violated. Destructive-looking checkbox lines inside fenced code blocks are ignored.
 
 - Returns `nil` when all destructive ACs have check blocks in their own spans, or when the body has no destructive ACs.
 - Pairing is by position, not by count: each destructive AC must have a check block between its checkbox and the next checkbox (or end of body). Check blocks cannot be shared between destructive ACs. (per `skills/issue-writer/SKILL.md`).
