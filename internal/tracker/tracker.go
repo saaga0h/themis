@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os/exec"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -145,13 +146,11 @@ func fenceMarker(s string) (byte, int) {
 }
 
 // inFence reports whether byte offset pos falls inside any fence in fences.
+// It binary-searches fences, relying on topLevelFences returning them in
+// strictly ascending, non-overlapping order by start.
 func inFence(fences []fence, pos int) bool {
-	for _, f := range fences {
-		if pos >= f.start && pos < f.end {
-			return true
-		}
-	}
-	return false
+	i := sort.Search(len(fences), func(i int) bool { return fences[i].start > pos })
+	return i > 0 && pos < fences[i-1].end
 }
 
 // ParseCheckboxes extracts checkbox items from a markdown body. Both
