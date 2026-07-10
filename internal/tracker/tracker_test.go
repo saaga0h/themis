@@ -662,3 +662,17 @@ func TestValidateDestructiveChecks_PassesWithMixedNonDestructiveAndDestructiveAC
 		t.Errorf("ValidateDestructiveChecks: got %v, want nil (non-destructive AC excluded from pairing, sole destructive AC paired with sole check block)", err)
 	}
 }
+
+// #103: a destructive AC followed by a non-destructive (behavioural, paired) AC and
+// THEN its check block passes — the span runs to the next DESTRUCTIVE AC, so an
+// intervening behavioural checkbox does not orphan the check. Under the older
+// "next checkbox" span this failed, rejecting the encouraged pairing pattern.
+func TestValidateDestructiveChecks_PassesWhenCheckFollowsPairedBehaviouralAC(t *testing.T) {
+	body := "## Acceptance Criteria\n" +
+		"- [ ] No Foo remains in pkg/foo\n" +
+		"- [ ] Foo callers now use Bar\n\n" +
+		"```check\n! grep -rq 'type Foo' pkg/foo\n```\n"
+	if err := tracker.ValidateDestructiveChecks(body); err != nil {
+		t.Errorf("ValidateDestructiveChecks: got %v, want nil (check after an intervening behavioural AC still counts under the next-destructive-AC span)", err)
+	}
+}

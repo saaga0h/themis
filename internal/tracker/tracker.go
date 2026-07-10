@@ -96,7 +96,8 @@ func IsDestructiveAC(ac string) bool {
 // ValidateDestructiveChecks returns an error naming the offending AC when body
 // contains a destructive AC (per IsDestructiveAC) with no check block
 // positioned in its own span — from that AC's checkbox up to the next
-// checkbox (or end of body). Returns nil when every destructive AC has a
+// destructive AC (or end of body), so a behavioural AC paired after it does not
+// orphan the check. Returns nil when every destructive AC has a
 // check block in its own span, or when body has no destructive ACs at all.
 // Pairing is by position rather than by count: two check blocks stacked after
 // one destructive AC do not satisfy a later destructive AC that has none of
@@ -115,9 +116,17 @@ func ValidateDestructiveChecks(body string) error {
 			continue
 		}
 		spanStart := m[0]
+		// The span runs to the next DESTRUCTIVE AC (or end of body), not the next
+		// checkbox of any kind — so a behavioural AC paired after the destructive
+		// one does not orphan its check block. Each destructive AC is still bound
+		// to a check in its own span, keeping the clustered-checks hole closed.
 		spanEnd := len(body)
-		if i+1 < len(checkboxMatches) {
-			spanEnd = checkboxMatches[i+1][0]
+		for j := i + 1; j < len(checkboxMatches); j++ {
+			nextAC := strings.TrimSpace(body[checkboxMatches[j][2]:checkboxMatches[j][3]])
+			if IsDestructiveAC(nextAC) {
+				spanEnd = checkboxMatches[j][0]
+				break
+			}
 		}
 		paired := false
 		for _, cb := range checkBlockMatches {
