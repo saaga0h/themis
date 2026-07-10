@@ -676,3 +676,51 @@ func TestValidateDestructiveChecks_PassesWhenCheckFollowsPairedBehaviouralAC(t *
 		t.Errorf("ValidateDestructiveChecks: got %v, want nil (check after an intervening behavioural AC still counts under the next-destructive-AC span)", err)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Issue #105: issue body parsers are fence-blind. Checkbox and check-block
+// lines that appear inside a fenced example (e.g. an "## Example" section
+// showing a reader what AC/check syntax looks like) must not be picked up as
+// real ACs or check directives. These tests specify the fence-aware behaviour
+// and fail against the current fence-blind checkboxRE/checkBlockRE.
+// ---------------------------------------------------------------------------
+
+func TestParseCheckboxes_IgnoresCheckboxLinesInsideFencedExample(t *testing.T) {
+	body := "## Acceptance Criteria\n- [ ] First real AC\n- [ ] Second real AC\n\n" +
+		"## Example\n\nHere is what an AC checkbox looks like:\n\n" +
+		"````markdown\n- [ ] Example fenced AC one\n- [ ] Example fenced AC two\n````\n"
+	got := tracker.ParseCheckboxes(body)
+	want := []string{"First real AC", "Second real AC"}
+	if len(got) != len(want) {
+		t.Fatalf("ParseCheckboxes: got %d items %v, want %d %v", len(got), got, len(want), want)
+	}
+	for i, g := range got {
+		if g != want[i] {
+			t.Errorf("item[%d]: got %q, want %q", i, g, want[i])
+		}
+	}
+}
+
+func TestParseCheckBlocks_IgnoresCheckDirectiveInsideFencedExample(t *testing.T) {
+	body := "## Acceptance Criteria\n- [ ] No Foo remains in pkg/foo\n\n" +
+		"```check\n! grep -rq 'type Foo' pkg/foo\n```\n\n" +
+		"## Example\n\nHere's what a check block looks like in an issue body:\n\n" +
+		"````markdown\n```check\n! grep -rq 'type Bar' pkg/bar\n```\n````\n"
+	got := tracker.ParseCheckBlocks(body)
+	want := []string{"! grep -rq 'type Foo' pkg/foo"}
+	if len(got) != len(want) {
+		t.Fatalf("ParseCheckBlocks: got %d blocks %v, want %d %v (must ignore check fence nested inside example fence)", len(got), got, len(want), want)
+	}
+	if got[0] != want[0] {
+		t.Errorf("ParseCheckBlocks[0]: got %q, want %q", got[0], want[0])
+	}
+}
+
+func TestValidateDestructiveChecks_IgnoresDestructiveCheckboxInsideFencedExample(t *testing.T) {
+	body := "## Acceptance Criteria\n- [ ] CreateItem returns 400 for invalid itemType values\n\n" +
+		"## Example\n\nHere's what a destructive AC looks like:\n\n" +
+		"````markdown\n- [ ] No GiteaQuerier struct remains in cmd/themis\n````\n"
+	if err := tracker.ValidateDestructiveChecks(body); err != nil {
+		t.Errorf("ValidateDestructiveChecks: got %v, want nil (destructive-looking checkbox line is inside a fenced example, not a real AC)", err)
+	}
+}
