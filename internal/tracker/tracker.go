@@ -15,6 +15,10 @@ import (
 	"github.com/saaga0h/themis/internal/labels"
 )
 
+// maxResponseBytes bounds how much of an HTTP response body is read, guarding
+// against unbounded memory use from an oversized or malicious response.
+var maxResponseBytes int64 = 10 * 1024 * 1024
+
 // IssueData holds the data extracted from an issue tracker.
 type IssueData struct {
 	Number int
@@ -360,12 +364,12 @@ func (g *GiteaFetcher) Fetch(ctx context.Context, number int) (*IssueData, error
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 		return nil, fmt.Errorf("Gitea API returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
 	var gi giteaIssue
-	if err := json.NewDecoder(resp.Body).Decode(&gi); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(&gi); err != nil {
 		return nil, fmt.Errorf("decoding Gitea response: %w", err)
 	}
 
@@ -462,7 +466,7 @@ func (q *GiteaQuerier) ListReadyIssues(ctx context.Context) ([]*IssueData, error
 			return nil, fmt.Errorf("gitea API returned %d", resp.StatusCode)
 		}
 		var items []IssueItem
-		decodeErr := json.NewDecoder(resp.Body).Decode(&items)
+		decodeErr := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(&items)
 		resp.Body.Close()
 		if decodeErr != nil {
 			return nil, fmt.Errorf("decoding issues page %d: %w", page, decodeErr)
@@ -489,7 +493,7 @@ func (q *GiteaQuerier) IsOpen(ctx context.Context, number int) (bool, error) {
 	var issue struct {
 		State string `json:"state"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&issue); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(&issue); err != nil {
 		return false, fmt.Errorf("decoding issue #%d: %w", number, err)
 	}
 	return issue.State == "open", nil

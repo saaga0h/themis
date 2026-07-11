@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -12,6 +13,10 @@ import (
 
 	"github.com/saaga0h/themis/internal/runner"
 )
+
+// maxResponseBytes bounds how much of an HTTP response body is read, guarding
+// against unbounded memory use from an oversized or malicious response.
+const maxResponseBytes = 10 * 1024 * 1024
 
 // ghIssueWriter implements runner.IssueWriter using the gh CLI (GitHub).
 type ghIssueWriter struct {
@@ -204,7 +209,7 @@ func (g *giteaIssueWriter) do(ctx context.Context, method, path string, body []b
 		return fmt.Errorf("%s %s: HTTP %d", method, url, resp.StatusCode)
 	}
 	if out != nil {
-		return json.NewDecoder(resp.Body).Decode(out)
+		return json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(out)
 	}
 	return nil
 }
