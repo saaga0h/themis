@@ -149,6 +149,10 @@ func (r *recordingInvoker) Invoke(_ context.Context, opts agent.InvokeOptions) (
 }
 
 // stubIssueWriter records issue tracker operations and the fields seen by CreatePR.
+//
+// addLabelErr and commentErr default to nil, preserving the always-succeeds
+// behavior existing call sites rely on; set them to inject failures, e.g. for
+// exercising blockIssue's failure paths.
 type stubIssueWriter struct {
 	labelsAdded   []string
 	labelsRemoved []string
@@ -158,11 +162,13 @@ type stubIssueWriter struct {
 	prHeadSeen    string
 	prDraftSeen   bool
 	prURL         string
+	addLabelErr   error
+	commentErr    error
 }
 
 func (s *stubIssueWriter) AddLabel(_ context.Context, _ int, label string) error {
 	s.labelsAdded = append(s.labelsAdded, label)
-	return nil
+	return s.addLabelErr
 }
 
 func (s *stubIssueWriter) RemoveLabel(_ context.Context, _ int, label string) error {
@@ -172,7 +178,7 @@ func (s *stubIssueWriter) RemoveLabel(_ context.Context, _ int, label string) er
 
 func (s *stubIssueWriter) Comment(_ context.Context, _ int, body string) error {
 	s.comments = append(s.comments, body)
-	return nil
+	return s.commentErr
 }
 
 func (s *stubIssueWriter) CreatePR(_ context.Context, opts PROptions) (string, error) {
