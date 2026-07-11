@@ -49,9 +49,22 @@ func (g *ghIssueWriter) CreatePR(ctx context.Context, opts runner.PROptions) (st
 func runGH(ctx context.Context, args ...string) error {
 	cmd := exec.CommandContext(ctx, "gh", args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("gh %v: %w\n%s", args, err, out)
+		return fmt.Errorf("gh %v: %w\n%s", redactBodyArg(args), err, out)
 	}
 	return nil
+}
+
+// redactBodyArg replaces the value following a "--body" flag with a
+// placeholder so error messages never leak issue/PR/comment body content.
+func redactBodyArg(args []string) []string {
+	redacted := make([]string, len(args))
+	copy(redacted, args)
+	for i, a := range redacted {
+		if a == "--body" && i+1 < len(redacted) {
+			redacted[i+1] = "[REDACTED]"
+		}
+	}
+	return redacted
 }
 
 // giteaIssueWriter implements runner.IssueWriter using the Gitea REST API.
@@ -124,6 +137,9 @@ func (g *giteaIssueWriter) CreatePR(ctx context.Context, opts runner.PROptions) 
 		fmt.Sprintf("/repos/%s/%s/pulls", g.owner, g.repo),
 		payload, &result); err != nil {
 		return "", err
+	}
+	if result.HTMLURL == "" {
+		return "", fmt.Errorf("create-pr response missing html_url")
 	}
 	return result.HTMLURL, nil
 }
