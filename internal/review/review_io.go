@@ -3,6 +3,7 @@ package review
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -19,6 +20,7 @@ func ReadReviewResults(_ context.Context, workDir string) ([]ReviewFinding, bool
 	}
 	var rr ReviewResults
 	if err := json.Unmarshal(data, &rr); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: review-results.json parse error: %v\n", err)
 		return nil, false
 	}
 	return rr.Findings, true
