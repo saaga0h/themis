@@ -6,6 +6,7 @@ package review_test
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -164,6 +165,77 @@ func TestReview_ReadReviewResults_ReturnsFalseOnInvalidJSON(t *testing.T) {
 	if findings != nil {
 		t.Errorf("ReadReviewResults: findings = %v on invalid JSON, want nil", findings)
 	}
+}
+
+func TestReview_ReadReviewResults_LogsWarningOnInvalidJSON(t *testing.T) {
+	workDir := t.TempDir()
+	themisDir := filepath.Join(workDir, ".themis")
+	if err := os.MkdirAll(themisDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(themisDir, "review-results.json"), []byte("not json"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	stderr := captureStderr(t, func() {
+		findings, ok := review.ReadReviewResults(context.Background(), workDir)
+		if ok {
+			t.Error("ReadReviewResults: ok = true on invalid JSON, want false")
+		}
+		if findings != nil {
+			t.Errorf("ReadReviewResults: findings = %v on invalid JSON, want nil", findings)
+		}
+	})
+
+	if !strings.Contains(stderr, "review-results.json") {
+		t.Errorf("expected warning mentioning review-results.json in stderr; got: %q", stderr)
+	}
+	if !strings.Contains(strings.ToLower(stderr), "invalid character") {
+		t.Errorf("expected the JSON parse error text in the stderr warning; got: %q", stderr)
+	}
+}
+
+func TestReview_ReadReviewResults_NoWarningWhenFileMissing(t *testing.T) {
+	workDir := t.TempDir()
+
+	stderr := captureStderr(t, func() {
+		findings, ok := review.ReadReviewResults(context.Background(), workDir)
+		if ok {
+			t.Error("ReadReviewResults: ok = true, want false when file is missing")
+		}
+		if findings != nil {
+			t.Errorf("ReadReviewResults: findings = %v, want nil when file is missing", findings)
+		}
+	})
+
+	if stderr != "" {
+		t.Errorf("expected no stderr output when file is missing; got: %q", stderr)
+	}
+}
+
+// captureStderr redirects the process-global os.Stderr for the duration of fn
+// and returns everything written to it. Safe here because this package's
+// tests do not use t.Parallel().
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	orig := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	os.Stderr = w
+	defer func() { os.Stderr = orig }()
+
+	fn()
+
+	if err := w.Close(); err != nil {
+		t.Fatalf("close pipe writer: %v", err)
+	}
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("read pipe: %v", err)
+	}
+	return string(out)
 }
 
 // ---------------------------------------------------------------------------
