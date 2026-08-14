@@ -60,6 +60,25 @@ docs:
 	}
 }
 
+// footprint_exempt parses into the always-allowed path list a footprint gate uses.
+func TestLoad_ParsesFootprintExempt(t *testing.T) {
+	dir := t.TempDir()
+	writeDescriptor(t, dir, `stack: go
+verify:
+  - go build ./...
+footprint_exempt:
+  - go.mod
+  - go.sum
+`)
+	d, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(d.FootprintExempt) != 2 || d.FootprintExempt[0] != "go.mod" || d.FootprintExempt[1] != "go.sum" {
+		t.Errorf("FootprintExempt: got %v, want [go.mod go.sum]", d.FootprintExempt)
+	}
+}
+
 // Doc surfaces parse into a glob list used to trigger the Docs step.
 func TestLoad_ParsesDocSurfaces(t *testing.T) {
 	dir := t.TempDir()

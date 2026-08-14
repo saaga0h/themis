@@ -81,12 +81,17 @@ func verifyRunner(verify []string) func(ctx context.Context, dir string) (bool, 
 		if len(verify) == 0 {
 			return true, "no verify commands declared; green gate is a no-op"
 		}
+		// Resolve the base once so footprint/diff checks can compare against it as
+		// $BASE (empty when no base resolves — such checks fail safe / pass). Same
+		// BASE contract cmd/backtest uses, so a footprint check runs identically
+		// here and under backtest.
+		base := git.MergeBase(ctx, dir)
 		var out strings.Builder
 		for _, cmd := range verify {
 			fmt.Fprintf(&out, "$ %s\n", cmd)
 			c := exec.CommandContext(ctx, "bash", "-c", cmd)
 			c.Dir = dir
-			c.Env = verifyEnv()
+			c.Env = append(verifyEnv(), "BASE="+base)
 			o, err := c.CombinedOutput()
 			out.Write(o)
 			if err != nil {
@@ -277,6 +282,12 @@ func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir strin
 		return runner.Config{}, fmt.Errorf("issue #%d: %w", issueNumber, err)
 	}
 	verify := append(append([]string{}, desc.Verify...), tracker.ParseCheckBlocks(issue.Body)...)
+	// Footprint gate (#111): translate the issue's declared change surface into a
+	// check appended to the green gate for this run. Empty when the issue declares
+	// no footprint or declares `wide` — no gate in those cases.
+	if fpCheck := tracker.ParseFootprint(issue.Body).CheckCommand(desc.FootprintExempt); fpCheck != "" {
+		verify = append(verify, fpCheck)
+	}
 	// Diagnostic emitter: ships the factory's own per-step narrative to the OTLP
 	// collector when OTEL_* env is set (same gating as Claude Code's telemetry);
 	// nil otherwise. Run defers EmitterShutdown to flush the batch on exit.

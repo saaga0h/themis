@@ -21,6 +21,12 @@ verify:
   - go vet -mod=readonly ./...
   - go test -mod=readonly ./...
 
+# Paths a footprint gate always allows, regardless of an issue's declared packages
+# — generated/lockfiles a legitimate change touches outside its own packages.
+footprint_exempt:
+  - go.mod
+  - go.sum
+
 # Authoritative inputs the agents read for standards, terminology, architecture.
 # Kept lean so reading them fresh each step is cheap.
 docs:

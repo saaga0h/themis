@@ -112,6 +112,14 @@ func ChangedFiles(ctx context.Context, dir string) string {
 
 // branchMergeBase returns the merge-base SHA between HEAD and the nearest remote
 // tracking branch. Returns empty string if no remote exists or any git command fails.
+// MergeBase returns the merge-base SHA between HEAD and the nearest remote
+// tracking branch — the base a footprint/diff check compares against — or "" when
+// none resolves (e.g. no remote). Exported wrapper over branchMergeBase so the
+// green gate can export it to verify commands as $BASE.
+func MergeBase(ctx context.Context, dir string) string {
+	return branchMergeBase(ctx, dir)
+}
+
 func branchMergeBase(ctx context.Context, dir string) string {
 	refs, err := runGit(ctx, dir, "for-each-ref", "--format=%(refname:short)", "refs/remotes/")
 	if err != nil || strings.TrimSpace(refs) == "" {

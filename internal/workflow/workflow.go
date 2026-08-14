@@ -40,6 +40,11 @@ type Descriptor struct {
 	Verify []string `yaml:"verify"`
 	// Docs are the authoritative inputs the agents read.
 	Docs Docs `yaml:"docs"`
+	// FootprintExempt lists paths a footprint gate always allows regardless of the
+	// issue's declared packages — generated/lockfiles a legitimate change touches
+	// outside its own packages (e.g. go.mod, go.sum). Declared per-repo to keep the
+	// factory stack-agnostic. See issue #111.
+	FootprintExempt []string `yaml:"footprint_exempt"`
 }
 
 const workflowFile = ".themis/workflow.yaml"
