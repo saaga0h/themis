@@ -63,3 +63,65 @@ func TestRunGH_ErrorExcludesBodyArgumentValue(t *testing.T) {
 		t.Errorf("runGH error leaks --body value: %q contains %q", err.Error(), secret)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Issue #112 — redactBodyArg must also redact the combined "--body=<value>" form
+// ---------------------------------------------------------------------------
+
+func TestRunGH_ErrorExcludesCombinedBodyArgumentValue(t *testing.T) {
+	dir := writeFakeGH(t, "#!/bin/sh\nexit 1\n")
+	t.Setenv("PATH", dir)
+
+	const secret = "SECRET_MARKER_TEXT_DO_NOT_LEAK"
+	err := runGH(t.Context(), "issue", "comment", "1", "--body="+secret)
+	if err == nil {
+		t.Fatal("runGH: expected error, got nil")
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Errorf("runGH error leaks --body=<value> value: %q contains %q", err.Error(), secret)
+	}
+}
+
+func TestRedactBodyArg(t *testing.T) {
+	const secret = "SECRET_MARKER_TEXT_DO_NOT_LEAK"
+
+	cases := []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{
+			name: "combined form redacts value and strips secret",
+			args: []string{"issue", "comment", "1", "--body=" + secret},
+			want: []string{"issue", "comment", "1", "--body=[REDACTED]"},
+		},
+		{
+			name: "separate token form still redacted (regression)",
+			args: []string{"issue", "comment", "1", "--body", secret},
+			want: []string{"issue", "comment", "1", "--body", "[REDACTED]"},
+		},
+		{
+			name: "--body-file is not treated as --body",
+			args: []string{"issue", "comment", "1", "--body-file", secret},
+			want: []string{"issue", "comment", "1", "--body-file", secret},
+		},
+		{
+			name: "positional argument containing 'body' substring is unchanged",
+			args: []string{"issue", "comment", "1", "somebody"},
+			want: []string{"issue", "comment", "1", "somebody"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := redactBodyArg(c.args)
+			if len(got) != len(c.want) {
+				t.Fatalf("redactBodyArg(%v) = %v, want %v", c.args, got, c.want)
+			}
+			for i := range got {
+				if got[i] != c.want[i] {
+					t.Errorf("redactBodyArg(%v)[%d] = %q, want %q", c.args, i, got[i], c.want[i])
+				}
+			}
+		})
+	}
+}
