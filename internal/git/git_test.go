@@ -248,3 +248,29 @@ func TestInitTestRepo_PortableUnderDefaultBranchMaster(t *testing.T) {
 	t.Setenv("GIT_CONFIG_VALUE_0", "master")
 	assertBranchIsMain(t, initTestRepo(t))
 }
+
+// MergeBaseWith returns the merge-base with the NAMED base branch (trying
+// origin/<base> then <base>), so a footprint/diff check compares against the
+// issue's own base — not an arbitrary remote ref. Empty/unknown base yields "".
+func TestMergeBaseWith(t *testing.T) {
+	dir := initTestRepo(t) // on main, one commit
+	runGitIn(t, dir, "checkout", "-b", "themis-2.0")
+	addCommit(t, dir, "base.go", "package x\n", "base advance")
+	baseTip, err := runGit(context.Background(), dir, "rev-parse", "HEAD")
+	if err != nil {
+		t.Fatalf("rev-parse: %v", err)
+	}
+	baseTip = strings.TrimSpace(baseTip)
+	runGitIn(t, dir, "checkout", "-b", "issue/1")
+	addCommit(t, dir, "feat.go", "package x\n", "feature work")
+
+	if got := MergeBaseWith(context.Background(), dir, "themis-2.0"); got != baseTip {
+		t.Errorf("MergeBaseWith(themis-2.0) = %q, want the fork point %q", got, baseTip)
+	}
+	if got := MergeBaseWith(context.Background(), dir, ""); got != "" {
+		t.Errorf("empty base must yield \"\", got %q", got)
+	}
+	if got := MergeBaseWith(context.Background(), dir, "no-such-branch"); got != "" {
+		t.Errorf("unknown base must yield \"\", got %q", got)
+	}
+}

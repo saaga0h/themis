@@ -26,7 +26,7 @@ func TestGreenGate_FailureNamesFailingIssueDeclaredCheck(t *testing.T) {
 	body := "## Acceptance Criteria\n- [ ] Something\n\n```check\nfalse\n```\n"
 	verify := composeVerify([]string{"echo build-ok"}, body)
 
-	ok, out := verifyRunner(verify)(context.Background(), dir)
+	ok, out := verifyRunner(verify, "")(context.Background(), dir)
 	if ok {
 		t.Fatal("expected green gate to fail when an issue-declared check fails")
 	}
@@ -67,7 +67,7 @@ func TestGreenGate_Issue68Scenario_RedOnDeclaredNegativeCheck_ThenGreenAfterDele
 		"```check\n! grep -rq 'type GiteaQuerier' cmd/themis/\n```\n"
 
 	verify := composeVerify([]string{"true"}, body)
-	runGate := verifyRunner(verify)
+	runGate := verifyRunner(verify, "")
 
 	// Run #1: old.go still present — the declared negative check must fail the gate.
 	passed, out := runGate(context.Background(), dir)
@@ -101,7 +101,7 @@ func TestVerifyRunner_StripsFactorySecrets(t *testing.T) {
 	t.Setenv("THEMIS_TEST_SENTINEL", "sentinel-ok")
 
 	cmd := `echo "gitea=[$GITEA_TOKEN] github=[$GITHUB_TOKEN] oauth=[$CLAUDE_CODE_OAUTH_TOKEN] sentinel=[$THEMIS_TEST_SENTINEL]"`
-	passed, out := verifyRunner([]string{cmd})(context.Background(), t.TempDir())
+	passed, out := verifyRunner([]string{cmd}, "")(context.Background(), t.TempDir())
 
 	if !passed {
 		t.Fatalf("gate should pass, got failure:\n%s", out)
@@ -122,7 +122,7 @@ func TestVerifyRunner_StripsFactorySecrets(t *testing.T) {
 
 // PATH must survive the strip so builds/tests still resolve their tools.
 func TestVerifyRunner_PreservesPath(t *testing.T) {
-	passed, out := verifyRunner([]string{"command -v bash"})(context.Background(), t.TempDir())
+	passed, out := verifyRunner([]string{"command -v bash"}, "")(context.Background(), t.TempDir())
 	if !passed {
 		t.Fatalf("PATH must survive so bash resolves; gate failed:\n%s", out)
 	}
@@ -137,7 +137,7 @@ func TestVerifyRunner_StripsSecretsForCheckBlocks(t *testing.T) {
 		`echo "check-oauth=[$CLAUDE_CODE_OAUTH_TOKEN]"` + "\n```\n"
 	verify := composeVerify([]string{"true"}, body)
 
-	passed, out := verifyRunner(verify)(context.Background(), t.TempDir())
+	passed, out := verifyRunner(verify, "")(context.Background(), t.TempDir())
 	if !passed {
 		t.Fatalf("gate should pass, got failure:\n%s", out)
 	}

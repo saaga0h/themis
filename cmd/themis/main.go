@@ -76,16 +76,17 @@ func verifyEnv() []string {
 // The factory stays stack-agnostic: these commands come from
 // .themis/workflow.yaml, never hardcoded. Each command runs with the factory's
 // orchestration secrets stripped from its environment (see verifyEnv).
-func verifyRunner(verify []string) func(ctx context.Context, dir string) (bool, string) {
+func verifyRunner(verify []string, baseBranch string) func(ctx context.Context, dir string) (bool, string) {
 	return func(ctx context.Context, dir string) (bool, string) {
 		if len(verify) == 0 {
 			return true, "no verify commands declared; green gate is a no-op"
 		}
-		// Resolve the base once so footprint/diff checks can compare against it as
-		// $BASE (empty when no base resolves — such checks fail safe / pass). Same
-		// BASE contract cmd/backtest uses, so a footprint check runs identically
-		// here and under backtest.
-		base := git.MergeBase(ctx, dir)
+		// Resolve the base once so footprint/diff checks compare against it as $BASE:
+		// the merge-base with the issue's OWN base branch, not an arbitrary remote
+		// ref. Empty when unresolvable — such checks fail safe / pass. Same BASE
+		// contract cmd/backtest uses, so a footprint check runs identically here and
+		// under backtest.
+		base := git.MergeBaseWith(ctx, dir, baseBranch)
 		var out strings.Builder
 		for _, cmd := range verify {
 			fmt.Fprintf(&out, "$ %s\n", cmd)
@@ -288,6 +289,11 @@ func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir strin
 	if fpCheck := tracker.ParseFootprint(issue.Body).CheckCommand(desc.FootprintExempt); fpCheck != "" {
 		verify = append(verify, fpCheck)
 	}
+	// The issue's base branch — what a footprint/diff check diffs against as $BASE.
+	// The issue's Ref (Gitea) when set, else the current branch, which at config
+	// time (before the Branch step) is the base the issue is cut from.
+	curBranch, _ := git.CurrentBranch(ctx, workDir)
+	baseBranch := baseBranchForIssue(issue, curBranch)
 	// Diagnostic emitter: ships the factory's own per-step narrative to the OTLP
 	// collector when OTEL_* env is set (same gating as Claude Code's telemetry);
 	// nil otherwise. Run defers EmitterShutdown to flush the batch on exit.
@@ -305,7 +311,7 @@ func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir strin
 		Git:                 gitOps,
 		ProfileLoader:       profileLoader,
 		ReviewResultsLoader: review.ReadReviewResults,
-		TestRunner:          verifyRunner(verify),
+		TestRunner:          verifyRunner(verify, baseBranch),
 		StandardsDocs:       desc.StandardsDocs(),
 		DocSurfaces:         desc.Docs.Surfaces,
 		Emitter:             emitter,

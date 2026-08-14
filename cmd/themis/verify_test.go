@@ -9,7 +9,7 @@ import (
 // With no verify commands declared the gate is a no-op pass — the warning is
 // emitted at config time, not here.
 func TestVerifyRunner_EmptyIsNoOpPass(t *testing.T) {
-	ok, out := verifyRunner(nil)(context.Background(), t.TempDir())
+	ok, out := verifyRunner(nil, "")(context.Background(), t.TempDir())
 	if !ok {
 		t.Error("empty verify must pass (no-op)")
 	}
@@ -20,7 +20,7 @@ func TestVerifyRunner_EmptyIsNoOpPass(t *testing.T) {
 
 // Declared commands run in order; all exit 0 → green.
 func TestVerifyRunner_RunsCommandsAndPasses(t *testing.T) {
-	ok, out := verifyRunner([]string{"echo first", "echo second"})(context.Background(), t.TempDir())
+	ok, out := verifyRunner([]string{"echo first", "echo second"}, "")(context.Background(), t.TempDir())
 	if !ok {
 		t.Fatalf("expected pass, got fail: %s", out)
 	}
@@ -31,7 +31,7 @@ func TestVerifyRunner_RunsCommandsAndPasses(t *testing.T) {
 
 // The first non-zero exit fails the gate and stops — later commands do not run.
 func TestVerifyRunner_FailsOnFirstNonZeroAndStops(t *testing.T) {
-	ok, out := verifyRunner([]string{"echo before", "false", "echo after"})(context.Background(), t.TempDir())
+	ok, out := verifyRunner([]string{"echo before", "false", "echo after"}, "")(context.Background(), t.TempDir())
 	if ok {
 		t.Fatal("expected fail when a command exits non-zero")
 	}
