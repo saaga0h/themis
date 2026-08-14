@@ -1,24 +1,10 @@
 IMAGE := themis:dev
-MAX_TURNS ?= 600
 PROVIDER ?= gitea
 BINARY     := themis
 CMD        := ./cmd/themis
 BUILD_DIR  := bin
 
-PODMAN_RUN := podman run -i \
-	--userns=keep-id \
-	--entrypoint claude \
-	-v $(PWD):/home/agent/workspace \
-	-v $(HOME)/.claude:/home/agent/.claude \
-	--env-file .env \
-	-w /home/agent/workspace \
-	--memory=12g \
-	$(IMAGE) \
-	--verbose \
-	--dangerously-skip-permissions \
-	--max-turns $(MAX_TURNS)
-
-.PHONY: run-factory dry-run run-issue run-v2-issue factory-cc shell build-image build test lint
+.PHONY: factory factory-issue factory-dry factory-cc shell build-image build test lint backtest
 
 # Architecture of the sandbox containers the factory binary runs in. arm64 matches
 # Apple-silicon podman; override (e.g. FACTORY_ARCH=amd64) for other hosts.
@@ -38,16 +24,10 @@ factory-cc: ## Materialize the curated .claude/ the factory container overlays (
 	done
 	@echo "factory-cc: curated .claude/ ready per factory/manifest.txt"
 
-run-factory: ## Run the autonomous factory loop
-	echo '/factory --provider $(PROVIDER)' | $(PODMAN_RUN)
-
-dry-run: ## Preview which issues would be processed
-	echo '/factory --provider $(PROVIDER) --dry-run' | $(PODMAN_RUN)
-
-run-issue: ## Run a single issue: make run-issue ISSUE=3
-	echo '/issue $(ISSUE) --provider $(PROVIDER)' | $(PODMAN_RUN)
-
-run-v2-issue: factory-cc ## Run v2.0 binary against a single issue
+# FACTORY_RUN builds the factory binary from the mounted source inside the sandbox,
+# runs the given `themis` subcommand, and restores the originating git branch
+# afterward (a run leaves HEAD on the last issue branch). $(1) is the themis args.
+define FACTORY_RUN
 	@orig=$$(git rev-parse --abbrev-ref HEAD); \
 	echo "factory: originating branch = $$orig"; \
 	podman run -i --userns=keep-id \
@@ -58,7 +38,7 @@ run-v2-issue: factory-cc ## Run v2.0 binary against a single issue
 		-w /home/agent/workspace \
 		--memory=12g \
 		$(IMAGE) \
-		-c 'go build -o /tmp/themis ./cmd/themis/ && /tmp/themis issue $(ISSUE) --provider gitea'; \
+		-c 'go build -o /tmp/themis ./cmd/themis/ && /tmp/themis $(1)'; \
 	rc=$$?; \
 	cur=$$(git rev-parse --abbrev-ref HEAD); \
 	if [ "$$cur" != "$$orig" ]; then \
@@ -66,6 +46,16 @@ run-v2-issue: factory-cc ## Run v2.0 binary against a single issue
 		git switch "$$orig" || echo "factory: WARNING could not switch back to '$$orig' — resolve manually (uncommitted changes?)"; \
 	fi; \
 	exit $$rc
+endef
+
+factory: factory-cc ## Run the autonomous factory loop over all ready-for-agent issues
+	$(call FACTORY_RUN,run --provider $(PROVIDER))
+
+factory-issue: factory-cc ## Run the factory on a single issue: make factory-issue ISSUE=3
+	$(call FACTORY_RUN,issue $(ISSUE) --provider $(PROVIDER))
+
+factory-dry: factory-cc ## Preview which issues the loop would process (no changes)
+	$(call FACTORY_RUN,run --provider $(PROVIDER) --dry-run)
 
 shell: ## Open an interactive shell inside the factory container
 	podman run -it --userns=keep-id --entrypoint /bin/bash \

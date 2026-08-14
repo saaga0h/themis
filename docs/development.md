@@ -6,7 +6,7 @@
 
 ## Overview
 
-`themis` (`cmd/themis`) is a Go CLI that orchestrates an autonomous software factory pipeline. It fetches issues from GitHub or Gitea, drives Claude Code through a deterministic multi-step pipeline (test-red → implement → refactor → review → fix → docs → ship), and opens a pull request on completion. Build with `make build`; run in a sandboxed container via `make run-factory` or `make run-issue`. See `README.md` for the full container walkthrough and Containerfile example.
+`themis` (`cmd/themis`) is a Go CLI that orchestrates an autonomous software factory pipeline. It fetches issues from GitHub or Gitea, drives Claude Code through a deterministic multi-step pipeline (test-red → implement → review → docs → ship), and opens a pull request on completion. Build with `make build`; run in a sandboxed container via `make factory` (the autonomous loop) or `make factory-issue ISSUE=N` (a single issue). See `README.md` for the full container walkthrough and Containerfile example.
 
 ## Prerequisites
 
