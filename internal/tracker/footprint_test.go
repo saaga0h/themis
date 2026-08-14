@@ -30,6 +30,20 @@ func TestParseFootprint_WideWithReason(t *testing.T) {
 	}
 }
 
+// A real issue body carries a ```footprint block alongside sibling plain ``` code
+// examples (the shape #112 uses). The plain example must not interfere — only the
+// info-tagged footprint fence is the declaration.
+func TestParseFootprint_IgnoresSiblingPlainFence(t *testing.T) {
+	body := "## What to build\n\n```\nif a == \"--body\" { redact }\n```\n\n## Footprint\n\n```footprint\ncmd/themis\n```\n"
+	fp := ParseFootprint(body)
+	if !fp.Declared() || len(fp.Packages) != 1 || fp.Packages[0] != "cmd/themis" {
+		t.Fatalf("footprint should be [cmd/themis], got %+v", fp)
+	}
+	if fp.CheckCommand([]string{"go.mod", "go.sum"}) == "" {
+		t.Error("expected a non-empty check command for a declared footprint")
+	}
+}
+
 func TestParseFootprint_Absent(t *testing.T) {
 	if fp := ParseFootprint("## Acceptance Criteria\n- [ ] x\n"); fp.Declared() {
 		t.Errorf("no footprint block should yield Declared()=false, got %+v", fp)
