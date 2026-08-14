@@ -87,3 +87,6 @@ test: ## Run Go tests
 
 lint: ## Run Go vet
 	go vet ./...
+
+backtest: ## Backtest a candidate gate against merged history: make backtest CHECK='! git grep -q PATTERN $$COMMIT'
+	go run ./cmd/backtest --check '$(CHECK)' $(BACKTEST_ARGS)
