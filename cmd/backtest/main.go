@@ -35,14 +35,24 @@ import (
 var issueRE = regexp.MustCompile(`#(\d+)`)
 
 func main() {
-	check := flag.String("check", "", "candidate predicate, run via `bash -c`; exit 0 = the commit passes (required)")
+	check := flag.String("check", "", "candidate predicate, run via `bash -c`; exit 0 = the commit passes")
+	checkFile := flag.String("check-file", "", "read the predicate from a file instead of --check (avoids shell/make quoting for $-heavy checks)")
 	revRange := flag.String("range", "", "git revision range to test (default: feat commits reachable from HEAD)")
 	last := flag.Int("last", 0, "test only the most recent N matching commits (0 = all)")
 	verbose := flag.Bool("v", false, "list every commit, not just false-blocks")
 	flag.Parse()
 
-	if strings.TrimSpace(*check) == "" {
-		fmt.Fprintln(os.Stderr, "backtest: --check is required")
+	predicate := *check
+	if *checkFile != "" {
+		data, err := os.ReadFile(*checkFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "backtest: reading --check-file: %v\n", err)
+			os.Exit(2)
+		}
+		predicate = string(data)
+	}
+	if strings.TrimSpace(predicate) == "" {
+		fmt.Fprintln(os.Stderr, "backtest: a predicate is required (--check or --check-file)")
 		flag.Usage()
 		os.Exit(2)
 	}
@@ -58,7 +68,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	report := backtest.Run(commits, checkPredicate(ctx, ".", *check))
+	report := backtest.Run(commits, checkPredicate(ctx, ".", predicate))
 	printReport(report, *verbose)
 
 	if !report.Admissible() {
