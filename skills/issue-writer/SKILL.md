@@ -85,6 +85,29 @@ The negated `grep` exits 0 when the type is absent — i.e. the move is complete
 
 (Strict convention is a deliberate starting point to keep extraction deterministic — observe and tune; see #81.)
 
+## Declaring the footprint (change-surface gate)
+
+Exhaustive enumeration (below) bounds the *required* change — the sites that must be touched. The **footprint** bounds the *surplus* side: the packages the change may touch at all. Declare it in a fenced ` ```footprint ` block, one **package** path per line — the factory translates it to a green-gate check, so any file the implementation lands outside these packages fails the run (over-engineering usually shows up as surplus files in packages nobody named).
+
+````
+```footprint
+internal/tracker
+cmd/themis
+```
+````
+
+Rules:
+- **Packages, not files** — a footprint of `internal/tracker` allows any file (incl. new files and `_test.go`) under that package. This is deliberate: footprint bounds *where*; a negative/`check` AC bounds *what's removed*.
+- Derive it from the deliverable's real surface. `go.mod`/`go.sum` are exempt (declared per-repo in `.themis/workflow.yaml`) — do not list them.
+- One footprint block per issue. Undeclared = no footprint gate (the check simply isn't added), so declare one for any scoped issue.
+- **Sweeps** — a genuine cross-cutting change that can't be package-bounded (a module-path rename, a repo-wide sweep) declares `wide` with a required reason, which waives the gate loudly:
+  ````
+  ```footprint
+  wide: module-path rename — touches every import
+  ```
+  ````
+  `wide` is the rare, justified exception. If an ordinary feature needs it, the slice is probably too broad — split it (a footprint spanning several unrelated packages is the scope-ceiling signal, #87).
+
 ## Rules for Exhaustive Enumeration
  
 This is the most common source of incomplete fixes. The factory does not generalize — it implements exactly the sites listed. When a fix applies to multiple call sites, every site must be named.

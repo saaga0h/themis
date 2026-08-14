@@ -144,10 +144,24 @@ Present 1-4 vertical slices with this format:
 **Slice: <slug>**
 Intent: <what + why in 1-2 sentences>
 Scope: <files/packages — rough estimate>
+Footprint: <the packages this slice may touch — becomes the issue's footprint gate; or `wide: <reason>` for a genuine sweep>
 Test: <what test exercises this slice>
 Depends on: <other slices or "none">
 Notes: <constraints, failure modes, settled decisions>
 ```
+ 
+The **Footprint** is the Scope, promoted from a decorative estimate to a normative
+gate. It is the list of **packages** (not files) the slice's change may touch;
+issue-writer renders it into a `footprint:` block the factory enforces at the green
+gate, so any file the implementation lands outside those packages fails the run.
+This is the mechanical form of "one deliverable per slice" (#87) — a slice whose
+honest footprint spans several unrelated packages is a signal it is too wide and
+should be split further. Derive it directly from Scope: round each file to its
+package (`internal/tracker/x.go` → `internal/tracker`), and drop go.mod/go.sum
+(exempt). For a genuine cross-cutting change that cannot be package-bounded (a
+module-path rename, a repo-wide sweep), write `wide: <reason>` — it waives the gate
+loudly and is the rare exception, not the default. If a slice needs `wide`, ask
+whether it is really one deliverable.
  
 The Notes field is the AC quality gate. Ask: "If someone wrote this issue
 without reading the conversation, what would they get wrong?" That answer
@@ -320,6 +334,7 @@ Intent: Add ingredient-based recipe search so users can find recipes by
 what they have, using embedding similarity against the Finnish corpus.
 Scope: `internal/search/ingredient.go` (new), `internal/search/ingredient_test.go`,
 `internal/api/handlers/search.go` (new endpoint)
+Footprint: `internal/search`, `internal/api/handlers`
 Test: Integration test — POST `/api/search` with `{"ingredients": ["tomaatti", "sipuli"]}`
 returns recipes ranked by similarity, top result contains both ingredients.
 Depends on: none
@@ -334,6 +349,7 @@ Intent: Add allergen post-filter to recipe search results so users with
 allergies get safe results, using the materialized Neo4j FoodOn labels.
 Scope: `internal/allergen/filter.go` (new), `internal/allergen/filter_test.go`,
 modification to search handler response pipeline
+Footprint: `internal/allergen`, `internal/api/handlers`
 Test: Integration test — search with `{"ingredients": ["kala"], "exclude_allergens": ["CitrusFamily"]}`
 returns no recipes containing citrus ingredients. Unit test — filter function
 with known recipe ingredients returns correct include/exclude decisions.
