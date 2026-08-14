@@ -93,6 +93,24 @@ type loopConfig struct {
 
 var dependsOnRE = regexp.MustCompile(`(?i)depends on #(\d+)`)
 
+// baseBranchForIssue resolves the branch the loop resets to before creating an
+// issue's branch — so each issue is cut from the right base and does not stack on
+// the previous issue's branch. Provider-agnostic: it prefers the issue's Ref (the
+// target branch, which Gitea carries and the Ship step also uses for the PR base;
+// GitHub issues have none, leaving it empty), then falls back to the branch the
+// factory was invoked on (originBranch), and only then to "main". This removes the
+// hardcoded "main" that branched issues from a stale default (see the #112 loop
+// failure) and works for any provider without assuming a default-branch name.
+func baseBranchForIssue(issue *tracker.IssueData, originBranch string) string {
+	if r := strings.TrimPrefix(strings.TrimSpace(issue.Ref), "refs/heads/"); r != "" {
+		return r
+	}
+	if originBranch != "" {
+		return originBranch
+	}
+	return "main"
+}
+
 func runLoop(ctx context.Context, cfg loopConfig) error {
 	out := cfg.Logger
 	if out == nil {

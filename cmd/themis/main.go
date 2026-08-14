@@ -356,11 +356,17 @@ func runRun(args []string) error {
 		fetcher = &tracker.GitHubFetcher{}
 	}
 
+	// The branch the factory was invoked on, captured once before any issue runs —
+	// the base the loop falls back to for issues without a Ref (e.g. GitHub). Empty
+	// if it can't be determined; baseBranchForIssue then defaults to "main".
+	originBranch, _ := git.CurrentBranch(context.Background(), repoRoot)
+
 	cfg := loopConfig{
 		Querier: querier,
 		RunFn: func(ctx context.Context, issue *tracker.IssueData) error {
-			if err := git.Checkout(ctx, repoRoot, "main"); err != nil {
-				return fmt.Errorf("checkout main before issue #%d: %w", issue.Number, err)
+			base := baseBranchForIssue(issue, originBranch)
+			if err := git.Checkout(ctx, repoRoot, base); err != nil {
+				return fmt.Errorf("checkout base %q before issue #%d: %w", base, issue.Number, err)
 			}
 			issueWriter := newIssueWriter(parsed.provider, giteaOwner, giteaRepo, giteaAPIBase)
 			gitOps := newCmdGitOps(parsed.provider, giteaOwner, giteaRepo, giteaAPIBase)
