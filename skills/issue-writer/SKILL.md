@@ -108,6 +108,25 @@ Rules:
   ````
   `wide` is the rare, justified exception. If an ordinary feature needs it, the slice is probably too broad — split it (a footprint spanning several unrelated packages is the scope-ceiling signal, #87).
 
+## Declaring an export budget (surface gate — move/extract issues only)
+
+Where footprint bounds *where* a change lands, an **export budget** bounds *what a package exposes*: the package exports exactly these identifiers and no others. It catches the surplus public surface over-engineering adds — an options struct nobody asked for, an interface with one implementation, a `Manager` type. Declare it in a fenced ` ```exports ` block, one `<package>: Name1, Name2, ...` line per package:
+
+````
+```exports
+internal/tracker: GiteaQuerier, NewGiteaQuerier
+```
+````
+
+The factory translates it to a green-gate check (`go doc -short` on the package); if the package exposes any exported identifier not listed, the run fails naming it.
+
+**Use this sparingly — only for move / extract / rename issues, not ordinary features.** The reason: an export budget makes the listed names a **contract**. That is a good fit when the exported surface is *already decided at design time* — a move or extract knows exactly which identifiers it relocates, so enumerating them is free and pins the result. For a from-scratch feature the exact public names are still being discovered during implementation, so budgeting them forces premature naming and a mis-typed or renamed identifier false-blocks a correct change. When in doubt, omit it — footprint already bounds the change; the export budget is the extra pin only when the surface is knowable up front.
+
+Rules:
+- **Names are exported top-level identifiers** — types, funcs (incl. constructors), consts, vars. Methods are not listed (they belong to their type). List every exported name the package should have *after* the change, not just the added ones (the budget is the whole surface, not a delta).
+- Omit `go doc`-invisible things; the check only sees what `go doc -short` reports.
+- Undeclared = no export gate. It bounds exported surface only — a large unexported helper is out of its reach (that is the footprint's and review's job).
+
 ## Rules for Exhaustive Enumeration
  
 This is the most common source of incomplete fixes. The factory does not generalize — it implements exactly the sites listed. When a fix applies to multiple call sites, every site must be named.
