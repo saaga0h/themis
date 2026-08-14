@@ -289,6 +289,12 @@ func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir strin
 	if fpCheck := tracker.ParseFootprint(issue.Body).CheckCommand(desc.FootprintExempt); fpCheck != "" {
 		verify = append(verify, fpCheck)
 	}
+	// Export-budget gate (#111): a declared ```exports block bounds a package's
+	// exported surface. A tree check (go doc), so no $BASE needed. Empty when the
+	// issue declares no budget — no gate.
+	if exCheck := tracker.ExportCheckCommand(tracker.ParseExports(issue.Body)); exCheck != "" {
+		verify = append(verify, exCheck)
+	}
 	// The issue's base branch — what a footprint/diff check diffs against as $BASE.
 	// The issue's Ref (Gitea) when set, else the current branch, which at config
 	// time (before the Branch step) is the base the issue is cut from.
