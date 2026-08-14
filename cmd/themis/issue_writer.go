@@ -67,6 +67,8 @@ func redactBodyArg(args []string) []string {
 	for i, a := range redacted {
 		if a == "--body" && i+1 < len(redacted) {
 			redacted[i+1] = "[REDACTED]"
+		} else if strings.HasPrefix(a, "--body=") {
+			redacted[i] = "--body=[REDACTED]"
 		}
 	}
 	return redacted
