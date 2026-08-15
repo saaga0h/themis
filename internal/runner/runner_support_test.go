@@ -164,6 +164,7 @@ type stubIssueWriter struct {
 	prURL         string
 	addLabelErr   error
 	commentErr    error
+	createPRErr   error
 }
 
 func (s *stubIssueWriter) AddLabel(_ context.Context, _ int, label string) error {
@@ -186,6 +187,9 @@ func (s *stubIssueWriter) CreatePR(_ context.Context, opts PROptions) (string, e
 	s.prBaseSeen = opts.Base
 	s.prHeadSeen = opts.Head
 	s.prDraftSeen = opts.Draft
+	if s.createPRErr != nil {
+		return "", s.createPRErr
+	}
 	if s.prURL != "" {
 		return s.prURL, nil
 	}

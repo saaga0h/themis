@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -44,8 +45,16 @@ func (g *ghIssueWriter) CreatePR(ctx context.Context, opts runner.PROptions) (st
 	if opts.Draft {
 		args = append(args, "--draft")
 	}
-	out, err := exec.CommandContext(ctx, "gh", args...).Output()
+	cmd := exec.CommandContext(ctx, "gh", args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
 	if err != nil {
+		// gh exits non-zero when a PR for this head branch already exists; surface
+		// that as the shared sentinel so Ship treats a re-run as an idempotent ship.
+		if strings.Contains(strings.ToLower(stderr.String()), "already exists") {
+			return "", runner.ErrPRAlreadyExists
+		}
 		return "", fmt.Errorf("gh pr create: %w", err)
 	}
 	return strings.TrimSpace(string(out)), nil
@@ -143,6 +152,12 @@ func (g *giteaIssueWriter) CreatePR(ctx context.Context, opts runner.PROptions) 
 	if err := g.do(ctx, "POST",
 		fmt.Sprintf("/repos/%s/%s/pulls", g.owner, g.repo),
 		payload, &result); err != nil {
+		// Gitea returns 409 Conflict when a PR for this head→base already exists;
+		// surface that as the shared sentinel so Ship treats a re-run as idempotent.
+		var apiErr *giteaAPIError
+		if errors.As(err, &apiErr) && apiErr.status == http.StatusConflict {
+			return "", runner.ErrPRAlreadyExists
+		}
 		return "", err
 	}
 	if result.HTMLURL == "" {
@@ -182,6 +197,19 @@ func (g *giteaIssueWriter) findOrCreateLabel(ctx context.Context, name string) (
 	return created.ID, nil
 }
 
+// giteaAPIError is a non-2xx response from the Gitea REST API. It carries the
+// status code so callers can distinguish specific conditions (e.g. 409 Conflict
+// on PR creation) while its Error() preserves the original "METHOD url: HTTP NNN"
+// message every other caller already logs.
+type giteaAPIError struct {
+	method, url string
+	status      int
+}
+
+func (e *giteaAPIError) Error() string {
+	return fmt.Sprintf("%s %s: HTTP %d", e.method, e.url, e.status)
+}
+
 func (g *giteaIssueWriter) do(ctx context.Context, method, path string, body []byte, out interface{}) error {
 	url := strings.TrimRight(g.apiBase, "/") + "/api/v1" + path
 	var bodyReader *bytes.Reader
@@ -208,7 +236,7 @@ func (g *giteaIssueWriter) do(ctx context.Context, method, path string, body []b
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("%s %s: HTTP %d", method, url, resp.StatusCode)
+		return &giteaAPIError{method: method, url: url, status: resp.StatusCode}
 	}
 	if out != nil {
 		return json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(out)

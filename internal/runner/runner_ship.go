@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,10 +11,19 @@ import (
 
 	"github.com/saaga0h/themis/internal/agent"
 	"github.com/saaga0h/themis/internal/issuespec"
+	"github.com/saaga0h/themis/internal/labels"
 	"github.com/saaga0h/themis/internal/pipeline"
 	"github.com/saaga0h/themis/internal/prompt"
 	"github.com/saaga0h/themis/internal/tracker"
 )
+
+// ErrPRAlreadyExists signals that a pull request for the issue's branch already
+// exists on the remote — a prior run created it. An IssueWriter.CreatePR returns
+// it (matchable with errors.Is) so the Ship step can treat the situation as an
+// idempotent success — drop the selection label and finish — rather than a hard
+// block. Each provider maps its own "already exists" response to it: Gitea's HTTP
+// 409 on POST pulls, GitHub's "a pull request already exists" from gh pr create.
+var ErrPRAlreadyExists = errors.New("pull request already exists for this branch")
 
 // runShipStep pushes the branch, invokes the ship agent for a PR description,
 // creates the PR, and returns the Result. It also saves final pipeline state and
@@ -93,14 +103,38 @@ func runShipStep(ctx context.Context, cfg Config, issue *tracker.IssueData, stat
 		Head:  branch,
 		Draft: draft,
 	})
-	if err != nil {
+	alreadyExists := errors.Is(err, ErrPRAlreadyExists)
+	switch {
+	case alreadyExists:
+		// A prior run already opened the PR for this branch — the branch was pushed
+		// above, so there is nothing left to do but reconcile the labels. Idempotent
+		// success rather than a hard block.
+		fmt.Fprintf(log, "%s: a PR already exists for this branch — treating as an idempotent ship\n", pipeline.StepShip)
+	case err != nil:
 		return nil, fmt.Errorf("creating PR: %w", err)
 	}
+
+	// A PR now exists for this issue (just created, or from a prior run). Drop the
+	// selection label so the loop does not re-pick and re-run an already-shipped
+	// issue, and mark it for human review. Both are best-effort: the PR exists, so a
+	// labelling hiccup must not turn a shipped issue into a failure. Re-adding
+	// ready-for-agent (by a human or agent) is the explicit signal to re-run.
+	if lErr := cfg.IssueWriter.RemoveLabel(ctx, cfg.IssueNumber, labels.ReadyForAgent); lErr != nil {
+		fmt.Fprintf(log, "warning: could not remove %q label after ship: %v\n", labels.ReadyForAgent, lErr)
+	}
+	if lErr := cfg.IssueWriter.AddLabel(ctx, cfg.IssueNumber, labels.NeedsReview); lErr != nil {
+		fmt.Fprintf(log, "warning: could not add %q label after ship: %v\n", labels.NeedsReview, lErr)
+	}
+
 	readiness := "ready"
 	if draft {
 		readiness = "draft (blocking review findings — needs a maintainer before merge)"
 	}
-	fmt.Fprintf(log, "%s: PR URL %s [%s]\n", pipeline.StepShip, prURL, readiness)
+	if alreadyExists {
+		fmt.Fprintf(log, "%s: PR already exists [%s]\n", pipeline.StepShip, readiness)
+	} else {
+		fmt.Fprintf(log, "%s: PR URL %s [%s]\n", pipeline.StepShip, prURL, readiness)
+	}
 	verdictLabel := "ready"
 	if draft {
 		verdictLabel = "draft"

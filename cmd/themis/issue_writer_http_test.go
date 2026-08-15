@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -266,6 +267,27 @@ func TestGiteaIssueWriter_CreatePR_APIError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "HTTP 422") {
 		t.Errorf("CreatePR error = %q, want it to contain %q", err.Error(), "HTTP 422")
+	}
+}
+
+// A 409 Conflict on PR creation (a PR for this head→base already exists) maps to
+// the shared runner.ErrPRAlreadyExists sentinel so Ship can treat it as idempotent.
+func TestGiteaIssueWriter_CreatePR_ConflictMapsToAlreadyExists(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/v1/repos/o/r/pulls", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	g := newTestGiteaIssueWriter(srv)
+	opts := runner.PROptions{Title: "Fix bug", Body: "desc", Head: "branch-x"}
+	url, err := g.CreatePR(t.Context(), opts)
+	if url != "" {
+		t.Errorf("CreatePR url = %q, want empty on conflict", url)
+	}
+	if !errors.Is(err, runner.ErrPRAlreadyExists) {
+		t.Fatalf("CreatePR on 409 must map to runner.ErrPRAlreadyExists, got %v", err)
 	}
 }
 
