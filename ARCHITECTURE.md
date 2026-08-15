@@ -25,7 +25,8 @@ coordinate agent execution, enforce cycle limits, and manage pipeline state.
 | Project profile | `internal/profile/` | Per-project YAML configuration schema and loader |
 | Agent invoker | `internal/agent/` | `Invoker` interface and `ClaudeCodeInvoker` for spawning Claude Code |
 | Git helpers | `internal/git/` | Context-aware git subprocess helpers for commit snapshot and branch queries |
-| Issue tracker integration | `internal/tracker/` | Fetcher interface and implementations for GitHub (gh CLI) and Gitea (REST API); AC checkbox parser; list-issue item types and converter |
+| Issue directive parsing | `internal/issuespec/` | Parser for issue-body directives: checkboxes (ACs), check blocks, footprint and exports declarations, destructive-AC validation |
+| Issue tracker integration | `internal/tracker/` | Fetcher interface and implementations for GitHub (gh CLI) and Gitea (REST API); list-issue item types and converter |
 | Checkpoint verification | `internal/checkpoint/` | Verifies commit message prefixes and working-tree cleanliness after each agent step |
 | Review results | `internal/review/` | `ReviewFinding`, `ReviewResults`, `BlockingThreshold`; pure analysis functions (`CountFindingsBySeverity`, `DetermineBlockingStatus`, `FormatBlockingFindings`); `ReadReviewResults` (I/O, injected into runner as `ReviewResultsLoader`) |
 | Pipeline runner | `internal/runner/` | Orchestrates the full pipeline: loads profile, fetches issue, invokes agents per step, enforces limits, creates PR |
