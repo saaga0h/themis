@@ -25,20 +25,35 @@
 
 | Target | Purpose | Notes |
 |---|---|---|
-| `build` | Compile `themis` binary to `bin/themis` | `go build ./cmd/themis` |
-| `test` | Run Go tests | `go test ./...`; add `-race` flag manually for race detection: `go test -race ./...` |
+| `build` | Compile the static `linux/$(FACTORY_ARCH)` `themis` binary to `bin/themis` | `go build ./cmd/themis`; this is the binary target sandboxes mount |
+| `test` | Run Go tests | `go test ./...`; add `-race` manually for race detection |
 | `lint` | Static analysis | `go vet ./...` |
+| `backtest` | Backtest a candidate blocking gate against merged history before shipping it | `make backtest CHECK='<predicate>'` (escape `$` as `$$`) or `CHECK_FILE=<path>` for a `$`-heavy check. See **Adding a blocking gate** below |
+| `factory` | Run the autonomous factory loop over all `ready-for-agent` issues | Builds `themis` from source inside the sandbox, runs `themis run --provider $(PROVIDER)`, restores the originating branch afterward |
+| `factory-issue` | Run the factory against a single issue | `make factory-issue ISSUE=<number>`; same sandbox path as `factory`, `themis issue <n>` |
+| `factory-dry` | Preview which issues the loop would process | `themis run --dry-run`; no changes made |
+| `factory-cc` | Materialize the curated `.claude/` the sandbox overlays | Copies only the skills/agents/commands in `factory/manifest.txt` into `.themis/factory-cc/.claude/`, so each per-step `claude` indexes the pipeline subset, not the full interactive catalog. Regenerated from tracked source each run |
 | `build-image` | Build the factory container image (`themis:dev`) | `podman build` with `--memory=16g` |
-| `run-factory` | Run the autonomous factory loop | Pipes `/factory --provider $(PROVIDER)` into the container via `claude --verbose --dangerously-skip-permissions` |
-| `dry-run` | Preview which issues would be processed | Pipes `/factory --provider $(PROVIDER) --dry-run`; no issues are executed |
-| `run-issue` | Run the pipeline against a single issue | `make run-issue ISSUE=<number>`; uses the `themis:dev` image and `/issue` CC command |
-| `run-v2-issue` | Build and run the `themis` v2 binary inside the container against a single issue | Compiles on-the-fly inside the container, then calls `themis issue <number> --provider gitea` directly (no CC command layer). Depends on `factory-cc`; overlays the curated `.claude/` onto the workspace |
-| `factory-cc` | Materialize the curated `.claude/` the v2 container overlays | Copies only the skills/agents/commands listed in `factory/manifest.txt` into `.themis/factory-cc/.claude/` so each per-step `claude` indexes the pipeline subset, not the full interactive catalog. Regenerated from the tracked source each run |
 | `shell` | Open an interactive bash shell inside the factory container | Useful for debugging |
 
-Default values: `IMAGE=themis:dev`, `MAX_TURNS=600`, `PROVIDER=gitea`.
+Default values: `IMAGE=themis:dev`, `PROVIDER=gitea`, `FACTORY_ARCH=arm64`.
 
-Override per-invocation: `make run-factory PROVIDER=github`, `make run-issue ISSUE=42 PROVIDER=gitea`.
+Override per-invocation: `make factory PROVIDER=github`, `make factory-issue ISSUE=42`.
+
+## Adding a blocking gate
+
+A *blocking* check is one that fails the run (a green-gate verify command, a guard test, or an issue-declared check like a footprint or export budget). Two conventions govern adding one — they keep the blocking tier deterministic and free of false-blocks.
+
+**Ratchet — a blocking rule ships with its enforcement command.** A rule is admissible as *blocking* only if a deterministic command can decide it: a lint, a guard test, or a verify-gate check. A rule that can only be judged by an LLM reading prose is *not* blocking — it belongs in the judgment tier (`CODING_STANDARDS.md` prose, the interactive `/review`, the human at PR review). Do not add a blocking category without the command that enforces it.
+
+**Admission control — no gate ships without a passing backtest.** Before wiring a candidate check as a blocking gate, backtest it against merged history:
+
+```
+make backtest CHECK='! git grep -q FORBIDDEN_PATTERN $$COMMIT'      # inline ($ escaped as $$)
+make backtest CHECK_FILE=/tmp/candidate.check                        # for a $-heavy predicate
+```
+
+The predicate follows the check-block contract — **exit 0 means the commit passes** — and runs against each merged `feat` commit with `$COMMIT` (and `$BASE=$COMMIT^`) exported. A predicate that blocks a known-good merged commit is a *false-block*; the candidate is inadmissible until every false-block is resolved or explicitly exempted. `backtest` exits non-zero when the candidate is not admissible, so it is usable as a gate on gates. Footprint and export budgets (#111) were validated this way before they were wired.
 
 ## Commands
 
