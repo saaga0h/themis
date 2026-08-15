@@ -36,7 +36,7 @@ func ReadACTargets(_ context.Context, workDir string) ([]ACTarget, bool) {
 	if err != nil {
 		return nil, false
 	}
-	var at ACTargets
+	var at acTargets
 	if err := json.Unmarshal(data, &at); err != nil {
 		return nil, false
 	}
