@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/saaga0h/themis/internal/agent"
+	"github.com/saaga0h/themis/internal/issuespec"
 	"github.com/saaga0h/themis/internal/pipeline"
 	"github.com/saaga0h/themis/internal/prompt"
 	"github.com/saaga0h/themis/internal/tracker"
@@ -26,7 +27,7 @@ func runShipStep(ctx context.Context, cfg Config, issue *tracker.IssueData, stat
 			branch = "main"
 		}
 	}
-	acs := tracker.ParseCheckboxes(issue.Body)
+	acs := issuespec.ParseCheckboxes(issue.Body)
 	base := issue.Ref
 	if base == "" {
 		base = "main"

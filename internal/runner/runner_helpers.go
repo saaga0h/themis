@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/saaga0h/themis/internal/agent"
+	"github.com/saaga0h/themis/internal/issuespec"
 	"github.com/saaga0h/themis/internal/labels"
 	"github.com/saaga0h/themis/internal/pipeline"
 	"github.com/saaga0h/themis/internal/review"
@@ -349,7 +350,7 @@ func buildTemplateArgs(
 	branchName string,
 	greenGateFailure string,
 ) map[string]string {
-	acs := tracker.ParseCheckboxes(issue.Body)
+	acs := issuespec.ParseCheckboxes(issue.Body)
 	acList := formatACs(acs)
 	var commitLog string
 	var changedFilesResult string

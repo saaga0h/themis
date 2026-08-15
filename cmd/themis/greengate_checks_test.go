@@ -7,16 +7,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/saaga0h/themis/internal/tracker"
+	"github.com/saaga0h/themis/internal/issuespec"
 )
 
 // composeVerify builds the combined verify list the way newIssueConfig is
 // expected to: the project's declared verify commands plus the issue's
 // extracted `check` blocks, appended (never committed — scaffolding for this
 // run only). Mirrors the composition newIssueConfig will perform once #98 is
-// implemented: append(desc.Verify, tracker.ParseCheckBlocks(issue.Body)...).
+// implemented: append(desc.Verify, issuespec.ParseCheckBlocks(issue.Body)...).
 func composeVerify(declared []string, issueBody string) []string {
-	return append(append([]string{}, declared...), tracker.ParseCheckBlocks(issueBody)...)
+	return append(append([]string{}, declared...), issuespec.ParseCheckBlocks(issueBody)...)
 }
 
 // AC4: green-gate failure feedback names which issue-declared check failed, so
