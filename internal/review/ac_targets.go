@@ -16,8 +16,8 @@ type ACTarget struct {
 	Targets   []string `json:"targets"`
 }
 
-// ACTargets is the on-disk shape of .themis/ac-targets.json.
-type ACTargets struct {
+// acTargets is the on-disk shape of .themis/ac-targets.json.
+type acTargets struct {
 	ACs []ACTarget `json:"acs"`
 }
 
