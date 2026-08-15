@@ -20,6 +20,11 @@ verify:
   - test -z "$(gofmt -l .)"
   - go vet -mod=readonly ./...
   - go test -mod=readonly ./...
+  # Per-issue test files are a blocking CODING_STANDARDS rule (name tests by
+  # behaviour, not issue number). Enforced here rather than judged by an LLM —
+  # backtested clean against recent history before shipping (see docs/development.md
+  # "Adding a blocking gate"). Exit 0 when no `<pkg>_issue<N>_test.go` is tracked.
+  - '! git ls-files | grep -qE "_issue[0-9]+_test\.go$"'
 
 # Paths a footprint gate always allows, regardless of an issue's declared packages
 # — generated/lockfiles a legitimate change touches outside its own packages.
