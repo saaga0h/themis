@@ -12,6 +12,7 @@ import (
 	"github.com/saaga0h/themis/internal/agent"
 	"github.com/saaga0h/themis/internal/checkpoint"
 	"github.com/saaga0h/themis/internal/git"
+	"github.com/saaga0h/themis/internal/issuespec"
 	"github.com/saaga0h/themis/internal/profile"
 	"github.com/saaga0h/themis/internal/review"
 	"github.com/saaga0h/themis/internal/runner"
@@ -279,20 +280,20 @@ func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir strin
 	if err != nil {
 		return runner.Config{}, fmt.Errorf("fetching issue #%d: %w", issueNumber, err)
 	}
-	if err := tracker.ValidateDestructiveChecks(issue.Body); err != nil {
+	if err := issuespec.ValidateDestructiveChecks(issue.Body); err != nil {
 		return runner.Config{}, fmt.Errorf("issue #%d: %w", issueNumber, err)
 	}
-	verify := append(append([]string{}, desc.Verify...), tracker.ParseCheckBlocks(issue.Body)...)
+	verify := append(append([]string{}, desc.Verify...), issuespec.ParseCheckBlocks(issue.Body)...)
 	// Footprint gate (#111): translate the issue's declared change surface into a
 	// check appended to the green gate for this run. Empty when the issue declares
 	// no footprint or declares `wide` — no gate in those cases.
-	if fpCheck := tracker.ParseFootprint(issue.Body).CheckCommand(desc.FootprintExempt); fpCheck != "" {
+	if fpCheck := issuespec.ParseFootprint(issue.Body).CheckCommand(desc.FootprintExempt); fpCheck != "" {
 		verify = append(verify, fpCheck)
 	}
 	// Export-budget gate (#111): a declared ```exports block bounds a package's
 	// exported surface. A tree check (go doc), so no $BASE needed. Empty when the
 	// issue declares no budget — no gate.
-	if exCheck := tracker.ExportCheckCommand(tracker.ParseExports(issue.Body)); exCheck != "" {
+	if exCheck := issuespec.ExportCheckCommand(issuespec.ParseExports(issue.Body)); exCheck != "" {
 		verify = append(verify, exCheck)
 	}
 	// The issue's base branch — what a footprint/diff check diffs against as $BASE.

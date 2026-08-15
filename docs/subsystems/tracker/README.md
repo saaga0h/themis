@@ -6,9 +6,9 @@
 
 ## Overview
 
-`internal/tracker` provides a provider-agnostic interface for fetching issue data from GitHub or Gitea. It defines the `Fetcher` interface, two concrete implementations, supporting types for list-issues API shapes, and helpers for parsing issue bodies: `ParseCheckboxes` for acceptance criteria, `ParseCheckBlocks` for issue-declared verification commands, `IsDestructiveAC` for identifying destructive criteria, and `ValidateDestructiveChecks` for enforcing the pairing rule.
+`internal/tracker` provides a provider-agnostic interface for fetching issue data from GitHub or Gitea. It defines the `Fetcher` interface, two concrete implementations, supporting types for list-issues API shapes, and helper functions for parsing raw issue item types.
 
-The package is consumed by `cmd/themis` (wiring, issue validation at fetch time) and `internal/runner` (issue fetch at pipeline start).
+The package is consumed by `cmd/themis` (wiring and Gitea configuration resolution) and `internal/runner` (issue fetch at pipeline start). Directive parsing (checkboxes, check blocks, footprint, exports, destructive-AC validation) is handled by `internal/issuespec`.
 
 ## Key Files & Entry Points
 
@@ -96,59 +96,6 @@ func NewFetcher(provider, owner, repo, apiBase, token string, timeout time.Durat
 
 `NewFetcher` itself never returns a non-nil error for a known provider; the error path is solely the unknown-provider case.
 
-## ParseCheckboxes
-
-```go
-func ParseCheckboxes(body string) []string
-```
-
-Extracts the text of all markdown checkbox items from `body` using the pattern `^- \[[ xX]\] (.+)$` (multiline).
-
-- Returns both unchecked (`- [ ]`) and checked (`- [x]`, `- [X]`) items.
-- Ignores checkbox lines inside fenced code blocks (``` or ~~~); only top-level checkboxes are extracted.
-- Text is trimmed of leading/trailing whitespace.
-- Returns `nil` (not an empty slice) when no matches are found.
-- Preserves document order.
-
-Used by `internal/runner` to derive the acceptance criteria list from `IssueData.Body`.
-
-## ParseCheckBlocks
-
-```go
-func ParseCheckBlocks(body string) []string
-```
-
-Extracts each fenced ` ```check ... ``` ` block's inner command from a markdown issue body. These are issue-declared verification commands the factory appends to the green gate for per-run verification only — never committed to `.themis/workflow.yaml`.
-
-- Returns the inner text of each top-level fenced block (ignores check blocks nested inside other fenced blocks per CommonMark fence-length rules).
-- Text is trimmed of leading/trailing whitespace.
-- Returns `nil` (not an empty slice) when no blocks are found.
-- Preserves document order.
-- Used by `cmd/themis` to extend the `.themis/workflow.yaml` `verify` contract for each run.
-
-## IsDestructiveAC
-
-```go
-func IsDestructiveAC(ac string) bool
-```
-
-Reports whether an acceptance criterion is destructive/negative — asserting that something must NO LONGER exist after the change. Matches the phrasings: "No X remains", "X no longer exists", "Removed X" (case-insensitive, anchored to the start after trimming).
-
-- Destructive ACs must be paired with a `check` block (enforced by `ValidateDestructiveChecks`).
-- Examples: "No GiteaQuerier struct remains in cmd/themis", "Removed hardcoded Finna config from GetSources handler".
-
-## ValidateDestructiveChecks
-
-```go
-func ValidateDestructiveChecks(body string) error
-```
-
-Deterministic meta-check that enforces every destructive AC has an accompanying `check` block positioned in its own span. Returns an error naming the offending AC when the rule is violated. Destructive-looking checkbox lines inside fenced code blocks are ignored.
-
-- Returns `nil` when all destructive ACs have check blocks in their own spans, or when the body has no destructive ACs.
-- Pairing is by position, not by count: each destructive AC must have a check block between its checkbox and the next checkbox (or end of body). Check blocks cannot be shared between destructive ACs. (per `skills/issue-writer/SKILL.md`).
-- Called by `cmd/themis/main.go` at issue fetch time to fail fast if the issue structure is invalid.
-
 ## List-Issue Types
 
 These types exist to support paginated list-issues responses consumed by `cmd/themis` queriers.
@@ -220,13 +167,13 @@ Converts a `[]IssueItem` to `[]*IssueData`, extracting label names via the inter
 - `encoding/json` — JSON parsing for both providers
 - `net/http` — Gitea HTTP client
 - `os/exec` — `gh` CLI invocation for GitHub
-- `regexp` — checkbox extraction
 
 No internal package dependencies.
 
 ## Related Documents
 
 - `ARCHITECTURE.md` — system-level design
-- `docs/subsystems/runner/README.md` — consumes `Fetcher` and `ParseCheckboxes` at pipeline start
-- `docs/subsystems/themis/README.md` — wires `NewFetcher`, handles provider-specific configuration, and calls `ValidateDestructiveChecks` at fetch time
+- `docs/subsystems/issuespec/README.md` — directive parsing (checkboxes, check blocks, footprint, exports, destructive-AC validation)
+- `docs/subsystems/runner/README.md` — consumes `Fetcher` at pipeline start
+- `docs/subsystems/themis/README.md` — wires `NewFetcher` and handles provider-specific configuration
 - `skills/issue-writer/SKILL.md` — user-facing guide for check block syntax and destructive AC rules
