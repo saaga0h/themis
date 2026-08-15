@@ -63,8 +63,15 @@ type PROptions struct {
 
 // Config holds all dependencies for a pipeline run.
 type Config struct {
-	WorkDir             string
-	IssueNumber         int
+	WorkDir     string
+	IssueNumber int
+	// BaseBranch is the branch the issue was cut from and the branch its PR must
+	// target — the resolved base (issue Ref → originating branch → "main"), the
+	// same value the work is based on. The Ship step uses it as the PR base so the
+	// PR never targets a stale default like "main" when the factory runs off an
+	// integration branch. When empty (e.g. tests), Ship falls back to the issue's
+	// Ref, then "main".
+	BaseBranch          string
 	Fetcher             tracker.Fetcher
 	Invoker             agent.Invoker
 	IssueWriter         IssueWriter

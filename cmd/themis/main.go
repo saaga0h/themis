@@ -308,6 +308,7 @@ func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir strin
 	return runner.Config{
 		WorkDir:             workDir,
 		IssueNumber:         issueNumber,
+		BaseBranch:          baseBranch,
 		Fetcher:             fetcher,
 		Invoker:             &agent.ClaudeCodeInvoker{},
 		IssueWriter:         issueWriter,

@@ -38,7 +38,15 @@ func runShipStep(ctx context.Context, cfg Config, issue *tracker.IssueData, stat
 		}
 	}
 	acs := issuespec.ParseCheckboxes(issue.Body)
-	base := issue.Ref
+	// PR base = the resolved base branch the work was cut from. cmd/themis sets
+	// BaseBranch (issue Ref → originating branch → "main"); fall back to the issue's
+	// Ref, then "main", so callers that leave it unset (tests) keep the old default.
+	// Using issue.Ref directly here would target "main" whenever Ref is empty even
+	// though the work was based on the originating branch — a wrong-base PR.
+	base := cfg.BaseBranch
+	if base == "" {
+		base = issue.Ref
+	}
 	if base == "" {
 		base = "main"
 	}
