@@ -44,6 +44,14 @@ USER ${AGENT_UID}:${AGENT_GID}
 ENV GOPATH="/home/agent/go"
 ENV GOCACHE="/home/agent/.cache/go-build"
 ENV GOMODCACHE="/home/agent/go/pkg/mod"
+# Read-only module mode for EVERY go command in the sandbox — the factory's verify
+# gate AND the agent's own build/test/vet during TestRed/Implement. In writable mode
+# a `go build ./...` records the full module graph's /go.mod hashes into go.sum
+# (spurious drift the committed, pruned go.sum omits), which dirties the tree and
+# fails a step's clean-tree checkpoint. readonly stops the rewrite and still builds;
+# a genuinely missing entry fails loudly (correct — the factory should not silently
+# modify go.sum; a real dependency addition is a human decision).
+ENV GOFLAGS="-mod=readonly"
 
 # Verify Go is accessible as the agent user
 RUN go version

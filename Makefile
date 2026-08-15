@@ -35,6 +35,7 @@ define FACTORY_RUN
 		-v $(PWD):/home/agent/workspace \
 		-v $(PWD)/.themis/factory-cc/.claude:/home/agent/workspace/.claude \
 		--env-file .env \
+		-e GOFLAGS=-mod=readonly \
 		-w /home/agent/workspace \
 		--memory=12g \
 		$(IMAGE) \
