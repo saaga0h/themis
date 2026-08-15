@@ -29,9 +29,9 @@ type ImplementConfig struct {
 	TestFixAttempts int    `yaml:"test_fix_attempts"`
 }
 
-// RefactorConfig controls the refactor step.
+// refactorConfig controls the refactor step.
 // Enabled uses *bool so nil (field absent) is distinguishable from explicit false.
-type RefactorConfig struct {
+type refactorConfig struct {
 	Enabled *bool `yaml:"enabled"`
 }
 
@@ -50,7 +50,7 @@ type BlockingConfig struct {
 type Profile struct {
 	Review    ReviewConfig    `yaml:"review"`
 	Implement ImplementConfig `yaml:"implement"`
-	Refactor  RefactorConfig  `yaml:"refactor"`
+	Refactor  refactorConfig  `yaml:"refactor"`
 	Docs      DocsConfig      `yaml:"docs"`
 	Blocking  BlockingConfig  `yaml:"blocking"`
 }
@@ -159,7 +159,7 @@ func defaults() *Profile {
 			Model:           "sonnet",
 			TestFixAttempts: 3,
 		},
-		Refactor: RefactorConfig{Enabled: boolPtr(true)},
+		Refactor: refactorConfig{Enabled: boolPtr(true)},
 		Docs:     DocsConfig{Enabled: boolPtr(true)},
 		Blocking: BlockingConfig{},
 	}
