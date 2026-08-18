@@ -288,6 +288,48 @@ or through the `runner.Config` struct — not through a direct import.
 
 ---
 
+## Trust Model — the sandbox is the boundary
+
+The factory runs the agent with `--dangerously-skip-permissions` (unattended
+autonomous execution). The **podman sandbox is the trust boundary** — it bounds the
+blast radius to the mounted workspace. Two consequences follow, and both are contract.
+
+### Green-gate commands run arbitrary shell
+
+`verifyRunner` (`cmd/themis/main.go`) executes every green-gate command via `bash -c`
+in the work dir. The command list has **two sources**, and code from either runs in
+the sandbox:
+
+- **Repo-controlled** — the project's `.themis/workflow.yaml` `verify` list.
+- **Tracker / issue-controlled** — the issue body's `check`, `footprint`, and
+  `exports` blocks, appended to the list per-run (`issuespec.ParseCheckBlocks` plus the
+  footprint/export check commands). An issue author is trusted to run code and may be a
+  different, less-trusted party than the repo maintainer.
+
+This is by design — the green gate exists to run project-defined verification — but it
+means **a crafted `workflow.yaml` or a crafted issue body executes code in the sandbox.**
+
+### What bounds it
+
+- **The sandbox contains it.** Never run the factory outside its container, and never
+  run it on issues or repositories you do not trust to execute code. Interactive mode
+  (human gates) is the safer path for untrusted input.
+- **Orchestration secrets are stripped.** Green-gate commands run with the factory's
+  credentials removed from their environment — `verifyEnv()` deletes `factorySecretEnv`
+  (the `GITEA_TOKEN` / `GITHUB_TOKEN` and `CLAUDE_CODE_OAUTH_TOKEN`). Only `BASE` (the
+  diff base for footprint checks) is injected. Arbitrary shell in a verify command
+  cannot read the factory's tokens from its environment.
+- **Every command is logged.** Each command is echoed as `$ <cmd>` into the verify
+  output before it runs, so it appears in the per-step record shipped to the telemetry
+  sink — the run narrative shows exactly what executed.
+
+The rule: **treat the `.themis/workflow.yaml` verify list and issue-declared check
+blocks as trusted-to-execute-in-the-sandbox, and rely on the sandbox — not on command
+inspection — as the boundary.** A denylist or static command inspection is explicitly
+*not* the model; the sandbox is.
+
+---
+
 ## Review Classification
 
 These rules define the *contract* — what counts as blocking — independent of who
