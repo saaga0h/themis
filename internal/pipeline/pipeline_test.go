@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -68,6 +69,45 @@ func TestPipelineStateFields(t *testing.T) {
 	}
 	if len(ps.StepHistory) != 1 {
 		t.Error("StepHistory not stored")
+	}
+}
+
+// TestPipelineState_AttemptFieldsAreOnlyTestFixAndImplement is a regression
+// guard for issue #56: crash-recovery resume logging must derive its attempt
+// count from one of the two existing counters (TestFixAttempts,
+// ImplementAttempts) rather than inventing a third attempt-tracking mechanism.
+// This asserts the exact field set on PipelineState so a future third counter
+// trips this test rather than silently expanding the state shape.
+func TestPipelineState_AttemptFieldsAreOnlyTestFixAndImplement(t *testing.T) {
+	want := map[string]bool{
+		"IssueNumber":       true,
+		"CurrentStep":       true,
+		"TestFixAttempts":   true,
+		"ImplementAttempts": true,
+		"Commits":           true,
+		"StartedAt":         true,
+		"StepHistory":       true,
+		"CodeVersion":       true,
+	}
+
+	typ := reflect.TypeOf(PipelineState{})
+	got := map[string]bool{}
+	for i := 0; i < typ.NumField(); i++ {
+		got[typ.Field(i).Name] = true
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("PipelineState has %d fields, want %d: got=%v want=%v", len(got), len(want), got, want)
+	}
+	for name := range want {
+		if !got[name] {
+			t.Errorf("PipelineState missing expected field %q", name)
+		}
+	}
+	for name := range got {
+		if !want[name] {
+			t.Errorf("PipelineState has unexpected field %q — attempt counters must stay limited to TestFixAttempts and ImplementAttempts; do not add a third mechanism", name)
+		}
 	}
 }
 

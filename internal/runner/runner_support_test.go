@@ -38,6 +38,22 @@ type fakeGitOps struct {
 	commitsAhead    int
 	changedFiles    string
 	diffLines       int
+	// checkoutErr, when set, is returned by Checkout instead of succeeding —
+	// used to simulate an absent branch (issue #56 AC6) or an unrelated
+	// checkout failure (network, permissions, ...).
+	checkoutErr error
+
+	// workingTreeCleanFn overrides WorkingTreeClean's result (issue #56). nil
+	// defaults to reporting a clean tree (true, nil) — the common case, since
+	// most tests don't exercise the dirty-resume cleanup path.
+	workingTreeCleanFn func(ctx context.Context, dir string) (bool, error)
+
+	// cleanWorkingTreeFn overrides CleanWorkingTree's result (issue #56); nil
+	// defaults to (0, nil). cleanWorkingTreeCalls counts invocations
+	// regardless of override, so tests can assert the cleanup was (or was
+	// not) invoked.
+	cleanWorkingTreeFn    func(ctx context.Context, dir string) (int, error)
+	cleanWorkingTreeCalls int
 }
 
 func (f *fakeGitOps) CheckoutNewBranch(ctx context.Context, dir, name string) error {
@@ -46,8 +62,30 @@ func (f *fakeGitOps) CheckoutNewBranch(ctx context.Context, dir, name string) er
 }
 
 func (f *fakeGitOps) Checkout(ctx context.Context, dir, name string) error {
+	if f.checkoutErr != nil {
+		return f.checkoutErr
+	}
 	f.checkedOut = append(f.checkedOut, name)
 	return nil
+}
+
+// WorkingTreeClean reports whether the fake's working tree is clean. See
+// workingTreeCleanFn for the override mechanism and default.
+func (f *fakeGitOps) WorkingTreeClean(ctx context.Context, dir string) (bool, error) {
+	if f.workingTreeCleanFn != nil {
+		return f.workingTreeCleanFn(ctx, dir)
+	}
+	return true, nil
+}
+
+// CleanWorkingTree simulates discarding uncommitted/untracked changes. See
+// cleanWorkingTreeFn for the override mechanism and default.
+func (f *fakeGitOps) CleanWorkingTree(ctx context.Context, dir string) (int, error) {
+	f.cleanWorkingTreeCalls++
+	if f.cleanWorkingTreeFn != nil {
+		return f.cleanWorkingTreeFn(ctx, dir)
+	}
+	return 0, nil
 }
 
 func (f *fakeGitOps) PushBranch(ctx context.Context, dir, branch string) error {

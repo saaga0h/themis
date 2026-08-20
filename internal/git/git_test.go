@@ -274,3 +274,162 @@ func TestMergeBaseWith(t *testing.T) {
 		t.Errorf("unknown base must yield \"\", got %q", got)
 	}
 }
+
+// --- CleanWorkingTree (issue #56: crash recovery — clean the working tree on resume) ---
+
+// TestCleanWorkingTree_DiscardsUncommittedTrackedChanges asserts that an
+// uncommitted modification to a tracked file is reverted to the last commit's
+// content after CleanWorkingTree runs — the core "discard uncommitted work"
+// behaviour a crash-recovery resume relies on.
+func TestCleanWorkingTree_DiscardsUncommittedTrackedChanges(t *testing.T) {
+	dir := initTestRepo(t)
+	readmePath := filepath.Join(dir, "README.md")
+	if err := os.WriteFile(readmePath, []byte("uncommitted change"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	if _, err := CleanWorkingTree(context.Background(), dir); err != nil {
+		t.Fatalf("CleanWorkingTree: %v", err)
+	}
+
+	got, err := os.ReadFile(readmePath)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if string(got) != "hello" {
+		t.Errorf("expected README.md reverted to committed content %q, got %q", "hello", string(got))
+	}
+}
+
+// TestCleanWorkingTree_RemovesUntrackedFilesAndDirectories asserts that both a
+// bare untracked file and an untracked directory (with content inside it) are
+// removed by CleanWorkingTree — a crashed agent step can leave either behind.
+func TestCleanWorkingTree_RemovesUntrackedFilesAndDirectories(t *testing.T) {
+	dir := initTestRepo(t)
+
+	untrackedFile := filepath.Join(dir, "untracked.txt")
+	if err := os.WriteFile(untrackedFile, []byte("untracked"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	untrackedDir := filepath.Join(dir, "untracked_dir")
+	if err := os.MkdirAll(untrackedDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(untrackedDir, "inside.txt"), []byte("inside"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	if _, err := CleanWorkingTree(context.Background(), dir); err != nil {
+		t.Fatalf("CleanWorkingTree: %v", err)
+	}
+
+	if _, err := os.Stat(untrackedFile); !os.IsNotExist(err) {
+		t.Errorf("expected untracked file removed, stat err = %v", err)
+	}
+	if _, err := os.Stat(untrackedDir); !os.IsNotExist(err) {
+		t.Errorf("expected untracked directory removed, stat err = %v", err)
+	}
+}
+
+// TestCleanWorkingTree_ErrorPropagatesFromGit asserts that CleanWorkingTree
+// returns a non-nil, wrapped error when the underlying git command fails (here,
+// because dir is not a git repository at all).
+func TestCleanWorkingTree_ErrorPropagatesFromGit(t *testing.T) {
+	dir := t.TempDir() // not a git repo
+	if _, err := CleanWorkingTree(context.Background(), dir); err == nil {
+		t.Error("expected CleanWorkingTree to return an error against a non-repo directory")
+	}
+}
+
+// TestCleanWorkingTree_PreservesGitignoredThemisFiles asserts that .themis/*
+// files (gitignored, holding the run's own state.json and
+// review-results.json) survive a CleanWorkingTree call even though they are
+// untracked — CleanWorkingTree must not use the "also remove ignored files"
+// (-x) form of git clean, or a resume would destroy the very state it is
+// trying to recover.
+func TestCleanWorkingTree_PreservesGitignoredThemisFiles(t *testing.T) {
+	dir := initTestRepo(t)
+
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(".themis/*\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile .gitignore: %v", err)
+	}
+	addCommit(t, dir, ".gitignore", ".themis/*\n", "add gitignore")
+
+	themisDir := filepath.Join(dir, ".themis")
+	if err := os.MkdirAll(themisDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll .themis: %v", err)
+	}
+	statePath := filepath.Join(themisDir, "state.json")
+	reviewPath := filepath.Join(themisDir, "review-results.json")
+	if err := os.WriteFile(statePath, []byte(`{"currentStep":0}`), 0o644); err != nil {
+		t.Fatalf("WriteFile state.json: %v", err)
+	}
+	if err := os.WriteFile(reviewPath, []byte(`{"findings":[]}`), 0o644); err != nil {
+		t.Fatalf("WriteFile review-results.json: %v", err)
+	}
+
+	// Dirty a tracked file too, so the clean has real work to do.
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("dirty"), 0o644); err != nil {
+		t.Fatalf("WriteFile README.md: %v", err)
+	}
+
+	if _, err := CleanWorkingTree(context.Background(), dir); err != nil {
+		t.Fatalf("CleanWorkingTree: %v", err)
+	}
+
+	if _, err := os.Stat(statePath); err != nil {
+		t.Errorf("expected .themis/state.json to survive CleanWorkingTree, stat err = %v", err)
+	}
+	if _, err := os.Stat(reviewPath); err != nil {
+		t.Errorf("expected .themis/review-results.json to survive CleanWorkingTree, stat err = %v", err)
+	}
+}
+
+// TestCleanWorkingTree_PreservesCommittedHistory asserts that commits made by
+// prior, already-completed pipeline steps are untouched by CleanWorkingTree —
+// only the uncommitted/untracked layer on top is discarded.
+func TestCleanWorkingTree_PreservesCommittedHistory(t *testing.T) {
+	dir := initTestRepo(t)
+	addCommit(t, dir, "feature.go", "package feature\n", "add feature")
+
+	before, err := CommitsBefore(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("CommitsBefore: %v", err)
+	}
+	if len(before) != 2 {
+		t.Fatalf("expected 2 commits before clean, got %d", len(before))
+	}
+
+	// Dirty the tracked file and add an untracked file.
+	if err := os.WriteFile(filepath.Join(dir, "feature.go"), []byte("package feature\n\nvar x = 1\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile feature.go: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "scratch.txt"), []byte("scratch"), 0o644); err != nil {
+		t.Fatalf("WriteFile scratch.txt: %v", err)
+	}
+
+	if _, err := CleanWorkingTree(context.Background(), dir); err != nil {
+		t.Fatalf("CleanWorkingTree: %v", err)
+	}
+
+	after, err := CommitsBefore(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("CommitsBefore after clean: %v", err)
+	}
+	if len(after) != len(before) {
+		t.Fatalf("expected commit count unchanged, before=%d after=%d", len(before), len(after))
+	}
+	for i := range before {
+		if before[i] != after[i] {
+			t.Errorf("commit SHA changed at index %d: before=%s after=%s", i, before[i], after[i])
+		}
+	}
+
+	got, err := os.ReadFile(filepath.Join(dir, "feature.go"))
+	if err != nil {
+		t.Fatalf("ReadFile feature.go: %v", err)
+	}
+	if string(got) != "package feature\n" {
+		t.Errorf("expected feature.go content reverted to committed version, got %q", string(got))
+	}
+}
