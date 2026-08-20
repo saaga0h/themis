@@ -39,6 +39,13 @@ type GitOps interface {
 	ChangedFiles(ctx context.Context, dir string) string
 	DiffLineCount(ctx context.Context, dir string) int
 	CommitSHAs(ctx context.Context, dir string) ([]string, error)
+	// WorkingTreeClean reports whether the working tree has no uncommitted or
+	// untracked changes.
+	WorkingTreeClean(ctx context.Context, dir string) (bool, error)
+	// CleanWorkingTree discards uncommitted changes and untracked files,
+	// without touching gitignored paths. It returns the number of dirty paths
+	// found before cleaning, for logging.
+	CleanWorkingTree(ctx context.Context, dir string) (int, error)
 }
 
 // IssueWriter handles issue tracker write operations.
@@ -139,25 +146,6 @@ var templateFile = map[pipeline.Step]string{
 	pipeline.StepDocs:      "update-docs.md",
 }
 
-// validateResumedState checks the loaded state against cfg and returns the
-// state to resume from, or nil to signal a fresh start.
-func validateResumedState(ctx context.Context, state *pipeline.PipelineState, cfg Config, log io.Writer) *pipeline.PipelineState {
-	if state == nil {
-		return nil
-	}
-	if state.IssueNumber != cfg.IssueNumber {
-		fmt.Fprintf(log, "warning: state file is for issue #%d, not #%d — starting fresh\n", state.IssueNumber, cfg.IssueNumber)
-		return nil
-	}
-	if cfg.CodeVersion != "" && state.CodeVersion != "" && state.CodeVersion != cfg.CodeVersion {
-		fmt.Fprintf(log, "warning: state was created by version %s, current version is %s\n", state.CodeVersion, cfg.CodeVersion)
-	}
-	// The issue branch is restored after the issue is fetched (see Run) — the
-	// branch name needs the title, which isn't available here.
-	fmt.Fprintf(log, "resuming from step %s\n", state.CurrentStep.String())
-	return state
-}
-
 // Run executes the full pipeline for the given configuration.
 func Run(ctx context.Context, cfg Config) (*Result, error) {
 	log := cfg.Logger
@@ -189,18 +177,13 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 	}
 
 	state := validateResumedState(ctx, loaded, cfg, log)
+	resumed := state != nil
 	if state == nil {
 		fmt.Fprintf(log, "fresh start\n")
 		if rmErr := os.Remove(filepath.Join(cfg.WorkDir, ".themis", "review-results.json")); rmErr != nil && !os.IsNotExist(rmErr) {
 			fmt.Fprintf(log, "warning: removing review-results.json: %v\n", rmErr)
 		}
-		state = &pipeline.PipelineState{
-			IssueNumber:     cfg.IssueNumber,
-			CurrentStep:     pipeline.StepFetch,
-			TestFixAttempts: map[string]int{},
-			StartedAt:       time.Now(),
-			CodeVersion:     cfg.CodeVersion,
-		}
+		state = newFreshState(cfg)
 	}
 
 	issue, err := cfg.Fetcher.Fetch(ctx, cfg.IssueNumber)
@@ -225,16 +208,11 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 
 	// On resume past Branch, the Branch step (which creates/checks out the issue
 	// branch) is skipped, and the caller may have left us on the base branch (the
-	// run loop checks out main before each issue). Restore the issue branch so no
-	// step — Ship's push or an agent's commits — ever runs on the base branch.
-	if state.CurrentStep > pipeline.StepBranch && cfg.Git != nil {
-		branch := issueBranchName(cfg.IssueNumber, issue.Title)
-		if cur, curErr := cfg.Git.CurrentBranch(ctx, cfg.WorkDir); curErr != nil || cur != branch {
-			if coErr := cfg.Git.Checkout(ctx, cfg.WorkDir, branch); coErr != nil {
-				return nil, fmt.Errorf("resuming issue #%d at step %s: cannot check out its branch %q (created by the Branch step): %w", cfg.IssueNumber, state.CurrentStep, branch, coErr)
-			}
-			fmt.Fprintf(log, "resume: checked out issue branch %s\n", branch)
-		}
+	// run loop checks out main before each issue). Restore the issue branch, reset
+	// to a fresh start if it's gone, and clean up a dirty tree left by a crashed step.
+	state, err = resumeWorkspace(ctx, cfg, issue, state, resumed, log)
+	if err != nil {
+		return nil, err
 	}
 
 	// lastGreenGateFailure carries the Implement green gate's verify output into
