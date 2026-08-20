@@ -304,3 +304,133 @@ func TestRunner_NilLoggerDefaultsToStderrWithoutPanic(t *testing.T) {
 		t.Fatalf("Run must succeed when Logger is nil (defaults to os.Stderr): %v", err)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Crash recovery: resume logging surfaces attempt count and cleanup (#56)
+// ---------------------------------------------------------------------------
+
+// TestRun_Resume_LogsCurrentStepAndImplementAttemptCount asserts that resuming
+// at StepImplement with a nonzero ImplementAttempts logs both the step name
+// and the attempt count together on the resume line, so an operator reading
+// the log knows not just where the run resumed but how many Implement
+// attempts had already been spent.
+func TestRun_Resume_LogsCurrentStepAndImplementAttemptCount(t *testing.T) {
+	var buf bytes.Buffer
+	workDir := t.TempDir()
+
+	state := &pipeline.PipelineState{
+		IssueNumber:       42,
+		CurrentStep:       pipeline.StepImplement,
+		ImplementAttempts: 2,
+		TestFixAttempts:   map[string]int{},
+	}
+	if err := pipeline.SaveState(workDir, state); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	w := &stubIssueWriter{prURL: "https://example.com/pr/attempt-count"}
+	cfg := Config{
+		WorkDir:      workDir,
+		IssueNumber:  42,
+		Fetcher:      &stubFetcher{issue: sampleIssue()},
+		Invoker:      &stubInvoker{},
+		IssueWriter:  w,
+		TemplateDir:  templateDir(t),
+		CheckpointFn: noopCheckpoint,
+		Logger:       &buf,
+	}
+
+	if _, err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+
+	output := buf.String()
+	found := false
+	for _, line := range strings.Split(output, "\n") {
+		if strings.Contains(strings.ToLower(line), "resum") &&
+			strings.Contains(line, pipeline.StepImplement.String()) &&
+			strings.Contains(line, "2") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected a resume log line mentioning step %q and attempt count 2; got:\n%s", pipeline.StepImplement.String(), output)
+	}
+}
+
+// TestRun_Resume_LogsDirtyFileCountAndCleanupActionWhenDirty asserts that a
+// dirty resume logs both the number of files CleanWorkingTree removed and a
+// cleanup-action keyword, and that a companion clean-tree resume logs neither
+// — the dirty-count/cleanup line only appears when cleanup actually ran.
+func TestRun_Resume_LogsDirtyFileCountAndCleanupActionWhenDirty(t *testing.T) {
+	t.Run("dirty tree logs file count and cleanup action", func(t *testing.T) {
+		var buf bytes.Buffer
+		workDir := t.TempDir()
+		saveStateAt(t, workDir, pipeline.StepImplement)
+
+		git := &fakeGitOps{
+			commitsAhead: 1,
+			workingTreeCleanFn: func(context.Context, string) (bool, error) {
+				return false, nil
+			},
+			cleanWorkingTreeFn: func(context.Context, string) (int, error) {
+				return 3, nil
+			},
+		}
+
+		cfg := Config{
+			WorkDir:      workDir,
+			IssueNumber:  42,
+			Fetcher:      &stubFetcher{issue: sampleIssue()},
+			Invoker:      &stubInvoker{},
+			IssueWriter:  &stubIssueWriter{prURL: "https://example.com/pr/dirty-log"},
+			TemplateDir:  templateDir(t),
+			CheckpointFn: noopCheckpoint,
+			Git:          git,
+			Logger:       &buf,
+		}
+
+		if _, err := Run(context.Background(), cfg); err != nil {
+			t.Fatalf("Run error: %v", err)
+		}
+
+		output := buf.String()
+		lc := strings.ToLower(output)
+		if !strings.Contains(output, "3") {
+			t.Errorf("expected dirty-file count '3' in log; got:\n%s", output)
+		}
+		if !strings.Contains(lc, "dirty working tree") {
+			t.Errorf("expected the resume cleanup log line ('dirty working tree') in log; got:\n%s", output)
+		}
+	})
+
+	t.Run("clean tree logs no dirty-count or cleanup line", func(t *testing.T) {
+		var buf bytes.Buffer
+		workDir := t.TempDir()
+		saveStateAt(t, workDir, pipeline.StepImplement)
+
+		git := &fakeGitOps{commitsAhead: 1} // defaults to clean
+
+		cfg := Config{
+			WorkDir:      workDir,
+			IssueNumber:  42,
+			Fetcher:      &stubFetcher{issue: sampleIssue()},
+			Invoker:      &stubInvoker{},
+			IssueWriter:  &stubIssueWriter{prURL: "https://example.com/pr/clean-log"},
+			TemplateDir:  templateDir(t),
+			CheckpointFn: noopCheckpoint,
+			Git:          git,
+			Logger:       &buf,
+		}
+
+		if _, err := Run(context.Background(), cfg); err != nil {
+			t.Fatalf("Run error: %v", err)
+		}
+
+		output := buf.String()
+		if strings.Contains(strings.ToLower(output), "dirty working tree") {
+			t.Errorf("expected no resume cleanup log line when tree is already clean; got:\n%s", output)
+		}
+	})
+}

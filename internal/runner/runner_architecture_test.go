@@ -19,7 +19,13 @@ import (
 func TestGitOps_InterfaceHasRequiredMethods(t *testing.T) {
 	// fakeGitOps (defined in shared stubs) implements every GitOps method.
 	// If GitOps does not exist in the runner package this file fails to compile.
-	g := &fakeGitOps{commitsAhead: 2}
+	//
+	// g is declared with the GitOps interface type (not the concrete
+	// *fakeGitOps) so every call below is a compile-time assertion that
+	// GitOps itself declares the method — in particular, the WorkingTreeClean
+	// and CleanWorkingTree calls added for issue #56 fail to compile until
+	// those two methods are added to the GitOps interface in runner.go.
+	var g GitOps = &fakeGitOps{commitsAhead: 2}
 
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -53,6 +59,24 @@ func TestGitOps_InterfaceHasRequiredMethods(t *testing.T) {
 	}
 	if n != 2 {
 		t.Errorf("CommitsAheadOfBase = %d, want 2", n)
+	}
+	// WorkingTreeClean (issue #56): fakeGitOps's default (no override)
+	// reports a clean tree.
+	clean, err := g.WorkingTreeClean(ctx, dir)
+	if err != nil {
+		t.Errorf("WorkingTreeClean: %v", err)
+	}
+	if !clean {
+		t.Error("WorkingTreeClean default must report a clean tree (true)")
+	}
+	// CleanWorkingTree (issue #56): fakeGitOps's default (no override)
+	// removes nothing.
+	removed, err := g.CleanWorkingTree(ctx, dir)
+	if err != nil {
+		t.Errorf("CleanWorkingTree: %v", err)
+	}
+	if removed != 0 {
+		t.Errorf("CleanWorkingTree default filesRemoved = %d, want 0", removed)
 	}
 }
 

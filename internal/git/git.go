@@ -49,6 +49,26 @@ func WorkingTreeClean(ctx context.Context, dir string) (bool, error) {
 	return strings.TrimSpace(out) == "", nil
 }
 
+// CleanWorkingTree discards uncommitted changes to tracked files and removes
+// untracked files/directories, without touching gitignored paths (so
+// .themis/state.json and .themis/review-results.json survive). It returns the
+// number of dirty paths that were reported before cleaning, for logging.
+func CleanWorkingTree(ctx context.Context, dir string) (int, error) {
+	status, err := runGit(ctx, dir, "status", "--porcelain")
+	if err != nil {
+		return 0, fmt.Errorf("git status: %w", err)
+	}
+	dirtyCount := len(parseLines(status))
+
+	if _, err := runGit(ctx, dir, "checkout", "--", "."); err != nil {
+		return 0, fmt.Errorf("git checkout -- .: %w", err)
+	}
+	if _, err := runGit(ctx, dir, "clean", "-fd"); err != nil {
+		return 0, fmt.Errorf("git clean -fd: %w", err)
+	}
+	return dirtyCount, nil
+}
+
 // CurrentBranch returns the name of the currently checked-out branch.
 func CurrentBranch(ctx context.Context, dir string) (string, error) {
 	out, err := runGit(ctx, dir, "rev-parse", "--abbrev-ref", "HEAD")
