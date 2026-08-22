@@ -31,6 +31,15 @@ RUN git config --system --add safe.directory /home/agent/workspace && \
     git config --system user.name "Themis Factory" && \
     git config --system user.email "[email protected]"
 
+# Claude Code CLI — installed via npm so the fetch is integrity-verified (npm
+# registry checksums), never a pipe-to-shell (the CLAUDE.md supply-chain rule).
+# Runs in the root layer because `npm install -g` writes to /usr/local (already
+# on PATH). The version is optional: it defaults to the latest release; pin a
+# specific version for a reproducible build with
+# --build-arg CLAUDE_CODE_VERSION=2.1.89.
+ARG CLAUDE_CODE_VERSION=latest
+RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} && claude --version
+
 # Rename the base image's "node" user to "agent" and align UID/GID.
 # At runtime, --userns=keep-id maps the host user into the container.
 ARG AGENT_UID=1000
@@ -55,10 +64,6 @@ ENV GOFLAGS="-mod=readonly"
 
 # Verify Go is accessible as the agent user
 RUN go version
-
-# Install Claude Code CLI — baked into image, not at runtime
-RUN curl -fsSL https://claude.ai/install.sh | bash
-ENV PATH="/home/agent/.local/bin:$PATH"
 
 WORKDIR /home/agent
 
