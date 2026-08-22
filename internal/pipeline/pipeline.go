@@ -1,3 +1,8 @@
+// Package pipeline is the pure, deterministic state machine at the core of the
+// factory. It defines the pipeline steps, the PipelineState that tracks a run's
+// mutable state, and Advance, which encodes every step-to-step transition rule.
+// State persistence is isolated from the transition logic; the package performs
+// no other I/O.
 package pipeline
 
 import (
@@ -7,6 +12,7 @@ import (
 	"time"
 )
 
+// Step identifies a stage in the pipeline's fixed, linear sequence.
 type Step int
 
 const (
@@ -30,6 +36,7 @@ func (s Step) String() string {
 	return fmt.Sprintf("Step(%d)", int(s))
 }
 
+// StepResult is a single step's outcome, passed to Advance to decide the next step.
 type StepResult struct {
 	Success   bool
 	TestACKey string
@@ -94,6 +101,7 @@ func Classify(err error) *BlockError {
 	}
 }
 
+// PipelineState is the persisted, resumable state of a single pipeline run.
 type PipelineState struct {
 	IssueNumber       int
 	CurrentStep       Step

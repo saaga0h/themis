@@ -1,3 +1,7 @@
+// Package git provides context-aware wrappers around git subprocess calls. Every
+// exported function takes a context.Context and routes through one internal
+// helper that requires an absolute working directory; this package is the only
+// place in the factory that shells out to git.
 package git
 
 import (

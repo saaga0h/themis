@@ -2,7 +2,6 @@
 
 <!-- @tier: 1 -->
 <!-- @source: internal/pipeline/, internal/runner/, internal/profile/ -->
-<!-- @see-also: docs/subsystems/ -->
 
 ## Overview
 
@@ -214,5 +213,4 @@ Defaults are applied by `applyDefaults` after validation, so an empty string in 
 ## Related Documents
 
 - `ARCHITECTURE.md` — component inventory and system structure
-- `docs/subsystems/themis/README.md` — CLI wiring and subcommands
-- `docs/subsystems/checkpoint/README.md` — per-step commit and working-tree verification
+- `go doc ./internal/pipeline` and `go doc ./internal/checkpoint` — the state machine and per-step verification, from the code

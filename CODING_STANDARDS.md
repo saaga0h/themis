@@ -32,6 +32,21 @@ in code, comments, or commit messages are review failures.
 - Prefer named return values only when they add clarity — not by default
 - No `init()` functions unless absolutely necessary and justified in a comment
 
+### Documentation
+
+- **Every package has a package doc comment** — a `// Package <name> …` comment
+  (idiomatically on the package's primary file) stating the package's **purpose
+  and role**: what it is for and why it exists. Size it to orient a reader — a
+  sentence to a short paragraph — not to restate every symbol (their own doc
+  comments do that) and not to become a narrative. `go doc ./<pkg>` is the fact
+  layer; there is no separate maintained `docs/subsystems/` tier.
+- **Every exported identifier has a doc comment** starting with its name (standard
+  Go). Document interface methods on the interface; implementations inherit the
+  contract and need no repeated comment.
+- Facts live in code (doc comments → `go doc`); human-facing narrative lives in
+  the root docs (`README`, `CONCEPTS`, `ARCHITECTURE`). Deep/subsystem views are
+  generated on demand via `/document`, never maintained by hand.
+
 ### Project layout
 ```
 cmd/themis/           # Binary entry point (version, issue, run subcommands)
@@ -349,6 +364,7 @@ review agent greps for" — it is what must hold before merge, wherever it is ca
 - Any swallowed error (checked but not returned or logged)
 - Any unthreaded context (I/O function without `context.Context` parameter)
 - Any credentials in source code
+- Any package missing a package doc comment (purpose statement), or any exported identifier missing a doc comment
 - Any cross-internal dependency not listed in the dependency direction section above
 - Any per-issue test file (`<package>_issue<N>_test.go`)
 - Any duplicated test stub that clones an existing stub with a different prefix
@@ -379,6 +395,7 @@ not the factory's single-pass Review Step. The reviewer must verify all of the
 following before approving:
 
 - [ ] All terms match `UBIQUITOUS_LANGUAGE.md` — no aliased terms in code, comments, or commits
+- [ ] Every package has a purpose-stating package doc comment; every exported identifier is documented
 - [ ] Commit pipeline follows the required order (test → feat → docs; refactor/fix are interactive-only)
 - [ ] Every acceptance criterion in the issue has a corresponding correctness-asserting test
 - [ ] Every new error path has a test that triggers it

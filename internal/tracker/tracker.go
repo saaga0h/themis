@@ -1,3 +1,7 @@
+// Package tracker fetches issue data from GitHub or Gitea behind a
+// provider-agnostic Fetcher interface, with the two concrete implementations and
+// their list/parse helpers. Issue-body directive parsing lives in
+// internal/issuespec, not here.
 package tracker
 
 import (

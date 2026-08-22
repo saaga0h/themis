@@ -1,7 +1,6 @@
 # Architecture
 
 <!-- @tier: 1 -->
-<!-- @see-also: docs/subsystems/ -->
 
 ## Overview
 
@@ -221,9 +220,8 @@ the repository.
 ## Related Documents
 
 - `CONCEPTS.md` — why the design works: the deterministic-shell/creative-core split and its consequences
-- `docs/subsystems/` — per-subsystem architecture detail (agent, checkpoint, git, pipeline, profile, prompt, runner, themis, tracker)
 - `docs/development.md` — build, test, env vars, troubleshooting
 - `docs/datamodel.md` — persisted artifacts under `.themis/` (state, review-results, profile)
-- `docs/content-plan.md` — full documentation index and tag map
+- Per-package detail lives in the code — `go doc ./internal/<pkg>` gives each package's purpose and API
 - `UBIQUITOUS_LANGUAGE.md` — canonical terminology used across all agents, commands, and code
 - `CODING_STANDARDS.md` — language standards and reviewer checklist

@@ -1,3 +1,8 @@
+// Package runner is the pipeline orchestrator. Run drives a single issue from
+// fetch through PR creation: it loads or resumes state, dispatches each step,
+// invokes the agent for the creative steps, enforces checkpoints and the green
+// gate, and guards the Ship step. Git, tracker, and agent operations are injected
+// via Config so the orchestration is testable without external systems.
 package runner
 
 import (

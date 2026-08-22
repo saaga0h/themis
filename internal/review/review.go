@@ -1,3 +1,8 @@
+// Package review owns the structured output of the Review step: the finding
+// types the review agent writes to .themis/review-results.json, the
+// blocking-severity threshold, and pure functions that classify findings. Its
+// filesystem reader is injected into the runner rather than called directly, to
+// keep that coupling explicit and testable.
 package review
 
 import (
@@ -20,6 +25,8 @@ type ReviewResults struct {
 	Findings []ReviewFinding `json:"findings"`
 }
 
+// CountFindingsBySeverity partitions findings into blocking (critical, high, or
+// the medium BlockingThreshold) and non-blocking counts.
 func CountFindingsBySeverity(findings []ReviewFinding) (blocking, nonBlocking int) {
 	for _, f := range findings {
 		switch f.Severity {
@@ -32,6 +39,7 @@ func CountFindingsBySeverity(findings []ReviewFinding) (blocking, nonBlocking in
 	return
 }
 
+// DetermineBlockingStatus reports whether findings contain any blocking finding.
 func DetermineBlockingStatus(findings []ReviewFinding) bool {
 	blocking, _ := CountFindingsBySeverity(findings)
 	return blocking > 0

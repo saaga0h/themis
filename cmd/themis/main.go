@@ -1,3 +1,7 @@
+// Command themis is the CLI entry point for the Themis autonomous software
+// factory. It dispatches the version, issue, and run subcommands, wires the
+// concrete tracker, agent, git, and checkpoint implementations into a
+// runner.Config, and exits non-zero on any error.
 package main
 
 import (

@@ -2,7 +2,6 @@
 
 <!-- @tier: 1 -->
 <!-- @source: cmd/themis/, Makefile, internal/runner/, internal/checkpoint/, internal/agent/ -->
-<!-- @see-also: docs/subsystems/ -->
 
 ## Overview
 
@@ -73,7 +72,7 @@ The predicate follows the check-block contract — **exit 0 means the commit pas
 | `--max-turns N` | `issue`, `run` | `250` (`runner.DefaultMaxTurns`) | Per-agent invocation turn limit passed to Claude Code |
 | `--dry-run` | `run` | off | Print which issues would be processed without executing them |
 
-For full subcommand behavior (loop ordering, dependency skipping, blocking label logic, PR body construction), see `docs/subsystems/themis/README.md`.
+For full subcommand behavior (loop ordering, dependency skipping, blocking label logic, PR body construction), read `go doc ./cmd/themis` and `go doc ./internal/runner`.
 
 ## Configuration / Environment Variables
 
@@ -120,5 +119,5 @@ Store them in a `.env` file at the repo root. The Makefile passes this file to `
 ## Related Documents
 
 - `README.md` — container setup, Containerfile example, full factory walkthrough
-- `docs/subsystems/themis/README.md` — subcommand architecture, loop behavior, provider wiring
+- `go doc ./cmd/themis` and `go doc ./internal/runner` — subcommand and pipeline detail, straight from the code
 - `ARCHITECTURE.md` — system-level design and OTEL tracing contract

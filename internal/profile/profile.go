@@ -1,3 +1,7 @@
+// Package profile loads per-project pipeline configuration from
+// .themis/profile.yaml. Load returns populated defaults when the file is absent
+// and strictly parses and validates it when present; Save writes it back. It is
+// the single source of truth for the per-step model and tuning settings.
 package profile
 
 import (

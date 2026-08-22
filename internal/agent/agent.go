@@ -1,3 +1,7 @@
+// Package agent is the seam between deterministic pipeline control and LLM
+// creative work. Callers invoke Invoker.Invoke with structured options; the
+// package spawns the agent subprocess, tags it for observability, and returns a
+// structured result. It decides how to run the agent, never what to ask it.
 package agent
 
 import (
