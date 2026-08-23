@@ -18,9 +18,7 @@ This workflow manages context at three layers:
 
 **CLAUDE.md** — always loaded, so kept to the minimum that prevents hard failures: build quirks, environment constraints, things an agent will get wrong immediately without being told. If `docs/development.md` exists, CLAUDE.md holds a pointer to it rather than duplicating its content. Research ([Gloaguen et al., 2025](https://arxiv.org/abs/2602.11988)) shows that bloated context files reduce agent task success rates while increasing cost by 20%+.
 
-**docs/ — tiered project documentation** — loaded on demand, never speculatively. Root docs (README, ARCHITECTURE, CONCEPTS), Tier 1 reference (development, data model, API, messaging), Tier 2 subsystem docs, Tier 3 module-level business rules. Commands resolve which docs are relevant to their scope and load only those.
-
-**Scope-based doc resolver** — commands pass their scope (feature description, plan name, subsystem) to `codebase-scanner`, which greps `docs/content-plan.md` for matching tags and returns only the relevant paths. `/architect add retry to MQTT client` loads the MQTT subsystem doc. `/review --security` loads nothing from docs/. The resolution happens inside the Haiku scan call that already runs — no extra agent cost.
+**Docs & the fact layer** — human-facing narrative lives in the root docs (README, ARCHITECTURE, CONCEPTS) and the Tier-1 developer guides (development, data model, API). Code facts live *in the code*, as package and symbol doc comments read with `go doc` — that is the fact layer, and the build maintains it. The factory loads only the contract docs (CODING_STANDARDS, UBIQUITOUS_LANGUAGE) into agent context and pulls `go doc`/code as reserve; it never speculatively loads narrative. Deeper subsystem/module views are generated on demand via `/document --full` (for onboarding or a brownfield→factory transition), never hand-maintained.
 
 ```markdown
 # CLAUDE.md — Project Name
@@ -372,16 +370,18 @@ entry points, and as escape hatches from inside the pipeline.
   → rebuilds CLAUDE.md from scratch
   → user confirms before writing
 
-/document
+/document                        # default: the maintained human docs
   → doc-scanner (haiku): identifies project type, maps codebase, inventories docs, reports drift
-  → reviews scan: what exists, what drifted, what is missing entirely
   → reports audit grouped by document — stops here if --dry-run
   → updates root docs (README, ARCHITECTURE, CONCEPTS) — CONCEPTS written by orchestrator, not delegated
-  → updates Tier 1 docs in docs/ (development, datamodel, api-reference, messaging, content-plan)
-  → updates Tier 2 subsystem docs in docs/subsystems/<name>/
-  → decides Tier 3 module docs — orchestrator judges incident surface area, not an agent
-  → codebase-scanner (haiku): verifies cross-references, dead links, content-plan consistency
-  → reports final coverage: root docs, Tier 1, Tier 2, Tier 3
+  → updates Tier 1 developer guides in docs/ (development, datamodel, api-reference)
+  → codebase-scanner (haiku): verifies cross-references and dead links
+  → reports coverage of root + Tier 1
+
+/document --full                 # additionally: the on-demand deep views, from code as sole source of truth
+  → generates Tier 2 subsystem views in docs/subsystems/<name>/
+  → generates Tier 3 module views where the orchestrator judges incident surface area
+    (for onboarding / brownfield→factory transition — not maintained afterward)
 ```
 
 ## Review flags
@@ -411,13 +411,13 @@ Scope or change the behavior of the documentation audit:
 
 | Flag | Behavior |
 |------|----------|
-| (no flags) | Update only what has drifted |
-| `--full` | Rebuild all docs from scratch, treating code as sole source of truth |
+| (no flags) | Update the maintained human docs (root narrative + Tier-1 guides) that drifted |
+| `--full` | Also (re)generate the on-demand deep views (subsystems, modules) from code |
 | `--dry-run` | Report drift only — write nothing |
 | `--tier 0` | Root docs only (README, ARCHITECTURE, CONCEPTS) |
-| `--tier 1` | `docs/` tier only (development, datamodel, api-reference, etc.) |
-| `--tier 2` | Subsystem docs only (`docs/subsystems/<name>/`) |
-| `--tier 3` | Module docs only (`docs/subsystems/<name>/modules/`) |
+| `--tier 1` | Tier-1 developer guides only (development, datamodel, api-reference, etc.) |
+| `--tier 2` | Subsystem views only (`docs/subsystems/<name>/`, on-demand) |
+| `--tier 3` | Module views only (`docs/subsystems/<name>/modules/`, on-demand) |
 
 Examples:
 ```

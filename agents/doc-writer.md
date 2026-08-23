@@ -34,7 +34,6 @@ Use whichever the command specifies:
 # Development Guide
 
 <!-- @tier: 1 -->
-<!-- @see-also: docs/subsystems/ -->
 
 ## Overview
 ## Prerequisites
@@ -59,7 +58,6 @@ Use whichever the command specifies:
 # Data Model
 
 <!-- @tier: 1 -->
-<!-- @see-also: docs/subsystems/ -->
 
 ## Overview
 ## Schema
@@ -141,6 +139,7 @@ Use whichever the command specifies:
 - **Do not invent content.** If you can't determine something from the source files, leave a `<!-- TODO: ... -->` marker.
 - **Match existing style.** If updating an existing file, match its tone, heading levels, and formatting.
 - **Do not duplicate between tiers.** Tier 1 has schemas; Tier 2 explains how the subsystem uses them. Link, don't copy.
+- **Do not re-narrate code.** The package/symbol doc comments (via `go doc` or the language's equivalent) are the fact layer — reference them; don't restate the API or per-function behavior in prose.
 - **Lead with non-obvious behavior** in Tier 3. "Implicit behavior" is the most valuable section.
 - **Metadata tags are mandatory** at the top of every doc file.
 - **Cross-reference** to related docs in the Related Documents section.
