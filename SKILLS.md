@@ -21,6 +21,14 @@ How you turn a concept into the `ready-for-agent` issues the factory consumes:
 
 Intake runs at the keyboard, not in the container, but it's core to *working with* the factory: the factory produces code; intake produces the specs it works from.
 
+### Setup (interactive)
+
+One-time, when a project first meets the factory:
+
+- **Skills:** `contract-drafter` (draft the first minimal `CODING_STANDARDS.md` + `UBIQUITOUS_LANGUAGE.md` — the contract docs the factory pushes into every agent's context).
+
+Optional to run, but the contracts it produces are core: the factory reads them on every step. Hand-writing them works too — the skill just turns the blank page into confirm/prune. See [`docs/getting-started/04-contracts.md`](docs/getting-started/04-contracts.md).
+
 ## Add-ons — optional tooling around the factory
 
 Useful, not required to run an autonomous issue:

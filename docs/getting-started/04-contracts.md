@@ -20,6 +20,10 @@ You can't write the perfect contract up front, and you shouldn't try. Start smal
 
 Add a rule or a term **when a review or a bad PR reveals the gap** — that's the signal that a convention is real and load-bearing. The contract ratchets up from experience, staying lean and true.
 
-Themis's own [`CODING_STANDARDS.md`](../../CODING_STANDARDS.md) and [`UBIQUITOUS_LANGUAGE.md`](../../UBIQUITOUS_LANGUAGE.md) are working examples. (A helper skill to draft a first contract from a conversation, or extract candidates from an existing codebase, is planned.)
+Themis's own [`CODING_STANDARDS.md`](../../CODING_STANDARDS.md) and [`UBIQUITOUS_LANGUAGE.md`](../../UBIQUITOUS_LANGUAGE.md) are working examples.
+
+## The `contract-drafter` helper
+
+Starting from a blank page is hard, so there's a skill for it: **`contract-drafter`** turns blank-page authoring into confirm/prune. On an existing codebase it *extracts* candidate rules and terms from your code for you to keep or cut; on a greenfield project it *elicits* them with a few sharp questions. Either way it biases toward cutting and writes a *minimal, real* starting contract — not a template. You grow it from there.
 
 → Next: [The build loop](05-build-loop.md)
