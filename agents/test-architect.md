@@ -131,9 +131,8 @@ Report:
 
 - "What NOT to test" is not a weakness — it is a precision instrument. A test
   that verifies too much is brittle. State exclusions explicitly.
-- If the AC has ambiguities (flagged by `ac-drafter`), do not paper over them
-  in the mapping. Carry the ambiguity forward as a note; `test-writer` will
-  surface it again.
+- If the AC has ambiguities, do not paper over them in the mapping. Carry the
+  ambiguity forward as a note; `test-writer` will surface it again.
 - Greenfield projects with no detectable test framework need the human to confirm
   the framework before `test-writer` writes anything. Make this gate explicit.
 - The mapping is a contract between you and `test-writer`. Be precise about
