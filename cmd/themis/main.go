@@ -208,6 +208,11 @@ func main() {
 	switch os.Args[1] {
 	case "version":
 		fmt.Println(version)
+	case "init":
+		if err := runInit(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
 	case "issue":
 		if err := runIssue(os.Args[2:]); err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
