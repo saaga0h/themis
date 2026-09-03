@@ -27,7 +27,7 @@ Themis processes issues two ways:
 - `themis run` — the loop: every open `ready-for-agent` issue, in order.
 - `themis issue <number>` — a single issue.
 
-Both take `--provider github|gitea` (default `github` — pass `--provider gitea` for a Gitea host).
+Both take `--provider github|gitea` (default `github` — pass `--provider gitea` for a Gitea host). Each host has a small setup contract (the two factory labels, auth, target-branch behaviour) — see [`docs/providers.md`](../providers.md).
 
 > **Status — packaging in progress.** Themis currently dogfoods on *itself* via its `Makefile` (`make factory`, `make factory-issue ISSUE=N`), which builds `themis` from the mounted source inside the container. A **portable wrapper to run the binary against *your own* project** (a prebuilt image + a `--sandbox`-style launcher) is a beta prerequisite being finalized — see [`docs/beta-readiness.md`](../beta-readiness.md). Until then, adapt the `Makefile`'s `FACTORY_RUN` block: mount `bin/themis` + your repo into a container that has your toolchain + Claude Code, and run `themis run --provider …`.
 
