@@ -52,64 +52,72 @@ This is as important as what to test. For each criterion, state:
 - Which implementation details must not appear in the test (internals that would
   make the test brittle)
 
-## Step 2: Produce the test skeleton
+## Step 2: Classify ACs and enumerate targets
 
-Write the skeleton to `.claude/test-skeletons/<name>.md`:
+For each AC, classify it as **singular** or **exhaustive**:
 
-```markdown
-# Test Skeleton: <feature name>
-## Created: <YYYY-MM-DD>
-## Status: skeleton — ready for test-writer
-## AC Source: .claude/ac/<name>.md
+**Singular ACs** describe one behaviour ("the function returns an error when X").
+Identify the entry point and assertion intent.
 
-## Test Framework
-<detected framework and version, or "UNKNOWN — human must confirm before test-writer proceeds">
+**Exhaustive ACs** contain "all", "every", "each", "no X anywhere", or imply
+completeness ("standardize X across Y"). For these, you MUST:
 
-## Test Files
+1. Grep the codebase for every instance matching the AC's scope
+2. List each instance explicitly: file path, line number, function/call site name
+3. State the count: "AC1 requires N tests — one per call site"
 
-### <test file path>
+Do not assume you know what exists. Grep and list. An unlisted target will not
+get a test.
 
-#### <test function/describe name> — AC criterion #<N>
-- **Type**: unit | integration | contract
-- **Entry point**: <function signature or endpoint>
-- **Precondition**: <setup required>
-- **Assertion intent**: <what the assertion checks, in plain English>
-- **Mock boundary**: <what is mocked and why>
-- **Out of scope**: <what this test deliberately does not verify>
-- **Infrastructure note**: <if integration, what must be running for RED confirmation>
+## Step 3: Produce the AC-to-targets mapping
 
-#### <next test>
+Produce a structured mapping (not a file — return it in your response):
+
+```
+AC-to-Targets Mapping
+
+AC1: "<AC text>" — EXHAUSTIVE
+  Targets (N):
+  1. <name> — <file>:<line>
+  2. <name> — <file>:<line>
+  ...
+
+AC2: "<AC text>" — SINGULAR
+  Targets (1):
+  1. <description of what the test verifies>
+
 ...
+
+Total: M ACs → T targets
 ```
 
-One test file section per file `test-writer` will create. One test block per
-AC criterion. Multiple criteria can map to the same file.
+For each target, include:
+- **Type**: unit | integration | contract
+- **Entry point**: function signature or endpoint
+- **Assertion intent**: what the test checks, in plain English
+- **Mock boundary**: what is mocked and why
+- **Out of scope**: what this test deliberately does not verify
 
-## Step 3: Flag infrastructure-dependent tests
+## Step 4: Present for review
 
-If any test is type `integration` and requires live infrastructure for RED
-confirmation, flag it clearly:
+**If running in autonomous mode** (the delegation prompt includes "Running in
+autonomous mode"): skip human review. Return the AC-to-targets mapping directly.
+Do not wait for confirmation. Do not present a review gate. Proceed immediately.
 
-> **Integration test — RED confirmation requires environment setup.**
-> This test cannot be run in isolation. `test-writer` will write it, but
-> RED confirmation may be partial if the environment is not available.
-> The human must acknowledge this before `test-writer` proceeds.
+**If running interactively**: present the mapping to the human before handing
+to `test-writer`:
 
-## Step 4: Present skeleton for human review
-
-Present the skeleton to the human before handing to `test-writer`:
-
-> **Test Skeleton** — review before tests are written.
+> **Test Structure** — review before tests are written.
 >
-> <display the skeleton>
+> <display the mapping>
 >
 > [If any integration tests flagged]: N integration tests require live infrastructure
 > for RED confirmation. Acknowledge before proceeding.
 >
 > Does this structure reflect the right boundaries?
 
-Wait for confirmation or correction. Adjust the skeleton if the human
-requests changes. Do not hand off until approved.
+Wait for confirmation or correction. Adjust the mapping if the human requests
+changes. Do not hand off until approved.
 
 ## Step 5: Report
 
@@ -117,16 +125,17 @@ Report:
 - Number of test files to be created
 - Number of tests by type (unit / integration / contract)
 - Any infrastructure dependencies flagged
-- Path to skeleton document
+- The AC-to-targets mapping with total count
 
 ## Important
 
 - "What NOT to test" is not a weakness — it is a precision instrument. A test
   that verifies too much is brittle. State exclusions explicitly.
-- If the AC has ambiguities (flagged by `ac-drafter`), do not paper over them
-  in the skeleton. Carry the ambiguity forward as a note; `test-writer` will
-  surface it again.
+- If the AC has ambiguities, do not paper over them in the mapping. Carry the
+  ambiguity forward as a note; `test-writer` will surface it again.
 - Greenfield projects with no detectable test framework need the human to confirm
   the framework before `test-writer` writes anything. Make this gate explicit.
-- The skeleton is a contract between you and `test-writer`. Be precise about
-  entry points and assertion intent — vague skeletons produce vague tests.
+- The mapping is a contract between you and `test-writer`. Be precise about
+  entry points and assertion intent — vague mappings produce vague tests.
+- For exhaustive ACs, the grep results are authoritative. Do not edit the list
+  based on what you think should exist — list what the codebase actually contains.

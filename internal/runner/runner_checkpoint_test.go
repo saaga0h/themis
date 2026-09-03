@@ -1,4 +1,11 @@
-package runner_test
+package runner
+
+// Checkpoint integration: the runner wiring around CheckpointFn — a failing
+// checkpoint stops the pipeline, and the real step checkpoint rejects a step
+// that produced no commit.
+//
+// Shared stubs and helpers (stubFetcher, stubInvoker, stubIssueWriter,
+// sampleIssue, templateDir) are defined in runner_test.go.
 
 import (
 	"context"
@@ -9,14 +16,10 @@ import (
 	"strings"
 	"testing"
 
-	"git.home.federation.fi/lavernea/themis/internal/agent"
-	"git.home.federation.fi/lavernea/themis/internal/checkpoint"
-	"git.home.federation.fi/lavernea/themis/internal/pipeline"
-	"git.home.federation.fi/lavernea/themis/internal/runner"
+	"github.com/saaga0h/themis/internal/agent"
+	"github.com/saaga0h/themis/internal/checkpoint"
+	"github.com/saaga0h/themis/internal/pipeline"
 )
-
-// stubFetcher, stubInvoker, stubIssueWriter, sampleIssue, templateDir are defined
-// in runner_test.go (same package runner_test).
 
 func initGitRepoForRunner(t *testing.T) string {
 	t.Helper()
@@ -29,7 +32,7 @@ func initGitRepoForRunner(t *testing.T) string {
 			t.Fatalf("command %v: %v\n%s", args, err, out)
 		}
 	}
-	run("git", "init")
+	run("git", "init", "--initial-branch=main")
 	run("git", "config", "user.email", "test@test.com")
 	run("git", "config", "user.name", "Test")
 	f := filepath.Join(dir, "README.md")
@@ -41,14 +44,13 @@ func initGitRepoForRunner(t *testing.T) string {
 	return dir
 }
 
-// AC5: Runner stops with an error when checkpoint fails.
+// Runner stops with an error when checkpoint fails.
 func TestRunner_FailingCheckpointStopsPipeline(t *testing.T) {
 	workDir := t.TempDir()
 
 	priorState := &pipeline.PipelineState{
 		IssueNumber:     42,
 		CurrentStep:     pipeline.StepTestRed,
-		MaxReviewCycles: 2,
 		TestFixAttempts: map[string]int{},
 	}
 	if err := pipeline.SaveState(workDir, priorState); err != nil {
@@ -59,7 +61,7 @@ func TestRunner_FailingCheckpointStopsPipeline(t *testing.T) {
 		return fmt.Errorf("simulated checkpoint failure for step %v", step)
 	}
 
-	cfg := runner.Config{
+	cfg := Config{
 		WorkDir:      workDir,
 		IssueNumber:  42,
 		Fetcher:      &stubFetcher{issue: sampleIssue()},
@@ -69,7 +71,7 @@ func TestRunner_FailingCheckpointStopsPipeline(t *testing.T) {
 		CheckpointFn: failCheckpoint,
 	}
 
-	_, err := runner.Run(context.Background(), cfg)
+	_, err := Run(context.Background(), cfg)
 	if err == nil {
 		t.Fatal("Run should return an error when checkpoint fails")
 	}
@@ -78,7 +80,7 @@ func TestRunner_FailingCheckpointStopsPipeline(t *testing.T) {
 	}
 }
 
-// AC5+AC1: Using the real step checkpoint — missing commit on TestRed must stop the pipeline.
+// Using the real step checkpoint — missing commit on TestRed must stop the pipeline.
 // checkpoint.NewStepCheckpoint does not exist yet — this test will fail to compile until implemented.
 func TestRunner_StepCheckpoint_NoCommit_StopsPipeline(t *testing.T) {
 	dir := initGitRepoForRunner(t)
@@ -93,14 +95,13 @@ func TestRunner_StepCheckpoint_NoCommit_StopsPipeline(t *testing.T) {
 	priorState := &pipeline.PipelineState{
 		IssueNumber:     42,
 		CurrentStep:     pipeline.StepTestRed,
-		MaxReviewCycles: 2,
 		TestFixAttempts: map[string]int{},
 	}
 	if err := pipeline.SaveState(dir, priorState); err != nil {
 		t.Fatalf("SaveState: %v", err)
 	}
 
-	cfg := runner.Config{
+	cfg := Config{
 		WorkDir:      dir,
 		IssueNumber:  42,
 		Fetcher:      &stubFetcher{issue: sampleIssue()},
@@ -110,11 +111,22 @@ func TestRunner_StepCheckpoint_NoCommit_StopsPipeline(t *testing.T) {
 		CheckpointFn: checkpointFn,
 	}
 
-	_, err = runner.Run(ctx, cfg)
+	_, err = Run(ctx, cfg)
 	if err == nil {
 		t.Fatal("Run should fail: TestRed step made no commit, checkpoint must reject it")
 	}
 	if !strings.Contains(err.Error(), "checkpoint failed") {
 		t.Errorf("error should mention checkpoint failure, got: %v", err)
 	}
+}
+
+func TestInitGitRepoForRunner_DefaultBranchIsMain(t *testing.T) {
+	assertBranchIsMain(t, initGitRepoForRunner(t))
+}
+
+func TestInitGitRepoForRunner_PortableUnderDefaultBranchMaster(t *testing.T) {
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "init.defaultBranch")
+	t.Setenv("GIT_CONFIG_VALUE_0", "master")
+	assertBranchIsMain(t, initGitRepoForRunner(t))
 }

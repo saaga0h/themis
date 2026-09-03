@@ -8,41 +8,62 @@
 
 {{ACCEPTANCE_CRITERIA}}
 
-## Coding standards
+## Project standards
 
-{{CODING_STANDARDS}}
+Consult this project's standards and terminology when judging findings:
 
-## Instructions
+{{STANDARDS_DOCS}}
 
-Review the implementation on the current branch. For each finding, classify it
-strictly as **blocking** or **non-blocking** using the criteria below.
+## What this review is — and is not
 
-### What counts as blocking
+This is the factory's **single-pass safety gate**, not a comprehensive audit. The
+comprehensive audit is the human's job at PR review (and the interactive
+`/review` command); your job is only to decide whether this change is safe and
+faithful enough to put in front of a human.
 
-Only the following are blocking:
+Run it **once**. Do not loop, do not re-analyze, do not fix anything — you
+produce findings, you never edit code. Ask only two questions, both with ground
+truth:
 
-- **Security vulnerability** — exploitable in the project's threat model (not theoretical)
-- **AC not covered** — a specified behaviour has no test and no implementation
-- **Compile failure** — the code does not build
-- **Abstraction boundary violated** — directly contradicts the coding standards rules
-- **Data loss or corruption** — incorrect state transitions, lost writes
+### 1. Security (delegate)
 
-### What is non-blocking (everything else)
+Delegate to the **security-reviewer** subagent via Task, scoped to this branch's
+diff against the base. Include in the delegation:
 
-- Style preferences
-- "Consider" or "could be improved" suggestions
-- Performance concerns without a concrete benchmark
-- Missing features beyond the AC scope
-- Redundant code that does not affect correctness
-- Medium-severity findings that require a separate issue to address properly
+> Running in autonomous mode. Review only the changes on this branch. Report
+> concrete, locus-bound vulnerabilities — a named risk at a named file:line
+> (injection, hardcoded secret, unsafe input handling, exposed endpoint). Do not
+> report style, naming, or speculative concerns.
 
-### Output format
+### 2. AC coverage
 
-List all findings with their classification:
+AC coverage is checked **deterministically by the factory**, not here: the runner
+reads test-architect's `.themis/ac-targets.json` mapping at Review and records any
+behavioral AC with no test as a blocking finding. You do not need to grep for it.
+If you happen to notice an acceptance criterion whose test is obviously absent or
+vacuous and the mapping missed it, note it as a finding — but the mechanical check
+is the source of truth.
 
-```
-BLOCKING: <description> (<file>:<line>)
-NON-BLOCKING: <description> (<file>:<line>)
-```
+## Write the results
 
-If there are no blocking findings, state: `No blocking findings.`
+Write `.themis/review-results.json` with exactly this shape:
+
+    {"findings": [{"severity": "high", "description": "...", "file": "path.go", "line": 42}]}
+
+Severity rules — keep blocking findings to genuine, actionable gates:
+
+- **critical** / **high** — a concrete security vulnerability from the security
+  pass, or an acceptance criterion with no test.
+- **low** — everything else the security pass happened to observe (style,
+  readability, speculative concerns). These are notes for the human reviewer,
+  never blockers.
+
+Do not emit "medium". If there are no findings, write `{"findings": []}`.
+
+## Completion
+
+When `.themis/review-results.json` is written, output:
+
+STEP COMPLETE
+
+Do not re-analyze, do not fix, do not read more files.

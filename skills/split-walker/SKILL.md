@@ -144,10 +144,24 @@ Present 1-4 vertical slices with this format:
 **Slice: <slug>**
 Intent: <what + why in 1-2 sentences>
 Scope: <files/packages — rough estimate>
+Footprint: <the packages this slice may touch — becomes the issue's footprint gate; or `wide: <reason>` for a genuine sweep>
 Test: <what test exercises this slice>
 Depends on: <other slices or "none">
 Notes: <constraints, failure modes, settled decisions>
 ```
+ 
+The **Footprint** is the Scope, promoted from a decorative estimate to a normative
+gate. It is the list of **packages** (not files) the slice's change may touch;
+issue-writer renders it into a `footprint:` block the factory enforces at the green
+gate, so any file the implementation lands outside those packages fails the run.
+This is the mechanical form of "one deliverable per slice" (#87) — a slice whose
+honest footprint spans several unrelated packages is a signal it is too wide and
+should be split further. Derive it directly from Scope: round each file to its
+package (`internal/tracker/x.go` → `internal/tracker`), and drop go.mod/go.sum
+(exempt). For a genuine cross-cutting change that cannot be package-bounded (a
+module-path rename, a repo-wide sweep), write `wide: <reason>` — it waives the gate
+loudly and is the rare exception, not the default. If a slice needs `wide`, ask
+whether it is really one deliverable.
  
 The Notes field is the AC quality gate. Ask: "If someone wrote this issue
 without reading the conversation, what would they get wrong?" That answer
@@ -256,11 +270,32 @@ When backend and frontend must change together (renamed field, new API
 contract), they are one issue. Splitting them means the first PR breaks
 the second's tests.
  
+### Destructive change is a first-class slice
+
+When a topic moves, renames, deletes, or consolidates code, the *removal* is part
+of the work — not an afterthought. Decompose so the removal is asserted, and hand
+issue-writer the negative AC for it ("the old thing no longer exists, verify with
+grep"). If the resolved design does not say what must be removed, that is a missing
+decision, not a detail — step back to the grill (see below). Do not slice only the
+additive half; a tidy "add the new thing" issue that never asserts the old is gone
+is precisely the #68 failure.
+
 ### Before marking needs-thinking, check the codebase
  
 If an open question can be answered by reading the code — existing patterns,
 current interfaces, file structure — read the code instead of deferring.
 The codebase is available; use it.
+
+### Step back with the diagnostic, not blank
+
+If you cannot cut a clean vertical slice, or cannot write a concrete AC for one,
+that is evidence the previous stage (the grilling) did not resolve enough — the
+design has a gap. Step back to the grill, but carry the **specific** missing thing:
+"can't write the removal AC because the design doesn't say which package the old
+type must vanish from," not a blank "needs more thinking." A blind step-back
+re-derives the same gap; a step-back fed the actual diagnostic gets it resolved.
+Stepping back is the flow working — it catches an under-resolved design before it
+becomes a half-done implementation.
  
 ---
  
@@ -278,6 +313,9 @@ The codebase is available; use it.
   single function is not an issue — it's part of one.
 - **Do not skip the test question.** Every slice must answer "what test
   exercises this slice alone?" before becoming an issue.
+- **Do not slice only the additive half of a move.** If a topic moves,
+  renames, or deletes, the removal is part of the work — assert the old
+  thing is gone, or step back if the design didn't decide what's removed.
 ---
  
 ## Example: walking a topic
@@ -296,6 +334,7 @@ Intent: Add ingredient-based recipe search so users can find recipes by
 what they have, using embedding similarity against the Finnish corpus.
 Scope: `internal/search/ingredient.go` (new), `internal/search/ingredient_test.go`,
 `internal/api/handlers/search.go` (new endpoint)
+Footprint: `internal/search`, `internal/api/handlers`
 Test: Integration test — POST `/api/search` with `{"ingredients": ["tomaatti", "sipuli"]}`
 returns recipes ranked by similarity, top result contains both ingredients.
 Depends on: none
@@ -310,6 +349,7 @@ Intent: Add allergen post-filter to recipe search results so users with
 allergies get safe results, using the materialized Neo4j FoodOn labels.
 Scope: `internal/allergen/filter.go` (new), `internal/allergen/filter_test.go`,
 modification to search handler response pipeline
+Footprint: `internal/allergen`, `internal/api/handlers`
 Test: Integration test — search with `{"ingredients": ["kala"], "exclude_allergens": ["CitrusFamily"]}`
 returns no recipes containing citrus ingredients. Unit test — filter function
 with known recipe ingredients returns correct include/exclude decisions.

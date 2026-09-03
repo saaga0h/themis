@@ -1,22 +1,57 @@
+// Package runner is the pipeline orchestrator. Run drives a single issue from
+// fetch through PR creation: it loads or resumes state, dispatches each step,
+// invokes the agent for the creative steps, enforces checkpoints and the green
+// gate, and guards the Ship step. Git, tracker, and agent operations are injected
+// via Config so the orchestration is testable without external systems.
 package runner
 
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strconv"
-	"strings"
 	"time"
 
-	"git.home.federation.fi/lavernea/themis/internal/agent"
-	"git.home.federation.fi/lavernea/themis/internal/git"
-	"git.home.federation.fi/lavernea/themis/internal/pipeline"
-	"git.home.federation.fi/lavernea/themis/internal/profile"
-	"git.home.federation.fi/lavernea/themis/internal/prompt"
-	"git.home.federation.fi/lavernea/themis/internal/tracker"
+	"github.com/saaga0h/themis/internal/agent"
+	"github.com/saaga0h/themis/internal/pipeline"
+	"github.com/saaga0h/themis/internal/prompt"
+	"github.com/saaga0h/themis/internal/review"
+	"github.com/saaga0h/themis/internal/tracker"
 )
+
+// DefaultMaxTurns is the default per-agent turn limit used when no --max-turns
+// value is supplied on the CLI. It is the single source of truth for the default.
+const DefaultMaxTurns = 250
+
+// ProfileData holds the subset of profile fields the runner needs.
+// Concrete values are injected via Config.ProfileLoader; cmd/themis/ translates
+// profile.Profile into this struct so the runner does not import internal/profile.
+type ProfileData struct {
+	ImplementModel string
+	ReviewModel    string
+}
+
+// GitOps groups the git operations that the runner requires. Concrete
+// implementations live in cmd/themis/; tests substitute fakes.
+type GitOps interface {
+	CheckoutNewBranch(ctx context.Context, dir, name string) error
+	Checkout(ctx context.Context, dir, name string) error
+	PushBranch(ctx context.Context, dir, branch string) error
+	CurrentBranch(ctx context.Context, dir string) (string, error)
+	BranchCommitLog(ctx context.Context, dir string) string
+	CommitsAheadOfBase(ctx context.Context, dir, base string) (int, error)
+	ChangedFiles(ctx context.Context, dir string) string
+	DiffLineCount(ctx context.Context, dir string) int
+	CommitSHAs(ctx context.Context, dir string) ([]string, error)
+	// WorkingTreeClean reports whether the working tree has no uncommitted or
+	// untracked changes.
+	WorkingTreeClean(ctx context.Context, dir string) (bool, error)
+	// CleanWorkingTree discards uncommitted changes and untracked files,
+	// without touching gitignored paths. It returns the number of dirty paths
+	// found before cleaning, for logging.
+	CleanWorkingTree(ctx context.Context, dir string) (int, error)
+}
 
 // IssueWriter handles issue tracker write operations.
 type IssueWriter interface {
@@ -32,18 +67,69 @@ type PROptions struct {
 	Body  string
 	Base  string
 	Head  string
+	// Draft opens the PR as a draft / work-in-progress (not mergeable as-is).
+	// The factory sets this when the review gate found blocking findings, so a
+	// human must resolve them before merge.
+	Draft bool
 }
 
 // Config holds all dependencies for a pipeline run.
 type Config struct {
-	WorkDir      string
-	IssueNumber  int
-	Fetcher      tracker.Fetcher
-	Invoker      agent.Invoker
-	IssueWriter  IssueWriter
-	TemplateDir  string
-	CheckpointFn func(ctx context.Context, step pipeline.Step, workDir string) error
-	TestACKey    string
+	WorkDir     string
+	IssueNumber int
+	// BaseBranch is the branch the issue was cut from and the branch its PR must
+	// target — the resolved base (issue Ref → originating branch → "main"), the
+	// same value the work is based on. The Ship step uses it as the PR base so the
+	// PR never targets a stale default like "main" when the factory runs off an
+	// integration branch. When empty (e.g. tests), Ship falls back to the issue's
+	// Ref, then "main".
+	BaseBranch          string
+	Fetcher             tracker.Fetcher
+	Invoker             agent.Invoker
+	IssueWriter         IssueWriter
+	TemplateDir         string
+	CheckpointFn        func(ctx context.Context, step pipeline.Step, workDir string) error
+	TestACKey           string
+	Git                 GitOps
+	ProfileLoader       func(dir string) (ProfileData, error)
+	ReviewResultsLoader func(ctx context.Context, workDir string) ([]review.ReviewFinding, bool)
+	// ACTargetsLoader reads test-architect's AC-to-test-target mapping
+	// (.themis/ac-targets.json). At Review the runner turns any behavioral AC with
+	// no target into a blocking finding — the deterministic AC-coverage check that
+	// replaces the review agent's grep. Defaults to review.ReadACTargets.
+	ACTargetsLoader func(ctx context.Context, workDir string) ([]review.ACTarget, bool)
+	// TestRunner runs the project's test suite in workDir and reports whether it
+	// passed, plus the captured output for diagnostics. It is the GREEN gate for
+	// the Implement and Fix steps: a step that committed but left tests red is
+	// retried rather than advanced. When nil, those steps advance on commit alone
+	// (legacy behaviour; used by tests that do not exercise the gate).
+	TestRunner func(ctx context.Context, dir string) (passed bool, output string)
+	// StandardsDocs are the project's authoritative doc paths (relative to
+	// WorkDir) that agents read for coding standards, terminology, and
+	// architecture. Declared per-project in .themis/workflow.yaml; the factory is
+	// stack-agnostic and hardcodes none of these. Surfaced as {{STANDARDS_DOCS}}.
+	StandardsDocs []string
+	// DocSurfaces are path globs (relative to WorkDir) that trigger the Docs
+	// step: the step is skipped (no agent spawned) when the change touches none
+	// of them. Empty means Docs always runs. Declared per-project in
+	// .themis/workflow.yaml.
+	DocSurfaces []string
+	Logger      io.Writer
+	CodeVersion string
+	MaxTurns    int
+	// Emitter receives per-step StepRecords (the factory's own diagnostic
+	// narrative). Nil means no emission. Wired by cmd/themis to an OTLP sink when
+	// OTEL_* env is set; nil otherwise (and in tests).
+	Emitter Emitter
+	// EmitterShutdown flushes the Emitter at the end of the run. Run defers it
+	// (bounded), so the async batch exporter delivers the final records. Nil when
+	// there is no Emitter.
+	EmitterShutdown func(context.Context) error
+	// Scrub redacts secrets and sensitive infrastructure values from free-text
+	// that leaves the process — block comments posted to the tracker and the
+	// StepRecord detail/verify-output sent to the sink. Nil means no scrubbing
+	// (tests); cmd/themis wires a scrubber built from the token + Gitea host.
+	Scrub func(string) string
 }
 
 // Result holds the outcome of a successful pipeline run.
@@ -54,35 +140,55 @@ type Result struct {
 var agentSteps = map[pipeline.Step]bool{
 	pipeline.StepTestRed:   true,
 	pipeline.StepImplement: true,
-	pipeline.StepRefactor:  true,
 	pipeline.StepReview:    true,
-	pipeline.StepFix:       true,
 	pipeline.StepDocs:      true,
 }
 
 var templateFile = map[pipeline.Step]string{
 	pipeline.StepTestRed:   "test-red.md",
 	pipeline.StepImplement: "implement.md",
-	pipeline.StepRefactor:  "refactor.md",
 	pipeline.StepReview:    "review.md",
-	pipeline.StepFix:       "fix-findings.md",
 	pipeline.StepDocs:      "update-docs.md",
 }
 
 // Run executes the full pipeline for the given configuration.
 func Run(ctx context.Context, cfg Config) (*Result, error) {
-	state, err := pipeline.LoadState(cfg.WorkDir)
+	log := cfg.Logger
+	if log == nil {
+		log = os.Stderr
+	}
+	// Flush the diagnostic emitter on the way out (bounded), so the async batch
+	// exporter delivers the final records even on an early return. Best-effort.
+	if cfg.EmitterShutdown != nil {
+		defer func() {
+			sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = cfg.EmitterShutdown(sctx)
+		}()
+	}
+	// Normalize ReviewResultsLoader once so step-processing code never needs to
+	// nil-check it. cmd/themis injects review.ReadReviewResults at construction
+	// time; this default covers callers (e.g. tests) that omit the field.
+	if cfg.ReviewResultsLoader == nil {
+		cfg.ReviewResultsLoader = review.ReadReviewResults
+	}
+	if cfg.ACTargetsLoader == nil {
+		cfg.ACTargetsLoader = review.ReadACTargets
+	}
+
+	loaded, err := pipeline.LoadState(cfg.WorkDir)
 	if err != nil {
 		return nil, fmt.Errorf("loading state: %w", err)
 	}
+
+	state := validateResumedState(ctx, loaded, cfg, log)
+	resumed := state != nil
 	if state == nil {
-		state = &pipeline.PipelineState{
-			IssueNumber:     cfg.IssueNumber,
-			CurrentStep:     pipeline.StepFetch,
-			MaxReviewCycles: 2,
-			TestFixAttempts: map[string]int{},
-			StartedAt:       time.Now(),
+		fmt.Fprintf(log, "fresh start\n")
+		if rmErr := os.Remove(filepath.Join(cfg.WorkDir, ".themis", "review-results.json")); rmErr != nil && !os.IsNotExist(rmErr) {
+			fmt.Fprintf(log, "warning: removing review-results.json: %v\n", rmErr)
 		}
+		state = newFreshState(cfg)
 	}
 
 	issue, err := cfg.Fetcher.Fetch(ctx, cfg.IssueNumber)
@@ -90,24 +196,45 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		return nil, fmt.Errorf("fetching issue #%d: %w", cfg.IssueNumber, err)
 	}
 
-	prof, err := profile.Load(cfg.WorkDir)
-	if err != nil {
-		return nil, fmt.Errorf("loading profile: %w", err)
+	var prof ProfileData
+	if cfg.ProfileLoader != nil {
+		var err error
+		prof, err = cfg.ProfileLoader(cfg.WorkDir)
+		if err != nil {
+			return nil, fmt.Errorf("loading profile: %w", err)
+		}
+	}
+	if prof.ImplementModel == "" {
+		prof.ImplementModel = "sonnet"
+	}
+	if prof.ReviewModel == "" {
+		prof.ReviewModel = "sonnet"
 	}
 
-	codingStandards := readFileOrEmpty(filepath.Join(cfg.WorkDir, "CODING_STANDARDS.md"))
-	ubiquitousLanguage := readFileOrEmpty(filepath.Join(cfg.WorkDir, "UBIQUITOUS_LANGUAGE.md"))
+	// On resume past Branch, the Branch step (which creates/checks out the issue
+	// branch) is skipped, and the caller may have left us on the base branch (the
+	// run loop checks out main before each issue). Restore the issue branch, reset
+	// to a fresh start if it's gone, and clean up a dirty tree left by a crashed step.
+	state, err = resumeWorkspace(ctx, cfg, issue, state, resumed, log)
+	if err != nil {
+		return nil, err
+	}
 
-	var lastBlockingFindings string
+	// lastGreenGateFailure carries the Implement green gate's verify output into
+	// the next attempt's prompt, so a retry targets the actual failure (e.g. an
+	// unformatted file) instead of re-deriving the same defect blind.
+	var lastGreenGateFailure string
+
+	// rid groups every diagnostic record from this run (stable across resume).
+	rid := runID(cfg.IssueNumber, state.StartedAt.Unix())
 
 	for {
 		step := state.CurrentStep
+		stepStart := time.Now()
+		fmt.Fprintf(log, "%s: start\n", step)
 
-		// Fetch step: git fetch origin.
+		// Fetch step: auto-advance (fetch is a best-effort pre-run sync handled by the caller).
 		if step == pipeline.StepFetch {
-			if err := git.Fetch(ctx, cfg.WorkDir); err != nil {
-				fmt.Fprintf(os.Stderr, "warning: git fetch failed: %v\n", err)
-			}
 			next, err := state.Advance(pipeline.StepResult{Success: true})
 			if err != nil {
 				return nil, fmt.Errorf("advancing step %v: %w", step, err)
@@ -116,6 +243,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 				return nil, fmt.Errorf("saving state at step %v: %w", step, err)
 			}
 			state.CurrentStep = next
+			fmt.Fprintf(log, "%s: done (%dms)\n", step, time.Since(stepStart).Milliseconds())
 			continue
 		}
 
@@ -129,18 +257,14 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 				return nil, fmt.Errorf("saving state at step %v: %w", step, err)
 			}
 			state.CurrentStep = next
+			fmt.Fprintf(log, "%s: done (%dms)\n", step, time.Since(stepStart).Milliseconds())
 			continue
 		}
 
 		// Branch step: create issue branch, or checkout if it already exists.
 		if step == pipeline.StepBranch {
-			branchName := fmt.Sprintf("issue/%d-%s", cfg.IssueNumber, slugify(issue.Title))
-			if err := git.CheckoutNewBranch(ctx, cfg.WorkDir, branchName); err != nil {
-				// Branch may exist from a previous run — try checking it out.
-				if checkoutErr := git.Checkout(ctx, cfg.WorkDir, branchName); checkoutErr != nil {
-					return nil, fmt.Errorf("branch %s: create failed (%v), checkout failed (%v)", branchName, err, checkoutErr)
-				}
-				fmt.Fprintf(os.Stderr, "note: branch %s already exists, checked out existing\n", branchName)
+			if err := runBranchStep(ctx, cfg, issue, log); err != nil {
+				return nil, err
 			}
 			next, err := state.Advance(pipeline.StepResult{Success: true})
 			if err != nil {
@@ -150,29 +274,30 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 				return nil, fmt.Errorf("saving state at step %v: %w", step, err)
 			}
 			state.CurrentStep = next
+			fmt.Fprintf(log, "%s: done (%dms)\n", step, time.Since(stepStart).Milliseconds())
 			continue
 		}
 
-		// Ship step: push branch and create PR.
+		// Ship step: push branch, invoke agent for PR body, create PR.
 		if step == pipeline.StepShip {
-			branch := currentBranchName(cfg.WorkDir)
-			if err := git.PushBranch(ctx, cfg.WorkDir, branch); err != nil {
-				return nil, fmt.Errorf("pushing branch %s: %w", branch, err)
-			}
-			acs := tracker.ParseCheckboxes(issue.Body)
-			prURL, err := cfg.IssueWriter.CreatePR(ctx, PROptions{
-				Title: fmt.Sprintf("Closes #%d — %s", cfg.IssueNumber, issue.Title),
-				Body:  buildPRBody(cfg.IssueNumber, issue.Title, acs),
-				Base:  "themis-2.0",
-				Head:  branch,
-			})
+			return runShipStep(ctx, cfg, issue, state, prof, stepStart, log)
+		}
+
+		// Docs step: surface-triggered. Skip without spawning an agent when the
+		// change touches none of the project's declared documented surfaces.
+		if step == pipeline.StepDocs && cfg.Git != nil &&
+			!docsSurfaceTouched(cfg.DocSurfaces, cfg.Git.ChangedFiles(ctx, cfg.WorkDir)) {
+			fmt.Fprintf(log, "%s: skipped (no documented surface touched)\n", step)
+			next, err := state.Advance(pipeline.StepResult{Success: true})
 			if err != nil {
-				return nil, fmt.Errorf("creating PR: %w", err)
+				return nil, fmt.Errorf("advancing step %v: %w", step, err)
 			}
 			if err := pipeline.SaveState(cfg.WorkDir, state); err != nil {
-				return nil, fmt.Errorf("saving final state: %w", err)
+				return nil, fmt.Errorf("saving state at step %v: %w", step, err)
 			}
-			return &Result{PRURL: prURL}, nil
+			state.CurrentStep = next
+			fmt.Fprintf(log, "%s: done (%dms)\n", step, time.Since(stepStart).Milliseconds())
+			continue
 		}
 
 		// Agent steps: load template, substitute, invoke, checkpoint.
@@ -182,6 +307,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 				return nil, fmt.Errorf("advancing unknown step %v: %w", step, err)
 			}
 			state.CurrentStep = next
+			fmt.Fprintf(log, "%s: done (%dms)\n", step, time.Since(stepStart).Milliseconds())
 			continue
 		}
 
@@ -191,20 +317,16 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 			return nil, fmt.Errorf("reading template %s: %w", tmplPath, err)
 		}
 
-		acs := tracker.ParseCheckboxes(issue.Body)
-		masterArgs := map[string]string{
-			"ISSUE_NUMBER":        strconv.Itoa(cfg.IssueNumber),
-			"ISSUE_TITLE":         issue.Title,
-			"ACCEPTANCE_CRITERIA": formatACs(acs),
-			"CODING_STANDARDS":    codingStandards,
-			"UBIQUITOUS_LANGUAGE": ubiquitousLanguage,
-			"BRANCH_NAME":         currentBranchName(cfg.WorkDir),
-			"CHANGED_FILES":       changedFiles(cfg.WorkDir),
-			"REVIEW_CYCLE":        strconv.Itoa(state.ReviewCycle + 1),
-			"BLOCKING_FINDINGS":   lastBlockingFindings,
+		branchName := "main"
+		if cfg.Git != nil {
+			if b, brErr := cfg.Git.CurrentBranch(ctx, cfg.WorkDir); brErr == nil {
+				branchName = b
+			}
 		}
 
-		filteredArgs := filterArgs(string(tmplContent), masterArgs)
+		allArgs := buildTemplateArgs(ctx, cfg, issue, branchName, lastGreenGateFailure)
+
+		filteredArgs := filterArgs(string(tmplContent), allArgs)
 
 		substituted, err := prompt.Substitute(string(tmplContent), filteredArgs)
 		if err != nil {
@@ -212,30 +334,102 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		}
 
 		model := modelForStep(step, prof)
+		turns := turnsForStep(step, cfg.MaxTurns)
+		fmt.Fprintf(log, "%s: invoking agent model=%s maxTurns=%d\n", step, model, turns)
 
-		invokeResult, err := cfg.Invoker.Invoke(ctx, agent.InvokeOptions{
-			Prompt:   substituted,
-			Model:    model,
-			MaxTurns: 100,
-			WorkDir:  cfg.WorkDir,
-		})
+		opts := agent.InvokeOptions{
+			Prompt:       substituted,
+			Model:        model,
+			MaxTurns:     turns,
+			WorkDir:      cfg.WorkDir,
+			IssueNumber:  cfg.IssueNumber,
+			PipelineStep: step.String(),
+		}
+		if cfg.Git != nil {
+			opts.CommitCountFn = cfg.Git.CommitSHAs
+		}
+		invokeResult, err := cfg.Invoker.Invoke(ctx, opts)
 		if err != nil {
+			// Emit the failure (Detail carries the agent stderr surfaced by
+			// internal/agent) so a step crash is diagnosable from the sink, not
+			// just stdout. This is the path the Docs-step crash took on #88.
+			emitStep(ctx, cfg, log, StepRecord{
+				IssueNumber: cfg.IssueNumber,
+				RunID:       rid,
+				Stage:       step.String(),
+				Outcome:     "error",
+				DurationMs:  time.Since(stepStart).Milliseconds(),
+				Detail:      lastLines(err.Error(), 30),
+			})
+			// Docs is best-effort: it is already skippable (surface-gated), runs
+			// last on the weakest model, and a flake there must not discard a
+			// validated, ready-to-ship PR. Log the cause (emitted above) and
+			// advance to Ship — same graceful path as a surface skip. Every other
+			// agent step stays fatal: its output is load-bearing.
+			if step == pipeline.StepDocs {
+				fmt.Fprintf(log, "%s: agent failed (%v) — Docs is best-effort, proceeding to Ship without doc changes\n", step, err)
+				next, advErr := advanceDocsBestEffort(cfg, state)
+				if advErr != nil {
+					return nil, advErr
+				}
+				state.CurrentStep = next
+				continue
+			}
 			return nil, fmt.Errorf("agent invocation at step %v: %w", step, err)
 		}
 
+		logAgentResult(log, step, invokeResult, turns)
+
 		if cfg.CheckpointFn != nil {
-			if err := cfg.CheckpointFn(ctx, step, cfg.WorkDir); err != nil {
-				return nil, fmt.Errorf("checkpoint failed after step %v: %w", step, err)
+			if chkErr := cfg.CheckpointFn(ctx, step, cfg.WorkDir); chkErr != nil {
+				fmt.Fprintf(log, "%s: checkpoint failed: %v\n", step, chkErr)
+				// Docs is best-effort (as in the agent-failure path above): an
+				// incidental dirty tree after a Docs run — e.g. a go.sum the
+				// toolchain rewrote and the weak model left uncommitted — must not
+				// discard a validated, ready-to-ship PR. Advance to Ship instead.
+				if step == pipeline.StepDocs {
+					fmt.Fprintf(log, "%s: checkpoint failed (%v) — Docs is best-effort, proceeding to Ship\n", step, chkErr)
+					next, advErr := advanceDocsBestEffort(cfg, state)
+					if advErr != nil {
+						return nil, advErr
+					}
+					state.CurrentStep = next
+					continue
+				}
+				return nil, fmt.Errorf("checkpoint failed after step %v: %w", step, chkErr)
 			}
+			fmt.Fprintf(log, "%s: checkpoint pass\n", step)
 		}
 
-		stepResult := deriveStepResult(step, invokeResult, cfg)
-		if step == pipeline.StepReview && stepResult.BlockingFindings {
-			lastBlockingFindings = extractBlockingFindings(invokeResult.Stdout)
+		stepResult, verifyOutput := deriveStepResult(ctx, step, invokeResult, cfg)
+		rec := StepRecord{
+			IssueNumber: cfg.IssueNumber,
+			RunID:       rid,
+			Stage:       step.String(),
+			Completed:   invokeResult.Completed,
+			Commits:     len(invokeResult.CommitsMade),
+		}
+		if step == pipeline.StepImplement && cfg.TestRunner != nil {
+			logGreenGate(log, step, stepResult.Success, invokeResult.Completed, turns, verifyOutput)
+			if stepResult.Success {
+				lastGreenGateFailure = ""
+				rec.GreenGate = "pass"
+			} else {
+				lastGreenGateFailure = lastLines(verifyOutput, 30)
+				rec.GreenGate = "fail"
+				rec.VerifyOutput = lastGreenGateFailure
+			}
+		}
+		if step == pipeline.StepReview {
+			recordReviewFindings(ctx, cfg, log, &rec)
 		}
 
 		next, advErr := state.Advance(stepResult)
 		if advErr != nil {
+			rec.Outcome = "blocked"
+			rec.Detail = lastLines(advErr.Error(), 30)
+			rec.DurationMs = time.Since(stepStart).Milliseconds()
+			emitStep(ctx, cfg, log, rec)
 			blockErr := blockIssue(ctx, cfg, advErr)
 			if blockErr != nil {
 				return nil, fmt.Errorf("blocking issue after %v: %w", advErr, blockErr)
@@ -248,150 +442,40 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		}
 
 		state.CurrentStep = next
+		rec.Outcome = "ok"
+		rec.DurationMs = time.Since(stepStart).Milliseconds()
+		emitStep(ctx, cfg, log, rec)
+		fmt.Fprintf(log, "%s: done (%dms)\n", step, time.Since(stepStart).Milliseconds())
 	}
 }
 
-func blockIssue(ctx context.Context, cfg Config, reason error) error {
-	comment := fmt.Sprintf("Pipeline blocked on issue #%d: %v", cfg.IssueNumber, reason)
-	if err := cfg.IssueWriter.Comment(ctx, cfg.IssueNumber, comment); err != nil {
-		return fmt.Errorf("posting block comment: %w", err)
+// issueBranchName is the branch the factory works an issue on: issue/<n>-<slug>.
+// Derived deterministically from the issue number and title so the Branch step and
+// the resume path (which must re-check-out the same branch) always agree.
+func issueBranchName(issueNumber int, title string) string {
+	return fmt.Sprintf("issue/%d-%s", issueNumber, slugify(title))
+}
+
+// runBranchStep creates or checks out the issue branch and seeds
+// .themis/review-results.json with empty findings so the Review step is
+// non-blocking unless the review agent itself writes blocking findings.
+func runBranchStep(ctx context.Context, cfg Config, issue *tracker.IssueData, log io.Writer) error {
+	branchName := issueBranchName(cfg.IssueNumber, issue.Title)
+	if cfg.Git != nil {
+		if err := cfg.Git.CheckoutNewBranch(ctx, cfg.WorkDir, branchName); err != nil {
+			if checkoutErr := cfg.Git.Checkout(ctx, cfg.WorkDir, branchName); checkoutErr != nil {
+				return fmt.Errorf("branch %s: create failed (%v), checkout failed (%v)", branchName, err, checkoutErr)
+			}
+			fmt.Fprintf(log, "note: branch %s already exists, checked out existing\n", branchName)
+		}
 	}
-	if err := cfg.IssueWriter.AddLabel(ctx, cfg.IssueNumber, "blocked"); err != nil {
-		return fmt.Errorf("adding blocked label: %w", err)
+	themisDir := filepath.Join(cfg.WorkDir, ".themis")
+	if mkErr := os.MkdirAll(themisDir, 0o755); mkErr != nil {
+		return fmt.Errorf("creating .themis directory: %w", mkErr)
+	}
+	if wfErr := os.WriteFile(filepath.Join(themisDir, "review-results.json"),
+		[]byte(`{"findings":[]}`), 0o644); wfErr != nil {
+		return fmt.Errorf("seeding review-results.json: %w", wfErr)
 	}
 	return nil
-}
-
-func deriveStepResult(step pipeline.Step, r *agent.InvokeResult, cfg Config) pipeline.StepResult {
-	switch step {
-	case pipeline.StepTestRed:
-		key := cfg.TestACKey
-		if key == "" {
-			key = "tests"
-		}
-		if len(r.CommitsMade) > 0 || r.Completed {
-			return pipeline.StepResult{Success: true}
-		}
-		return pipeline.StepResult{Success: false, TestACKey: key}
-
-	case pipeline.StepReview:
-		blocking := hasBlockingFindings(r.Stdout)
-		return pipeline.StepResult{
-			Success:          !blocking,
-			BlockingFindings: blocking,
-		}
-
-	default:
-		return pipeline.StepResult{Success: true}
-	}
-}
-
-var blockingLineRE = regexp.MustCompile(`(?im)^blocking:\s+.+`)
-
-func hasBlockingFindings(output string) bool {
-	if blockingLineRE.MatchString(output) {
-		return true
-	}
-	upper := strings.ToUpper(output)
-	return strings.Contains(upper, "BLOCKING_FINDINGS: YES")
-}
-
-func extractBlockingFindings(output string) string {
-	var lines []string
-	for _, line := range strings.Split(output, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(strings.ToUpper(trimmed), "BLOCKING:") {
-			lines = append(lines, trimmed)
-		}
-	}
-	if len(lines) == 0 {
-		return output
-	}
-	return strings.Join(lines, "\n")
-}
-
-var placeholderRE = regexp.MustCompile(`\{\{([A-Z0-9_]+)\}\}`)
-
-func filterArgs(tmpl string, all map[string]string) map[string]string {
-	out := make(map[string]string)
-	for _, m := range placeholderRE.FindAllStringSubmatch(tmpl, -1) {
-		key := m[1]
-		if v, ok := all[key]; ok {
-			out[key] = v
-		}
-	}
-	return out
-}
-
-func modelForStep(step pipeline.Step, prof *profile.Profile) string {
-	switch step {
-	case pipeline.StepReview:
-		return prof.Review.Agents.Security
-	default:
-		return prof.Implement.Model
-	}
-}
-
-func buildPRBody(number int, title string, acs []string) string {
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "Closes #%d\n\n", number)
-	fmt.Fprintf(&sb, "## Summary\n\n%s\n\n", title)
-	sb.WriteString("## Acceptance Criteria\n\n")
-	for _, ac := range acs {
-		fmt.Fprintf(&sb, "- %s\n", ac)
-	}
-	return sb.String()
-}
-
-func formatACs(acs []string) string {
-	if len(acs) == 0 {
-		return ""
-	}
-	var sb strings.Builder
-	for _, ac := range acs {
-		fmt.Fprintf(&sb, "- [ ] %s\n", ac)
-	}
-	return strings.TrimRight(sb.String(), "\n")
-}
-
-func readFileOrEmpty(path string) string {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return ""
-	}
-	return string(data)
-}
-
-func currentBranchName(workDir string) string {
-	data, err := os.ReadFile(filepath.Join(workDir, ".git", "HEAD"))
-	if err != nil {
-		return "main"
-	}
-	ref := strings.TrimSpace(string(data))
-	if after, ok := strings.CutPrefix(ref, "refs/heads/"); ok {
-		return after
-	}
-	return "main"
-}
-
-func changedFiles(workDir string) string {
-	return ""
-}
-
-func slugify(s string) string {
-	s = strings.ToLower(s)
-	s = strings.Map(func(r rune) rune {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
-			return r
-		}
-		return '-'
-	}, s)
-	for strings.Contains(s, "--") {
-		s = strings.ReplaceAll(s, "--", "-")
-	}
-	s = strings.Trim(s, "-")
-	if len(s) > 50 {
-		s = s[:50]
-	}
-	return s
 }

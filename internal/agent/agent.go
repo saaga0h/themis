@@ -1,14 +1,17 @@
+// Package agent is the seam between deterministic pipeline control and LLM
+// creative work. Callers invoke Invoker.Invoke with structured options; the
+// package spawns the agent subprocess, tags it for observability, and returns a
+// structured result. It decides how to run the agent, never what to ask it.
 package agent
 
 import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
-
-	"git.home.federation.fi/lavernea/themis/internal/git"
 )
 
 // InvokeResult holds the structured output of an agent invocation.
@@ -22,11 +25,13 @@ type InvokeResult struct {
 
 // InvokeOptions configures an agent invocation.
 type InvokeOptions struct {
-	Prompt       string
-	Model        string
-	MaxTurns     int
-	WorkDir      string
-	AllowedTools []string
+	Prompt        string
+	Model         string
+	MaxTurns      int
+	WorkDir       string
+	IssueNumber   int
+	PipelineStep  string
+	CommitCountFn func(ctx context.Context, dir string) ([]string, error)
 }
 
 // Invoker is the interface for spawning an agent with a prompt and getting a result.
@@ -40,51 +45,108 @@ type ClaudeCodeInvoker struct{}
 // Invoke spawns claude with the given options, feeds the prompt via stdin,
 // captures stdout, and returns a structured result.
 func (c *ClaudeCodeInvoker) Invoke(ctx context.Context, opts InvokeOptions) (*InvokeResult, error) {
-	if ctx.Err() != nil {
-		return nil, ctx.Err()
+	workDir := opts.WorkDir
+
+	var before []string
+	if opts.CommitCountFn != nil {
+		var err error
+		before, err = opts.CommitCountFn(ctx, workDir)
+		if err != nil {
+			return nil, fmt.Errorf("snapshotting commits: %w", err)
+		}
 	}
 
-	workDir := opts.WorkDir
-	before, err := git.CommitsBefore(ctx, workDir)
-	if err != nil {
-		return nil, fmt.Errorf("snapshotting commits: %w", err)
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 
 	args := c.buildArgs(opts)
 	cmd := exec.CommandContext(ctx, "claude", args...)
 	cmd.Dir = workDir
+	cmd.Env = buildCmdEnv(os.Environ(), opts.IssueNumber, opts.PipelineStep)
 	cmd.Stdin = strings.NewReader(opts.Prompt)
 
-	var stdout bytes.Buffer
+	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
 		// Non-zero exit or context cancellation.
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("agent killed by context: %w", ctx.Err())
 		}
+		// cmd.Run only yields the exit status ("exit status 1"); the actual
+		// cause (API error, model error, crash) is in claude's stderr — which
+		// was previously discarded, making step failures undiagnosable. Surface
+		// a bounded tail of stderr (falling back to stdout) so the cause is
+		// visible to operators and to the diagnostic emitter.
+		if detail := failureDetail(stderr.String(), stdout.String()); detail != "" {
+			return nil, fmt.Errorf("claude exited with error: %w\n%s", err, detail)
+		}
 		return nil, fmt.Errorf("claude exited with error: %w", err)
 	}
 
 	output := stdout.String()
-	newCommits, err := git.CommitsAfter(ctx, workDir, before)
-	if err != nil {
-		return nil, fmt.Errorf("detecting new commits: %w", err)
+
+	var commitsMade []string
+	if opts.CommitCountFn != nil {
+		after, err := opts.CommitCountFn(ctx, workDir)
+		if err != nil {
+			return nil, fmt.Errorf("detecting new commits: %w", err)
+		}
+		commitsMade = commitSetDiff(before, after)
 	}
 
 	return &InvokeResult{
 		ExitCode:    0,
 		Stdout:      output,
-		CommitsMade: newCommits,
+		CommitsMade: commitsMade,
 		TestsPassed: containsTestPass(output),
 		Completed:   containsCompletionMarker(output),
 	}, nil
 }
 
+// commitSetDiff returns commits in after that are not in before.
+func commitSetDiff(before, after []string) []string {
+	beforeSet := make(map[string]bool, len(before))
+	for _, sha := range before {
+		beforeSet[sha] = true
+	}
+	var added []string
+	for _, sha := range after {
+		if !beforeSet[sha] {
+			added = append(added, sha)
+		}
+	}
+	return added
+}
+
+// failureDetail formats the captured output of a failed agent invocation so the
+// cause is visible. claude writes its real error to stderr; stdout may hold
+// partial --print output. Prefer stderr, fall back to stdout, and bound both to
+// the last lines so a large transcript can't flood the error.
+func failureDetail(stderrOut, stdoutOut string) string {
+	if s := strings.TrimSpace(stderrOut); s != "" {
+		return "stderr (last lines):\n" + tailLines(s, 30)
+	}
+	if s := strings.TrimSpace(stdoutOut); s != "" {
+		return "stdout (last lines):\n" + tailLines(s, 30)
+	}
+	return ""
+}
+
+// tailLines returns the last n lines of s (trailing newline trimmed first).
+func tailLines(s string, n int) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "\n")
+}
+
 func (c *ClaudeCodeInvoker) buildArgs(opts InvokeOptions) []string {
 	args := []string{
 		"--print",
-		"--verbose",
 		"--dangerously-skip-permissions",
 		"--max-turns", strconv.Itoa(opts.MaxTurns),
 		"--model", opts.Model,
@@ -93,11 +155,10 @@ func (c *ClaudeCodeInvoker) buildArgs(opts InvokeOptions) []string {
 }
 
 // completionMarkers are strings in agent output that signal the agent finished.
+// Templates instruct the agent to emit "STEP COMPLETE" once its terminal state is
+// reached; the absence of the marker means the step ran to its turn limit instead.
 var completionMarkers = []string{
-	"COMPLETED",
-	"Task complete",
-	"All ACs pass",
-	"Implementation complete",
+	"STEP COMPLETE",
 }
 
 func containsCompletionMarker(output string) bool {
@@ -114,3 +175,35 @@ func containsTestPass(output string) bool {
 	return strings.Contains(output, "PASS") || strings.Contains(output, "ok ")
 }
 
+// buildOTELResourceAttributes prepends issue.number and pipeline.step to any existing OTEL_RESOURCE_ATTRIBUTES value.
+func buildOTELResourceAttributes(issueNumber int, stepName string, parentEnv []string) string {
+	newAttrs := fmt.Sprintf("issue.number=%d,pipeline.step=%s", issueNumber, stepName)
+	for _, entry := range parentEnv {
+		if strings.HasPrefix(entry, "OTEL_RESOURCE_ATTRIBUTES=") {
+			existing := strings.TrimPrefix(entry, "OTEL_RESOURCE_ATTRIBUTES=")
+			if existing != "" {
+				return newAttrs + "," + existing
+			}
+		}
+	}
+	return newAttrs
+}
+
+// buildCmdEnv copies parentEnv, replacing or appending OTEL_RESOURCE_ATTRIBUTES with the merged value.
+func buildCmdEnv(parentEnv []string, issueNumber int, stepName string) []string {
+	otelVal := buildOTELResourceAttributes(issueNumber, stepName, parentEnv)
+	result := make([]string, 0, len(parentEnv)+1)
+	replaced := false
+	for _, entry := range parentEnv {
+		if strings.HasPrefix(entry, "OTEL_RESOURCE_ATTRIBUTES=") {
+			result = append(result, "OTEL_RESOURCE_ATTRIBUTES="+otelVal)
+			replaced = true
+		} else {
+			result = append(result, entry)
+		}
+	}
+	if !replaced {
+		result = append(result, "OTEL_RESOURCE_ATTRIBUTES="+otelVal)
+	}
+	return result
+}

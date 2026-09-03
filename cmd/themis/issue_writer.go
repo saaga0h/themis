@@ -4,14 +4,20 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"strings"
 
-	"git.home.federation.fi/lavernea/themis/internal/runner"
+	"github.com/saaga0h/themis/internal/runner"
 )
+
+// maxResponseBytes bounds how much of an HTTP response body is read, guarding
+// against unbounded memory use from an oversized or malicious response.
+const maxResponseBytes = 10 * 1024 * 1024
 
 // ghIssueWriter implements runner.IssueWriter using the gh CLI (GitHub).
 type ghIssueWriter struct {
@@ -35,12 +41,20 @@ func (g *ghIssueWriter) CreatePR(ctx context.Context, opts runner.PROptions) (st
 	if base == "" {
 		base = "main"
 	}
-	out, err := exec.CommandContext(ctx, "gh", "pr", "create",
-		"--title", opts.Title,
-		"--body", opts.Body,
-		"--base", base,
-	).Output()
+	args := []string{"pr", "create", "--title", opts.Title, "--body", opts.Body, "--base", base}
+	if opts.Draft {
+		args = append(args, "--draft")
+	}
+	cmd := exec.CommandContext(ctx, "gh", args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
 	if err != nil {
+		// gh exits non-zero when a PR for this head branch already exists; surface
+		// that as the shared sentinel so Ship treats a re-run as an idempotent ship.
+		if strings.Contains(strings.ToLower(stderr.String()), "already exists") {
+			return "", runner.ErrPRAlreadyExists
+		}
 		return "", fmt.Errorf("gh pr create: %w", err)
 	}
 	return strings.TrimSpace(string(out)), nil
@@ -49,9 +63,24 @@ func (g *ghIssueWriter) CreatePR(ctx context.Context, opts runner.PROptions) (st
 func runGH(ctx context.Context, args ...string) error {
 	cmd := exec.CommandContext(ctx, "gh", args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("gh %v: %w\n%s", args, err, out)
+		return fmt.Errorf("gh %v: %w\n%s", redactBodyArg(args), err, out)
 	}
 	return nil
+}
+
+// redactBodyArg replaces the value following a "--body" flag with a
+// placeholder so error messages never leak issue/PR/comment body content.
+func redactBodyArg(args []string) []string {
+	redacted := make([]string, len(args))
+	copy(redacted, args)
+	for i, a := range redacted {
+		if a == "--body" && i+1 < len(redacted) {
+			redacted[i+1] = "[REDACTED]"
+		} else if strings.HasPrefix(a, "--body=") {
+			redacted[i] = "--body=[REDACTED]"
+		}
+	}
+	return redacted
 }
 
 // giteaIssueWriter implements runner.IssueWriter using the Gitea REST API.
@@ -68,7 +97,10 @@ func (g *giteaIssueWriter) AddLabel(ctx context.Context, number int, label strin
 	if err != nil {
 		return err
 	}
-	body, _ := json.Marshal(map[string]interface{}{"labels": []int{labelID}})
+	body, err := json.Marshal(map[string]interface{}{"labels": []int{labelID}})
+	if err != nil {
+		return fmt.Errorf("marshaling add-label request: %w", err)
+	}
 	return g.do(ctx, "POST",
 		fmt.Sprintf("/repos/%s/%s/issues/%d/labels", g.owner, g.repo, number),
 		body, nil)
@@ -85,7 +117,10 @@ func (g *giteaIssueWriter) RemoveLabel(ctx context.Context, number int, label st
 }
 
 func (g *giteaIssueWriter) Comment(ctx context.Context, number int, body string) error {
-	payload, _ := json.Marshal(map[string]string{"body": body})
+	payload, err := json.Marshal(map[string]string{"body": body})
+	if err != nil {
+		return fmt.Errorf("marshaling comment request: %w", err)
+	}
 	return g.do(ctx, "POST",
 		fmt.Sprintf("/repos/%s/%s/issues/%d/comments", g.owner, g.repo, number),
 		payload, nil)
@@ -96,19 +131,37 @@ func (g *giteaIssueWriter) CreatePR(ctx context.Context, opts runner.PROptions) 
 	if base == "" {
 		base = "main"
 	}
-	payload, _ := json.Marshal(map[string]string{
-		"title": opts.Title,
+	title := opts.Title
+	if opts.Draft {
+		// Gitea has no draft flag on the create-PR API; a "WIP:" title prefix is
+		// the idiomatic marker and blocks merge until a human removes it.
+		title = "WIP: " + title
+	}
+	payload, err := json.Marshal(map[string]string{
+		"title": title,
 		"body":  opts.Body,
 		"base":  base,
 		"head":  opts.Head,
 	})
+	if err != nil {
+		return "", fmt.Errorf("marshaling create-pr request: %w", err)
+	}
 	var result struct {
 		HTMLURL string `json:"html_url"`
 	}
 	if err := g.do(ctx, "POST",
 		fmt.Sprintf("/repos/%s/%s/pulls", g.owner, g.repo),
 		payload, &result); err != nil {
+		// Gitea returns 409 Conflict when a PR for this head→base already exists;
+		// surface that as the shared sentinel so Ship treats a re-run as idempotent.
+		var apiErr *giteaAPIError
+		if errors.As(err, &apiErr) && apiErr.status == http.StatusConflict {
+			return "", runner.ErrPRAlreadyExists
+		}
 		return "", err
+	}
+	if result.HTMLURL == "" {
+		return "", fmt.Errorf("create-pr response missing html_url")
 	}
 	return result.HTMLURL, nil
 }
@@ -129,7 +182,10 @@ func (g *giteaIssueWriter) findOrCreateLabel(ctx context.Context, name string) (
 		}
 	}
 	// Create the label.
-	payload, _ := json.Marshal(map[string]string{"name": name, "color": "#e11d48"})
+	payload, err := json.Marshal(map[string]string{"name": name, "color": "#e11d48"})
+	if err != nil {
+		return 0, fmt.Errorf("marshaling create-label request: %w", err)
+	}
 	var created struct {
 		ID int `json:"id"`
 	}
@@ -139,6 +195,19 @@ func (g *giteaIssueWriter) findOrCreateLabel(ctx context.Context, name string) (
 		return 0, err
 	}
 	return created.ID, nil
+}
+
+// giteaAPIError is a non-2xx response from the Gitea REST API. It carries the
+// status code so callers can distinguish specific conditions (e.g. 409 Conflict
+// on PR creation) while its Error() preserves the original "METHOD url: HTTP NNN"
+// message every other caller already logs.
+type giteaAPIError struct {
+	method, url string
+	status      int
+}
+
+func (e *giteaAPIError) Error() string {
+	return fmt.Sprintf("%s %s: HTTP %d", e.method, e.url, e.status)
 }
 
 func (g *giteaIssueWriter) do(ctx context.Context, method, path string, body []byte, out interface{}) error {
@@ -167,29 +236,27 @@ func (g *giteaIssueWriter) do(ctx context.Context, method, path string, body []b
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("%s %s: HTTP %d", method, url, resp.StatusCode)
+		return &giteaAPIError{method: method, url: url, status: resp.StatusCode}
 	}
 	if out != nil {
-		return json.NewDecoder(resp.Body).Decode(out)
+		return json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(out)
 	}
 	return nil
 }
 
 // newIssueWriter returns an IssueWriter for the given provider.
-func newIssueWriter(provider string, _ int) runner.IssueWriter {
+// owner, repo, and apiBase are only used for the gitea provider.
+func newIssueWriter(provider, owner, repo, apiBase string) runner.IssueWriter {
 	switch provider {
 	case "gitea":
 		return &giteaIssueWriter{
-			owner:   giteaOwner(),
-			repo:    giteaRepo(),
-			apiBase: os.Getenv("GITEA_API_URL"),
+			owner:   owner,
+			repo:    repo,
+			apiBase: apiBase,
 			token:   os.Getenv("GITEA_TOKEN"),
-			client:  &http.Client{},
+			client:  &http.Client{Timeout: giteaClientTimeout},
 		}
 	default:
 		return &ghIssueWriter{}
 	}
 }
-
-func giteaOwner() string { return os.Getenv("GITEA_OWNER") }
-func giteaRepo() string  { return os.Getenv("GITEA_REPO") }

@@ -1,3 +1,6 @@
+// Package checkpoint verifies that a pipeline step left the repository in the
+// expected state: a clean working tree and, for committing steps, a commit
+// carrying the step's conventional-commit prefix.
 package checkpoint
 
 import (
@@ -5,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"git.home.federation.fi/lavernea/themis/internal/git"
+	"github.com/saaga0h/themis/internal/git"
 )
 
 // VerifyCommitPrefix checks that the last commit message starts with prefix.

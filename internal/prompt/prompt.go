@@ -1,3 +1,7 @@
+// Package prompt performs {{KEY}} placeholder substitution for pipeline prompt
+// templates. Substitute enforces bidirectional validation — both missing and
+// unused args are errors — so a template and its supplied arguments must match
+// exactly.
 package prompt
 
 import (

@@ -53,6 +53,80 @@ ACs are the most important part of the issue. The factory implements exactly wha
 ### Every AC must answer: "What does the test assert?"
 If you can't write a test name from the AC, the AC is too vague. The factory will write a test for each AC — if the AC says "error handling works," the test will check "no error" and nothing else.
  
+### Kinds of AC — not every AC becomes a runtime test
+
+"What does the test assert?" is the right question for *behavioural* ACs, but some ACs are verified statically or at compile time, not by a runtime test. Name the kind so the factory checks it the right way — you cannot unit-test that a type does *not* exist, because a runtime test for absence has nothing to assert against.
+
+- **Behavioural** — an observable runtime outcome. Becomes a runtime test.
+  `CreateItem returns 400 for invalid itemType values`
+- **Negative / absence** — something must NOT exist after the change. Becomes a static check (grep / go-analysis), not a runtime test.
+  `No GiteaQuerier struct remains in cmd/themis — verify: grep -rn 'type GiteaQuerier' cmd/themis/ returns zero hits`
+- **Placement / structural** — a type, interface, or function must live in a specific package or stay at a boundary. Becomes a compile-time guard.
+  `The IssueQuerier interface stays in cmd/themis (the consumer), not in internal/tracker`
+- **Delegation** — a value must be obtained through a specific path. Becomes a compile-time guard or a behavioural test.
+  `cmd/themis constructs the querier via tracker.NewGiteaQuerier, not by composing the struct directly`
+
+Negative, placement, and delegation ACs map to static or compile-time checks. Write them with the verification spelled out (the grep, the package, the constructor) — the same way behavioural ACs spell out the assertion.
+
+### Declaring the check (machine-extractable)
+
+For negative, placement, and delegation ACs, do not stop at describing the verification in prose — **declare it as a runnable command** the factory can extract and run as part of the green gate for this issue's run. Put it in a fenced block tagged `check`, holding a shell command that **exits 0 exactly when the AC is satisfied**:
+
+```check
+! grep -rq 'type GiteaQuerier' cmd/themis/
+```
+
+The negated `grep` exits 0 when the type is absent — i.e. the move is complete. The factory appends each `check` block to the verify gate for that run only; it is **never committed** (these checks are scaffolding for "done," not permanent tests — see the Refactor/Move/Rename/Delete rules and #81). Rules:
+
+- One `check` block per negative/placement/delegation AC, positioned after its AC and before the next **destructive** AC (or end of body) — a paired behavioural/"added" AC may sit in between. A deterministic meta-check fails the issue if a destructive ("Removed …") AC has no `check` in its own span, or if multiple destructive ACs share check blocks.
+- The command runs via `bash -c` like every verify command — exit 0 on success, non-zero on failure.
+- Make it specific and hard to satisfy by accident, and pair it with the behavioural/"added" AC so renaming or hiding the old code cannot pass both.
+- Behavioural ACs do **not** get a `check` block — they stay committed runtime tests.
+
+(Strict convention is a deliberate starting point to keep extraction deterministic — observe and tune; see #81.)
+
+## Declaring the footprint (change-surface gate)
+
+Exhaustive enumeration (below) bounds the *required* change — the sites that must be touched. The **footprint** bounds the *surplus* side: the packages the change may touch at all. Declare it in a fenced ` ```footprint ` block, one **package** path per line — the factory translates it to a green-gate check, so any file the implementation lands outside these packages fails the run (over-engineering usually shows up as surplus files in packages nobody named).
+
+````
+```footprint
+internal/tracker
+cmd/themis
+```
+````
+
+Rules:
+- **Packages, not files** — a footprint of `internal/tracker` allows any file (incl. new files and `_test.go`) under that package. This is deliberate: footprint bounds *where*; a negative/`check` AC bounds *what's removed*.
+- Derive it from the deliverable's real surface. `go.mod`/`go.sum` are exempt (declared per-repo in `.themis/workflow.yaml`) — do not list them.
+- One footprint block per issue. Undeclared = no footprint gate (the check simply isn't added), so declare one for any scoped issue.
+- **Sweeps** — a genuine cross-cutting change that can't be package-bounded (a module-path rename, a repo-wide sweep) declares `wide` with a required reason, which waives the gate loudly:
+  ````
+  ```footprint
+  wide: module-path rename — touches every import
+  ```
+  ````
+  `wide` is the rare, justified exception. If an ordinary feature needs it, the slice is probably too broad — split it (a footprint spanning several unrelated packages is the scope-ceiling signal, #87).
+
+## Declaring an export budget (surface gate — move/extract issues only)
+
+Where footprint bounds *where* a change lands, an **export budget** bounds *what a package exposes*: the package exports exactly these identifiers and no others. It catches the surplus public surface over-engineering adds — an options struct nobody asked for, an interface with one implementation, a `Manager` type. Declare it in a fenced ` ```exports ` block, one `<package>: Name1, Name2, ...` line per package:
+
+````
+```exports
+internal/tracker: GiteaQuerier, NewGiteaQuerier
+```
+````
+
+The factory translates it to a green-gate check (`go doc -short` on the package); if the package exposes any exported identifier not listed, the run fails naming it.
+
+**Use this sparingly — only for move / extract / rename issues, not ordinary features.** The reason: an export budget makes the listed names a **contract**. That is a good fit when the exported surface is *already decided at design time* — a move or extract knows exactly which identifiers it relocates, so enumerating them is free and pins the result. For a from-scratch feature the exact public names are still being discovered during implementation, so budgeting them forces premature naming and a mis-typed or renamed identifier false-blocks a correct change. When in doubt, omit it — footprint already bounds the change; the export budget is the extra pin only when the surface is knowable up front.
+
+Rules:
+- **Names are exported top-level identifiers** — types, funcs (incl. constructors), consts, vars. Methods are not listed (they belong to their type). List every exported name the package should have *after* the change, not just the added ones (the budget is the whole surface, not a delta).
+- Omit `go doc`-invisible things; the check only sees what `go doc -short` reports.
+- Undeclared = no export gate. It bounds exported surface only — a large unexported helper is out of its reach (that is the footprint's and review's job).
+
 ## Rules for Exhaustive Enumeration
  
 This is the most common source of incomplete fixes. The factory does not generalize — it implements exactly the sites listed. When a fix applies to multiple call sites, every site must be named.
@@ -85,6 +159,19 @@ Good: "Every handler that accepts `itemType` as a query parameter must validate 
 Good: "All `json.NewDecoder(resp.Body)` and `xml.NewDecoder(resp.Body)` calls in `internal/koha/` must use `io.LimitReader`. Verify: `grep -rn 'NewDecoder(resp.Body)' internal/koha/` returns zero hits after the change — all should be `NewDecoder(io.LimitReader(resp.Body, ...))`"
 → Factory can verify its own work
  
+## Rules for Refactor / Move / Rename / Delete Issues
+
+A move is not done when the new thing exists — it is done when the OLD thing is GONE. The factory implements exactly what the ACs say; if no AC asserts the original's absence, the original survives and the issue is half-done. Duplicate types compile, pass vet, and pass stale tests, so the green gate does not catch it. This is exactly what happened in #68: the queriers were copied into `internal/tracker` but never deleted from `cmd/themis`, and the PR shipped half-done.
+
+For any issue that moves, extracts, renames, or deletes, write the ACs as a **pair**:
+
+- **What is added / moved to** — behavioural or placement AC:
+  `tracker.GiteaQuerier exists in internal/tracker and satisfies the IssueQuerier interface`
+- **What is removed** — negative / absence AC (this is the one that gets forgotten):
+  `No GiteaQuerier type remains in cmd/themis — verify: grep -rn 'type GiteaQuerier' cmd/themis/ returns zero hits`
+
+State explicitly, per moved/renamed/deleted thing: where it now lives, and that the original is gone. A rename needs a negative AC for the old name. "Consolidate A and B into C" needs negative ACs for both A and B. The removal AC is a check the factory must satisfy before the work counts as done — not a politeness.
+
 ## Rules for Coordinated Changes
  
 When a change requires both backend and frontend updates (e.g., renaming a JSON field), both must be in the same issue. If they're in separate issues, the first one breaks the second one's tests until both merge.

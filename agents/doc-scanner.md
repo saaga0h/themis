@@ -60,8 +60,6 @@ ls -R docs/subsystems/ 2>/dev/null
 
 For each doc file found, note: path, first heading, `@tier` annotation if present, approximate line count.
 
-Read `docs/content-plan.md` if it exists — note which entries are listed.
-
 ### Phase 4: Identify drift
 
 Compare Phase 2 (code) against Phase 3 (docs):
@@ -76,9 +74,9 @@ Compare Phase 2 (code) against Phase 3 (docs):
 
 **Build targets**: list Makefile targets / npm scripts vs what docs describe.
 
-**Subsystems**: list identified code groupings vs what `docs/subsystems/` contains.
-
 **Dead references**: check if any doc file references source files that no longer exist (grep for `@source` and file path references).
+
+(Subsystem/module docs are generated on demand from the code, not a maintained tier, so they are not drift-tracked — identify subsystem *candidates* below instead.)
 
 ## Output format
 
@@ -112,7 +110,6 @@ Compare Phase 2 (code) against Phase 3 (docs):
 - docs/datamodel.md: <exists | missing | not needed (no database)>
 - docs/api-reference.md: <exists | missing | not needed (no API)>
 - docs/messaging.md: <exists | missing | not needed (no message broker)>
-- docs/content-plan.md: <exists | missing>
 
 ### Drift
 <for each category: what the docs say vs what the code shows>
@@ -131,9 +128,6 @@ Compare Phase 2 (code) against Phase 3 (docs):
 
 #### Build Targets
 <new make/npm/cargo targets not documented>
-
-#### Subsystems
-<code groupings that don't have docs/subsystems/ entries>
 
 #### Dead References
 <doc references to files/functions that no longer exist>

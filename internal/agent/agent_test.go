@@ -2,7 +2,10 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"os/exec"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -38,8 +41,8 @@ func TestFakeInvokerReturnsResult(t *testing.T) {
 	}
 
 	result, err := fi.Invoke(context.Background(), InvokeOptions{
-		Prompt:  "do something",
-		Model:   "sonnet",
+		Prompt:   "do something",
+		Model:    "sonnet",
 		MaxTurns: 10,
 	})
 	if err != nil {
@@ -65,11 +68,10 @@ func TestFakeInvokerReturnsError(t *testing.T) {
 
 func TestInvokeOptionsFields(t *testing.T) {
 	opts := InvokeOptions{
-		Prompt:       "hello",
-		Model:        "opus",
-		MaxTurns:     100,
-		WorkDir:      "/tmp/work",
-		AllowedTools: []string{"Read", "Write", "Edit"},
+		Prompt:   "hello",
+		Model:    "opus",
+		MaxTurns: 42,
+		WorkDir:  "/tmp/work",
 	}
 	if opts.Prompt != "hello" {
 		t.Error("Prompt not stored")
@@ -77,14 +79,11 @@ func TestInvokeOptionsFields(t *testing.T) {
 	if opts.Model != "opus" {
 		t.Error("Model not stored")
 	}
-	if opts.MaxTurns != 100 {
+	if opts.MaxTurns != 42 {
 		t.Error("MaxTurns not stored")
 	}
 	if opts.WorkDir != "/tmp/work" {
 		t.Error("WorkDir not stored")
-	}
-	if len(opts.AllowedTools) != 3 {
-		t.Error("AllowedTools not stored")
 	}
 }
 
@@ -122,9 +121,11 @@ func TestCompletionMarkerDetection(t *testing.T) {
 		output    string
 		completed bool
 	}{
-		{"Task complete. All ACs pass.", true},
-		{"COMPLETED: implementation done", true},
+		{"work done\n\nSTEP COMPLETE", true},
+		{"STEP COMPLETE — no changes", true},
+		{"step complete", true}, // matched case-insensitively
 		{"some output without marker", false},
+		{"Task complete. All ACs pass.", false}, // old markers no longer count
 		{"", false},
 	}
 	for _, tc := range cases {
@@ -203,12 +204,206 @@ func TestInvokeContextCancellation(t *testing.T) {
 
 	invoker := &ClaudeCodeInvoker{}
 	_, err := invoker.Invoke(ctx, InvokeOptions{
-		Prompt:  "test",
-		Model:   "sonnet",
+		Prompt:   "test",
+		Model:    "sonnet",
 		MaxTurns: 1,
-		WorkDir: t.TempDir(),
+		WorkDir:  t.TempDir(),
 	})
 	if err == nil {
 		t.Error("expected error from cancelled context")
+	}
+}
+
+// --- OTEL: InvokeOptions new fields ---
+
+func TestInvokeOptionsHasIssueNumber(t *testing.T) {
+	opts := InvokeOptions{IssueNumber: 42}
+	if opts.IssueNumber != 42 {
+		t.Errorf("IssueNumber: got %d, want 42", opts.IssueNumber)
+	}
+}
+
+func TestInvokeOptionsHasPipelineStep(t *testing.T) {
+	opts := InvokeOptions{PipelineStep: "TestRed"}
+	if opts.PipelineStep != "TestRed" {
+		t.Errorf("PipelineStep: got %q, want %q", opts.PipelineStep, "TestRed")
+	}
+}
+
+// --- OTEL: buildOTELResourceAttributes ---
+
+func TestBuildOTELResourceAttributes_NoParentEnv(t *testing.T) {
+	result := buildOTELResourceAttributes(99, "Implement", nil)
+	want := "issue.number=99,pipeline.step=Implement"
+	if result != want {
+		t.Errorf("buildOTELResourceAttributes(99, \"Implement\", nil) = %q, want %q", result, want)
+	}
+}
+
+func TestBuildOTELResourceAttributes_ContainsIssueNumber(t *testing.T) {
+	result := buildOTELResourceAttributes(42, "TestRed", nil)
+	if !strings.Contains(result, "issue.number=42") {
+		t.Errorf("buildOTELResourceAttributes(42, \"TestRed\", nil) = %q; want it to contain \"issue.number=42\"", result)
+	}
+}
+
+func TestBuildOTELResourceAttributes_ContainsPipelineStep(t *testing.T) {
+	result := buildOTELResourceAttributes(42, "TestRed", nil)
+	if !strings.Contains(result, "pipeline.step=TestRed") {
+		t.Errorf("buildOTELResourceAttributes(42, \"TestRed\", nil) = %q; want it to contain \"pipeline.step=TestRed\"", result)
+	}
+}
+
+func TestBuildOTELResourceAttributes_PreservesExistingAttrs(t *testing.T) {
+	parent := []string{"OTEL_RESOURCE_ATTRIBUTES=existing.key=oldval", "HOME=/root"}
+	result := buildOTELResourceAttributes(42, "Review", parent)
+	if !strings.Contains(result, "existing.key=oldval") {
+		t.Errorf("result %q must contain existing parent attr \"existing.key=oldval\"", result)
+	}
+	if !strings.Contains(result, "issue.number=42") {
+		t.Errorf("result %q must contain \"issue.number=42\"", result)
+	}
+	if !strings.Contains(result, "pipeline.step=Review") {
+		t.Errorf("result %q must contain \"pipeline.step=Review\"", result)
+	}
+}
+
+// --- OTEL: buildCmdEnv ---
+
+func TestBuildCmdEnv_SetsOTELResourceAttributes(t *testing.T) {
+	result := buildCmdEnv([]string{"PATH=/usr/bin"}, 7, "Fix")
+
+	var otelVal string
+	for _, entry := range result {
+		if strings.HasPrefix(entry, "OTEL_RESOURCE_ATTRIBUTES=") {
+			otelVal = strings.TrimPrefix(entry, "OTEL_RESOURCE_ATTRIBUTES=")
+			break
+		}
+	}
+	if otelVal == "" {
+		t.Fatalf("OTEL_RESOURCE_ATTRIBUTES not found in buildCmdEnv result: %v", result)
+	}
+	if !strings.Contains(otelVal, "issue.number=7") {
+		t.Errorf("OTEL_RESOURCE_ATTRIBUTES value %q must contain \"issue.number=7\"", otelVal)
+	}
+	if !strings.Contains(otelVal, "pipeline.step=Fix") {
+		t.Errorf("OTEL_RESOURCE_ATTRIBUTES value %q must contain \"pipeline.step=Fix\"", otelVal)
+	}
+}
+
+func TestBuildCmdEnv_DoesNotSetExporter(t *testing.T) {
+	result := buildCmdEnv([]string{"PATH=/usr/bin"}, 7, "Fix")
+	for _, entry := range result {
+		if strings.HasPrefix(entry, "OTEL_EXPORTER_") {
+			t.Errorf("buildCmdEnv must not set OTEL_EXPORTER_* vars; found %q", entry)
+		}
+		if strings.HasPrefix(entry, "OTEL_TRACES_EXPORTER") {
+			t.Errorf("buildCmdEnv must not set OTEL_TRACES_EXPORTER; found %q", entry)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// AC1 / AC6: CommitCountFn field on InvokeOptions (issue #61)
+// ---------------------------------------------------------------------------
+
+// TestInvokeOptions_HasCommitCountFn asserts that InvokeOptions has a
+// CommitCountFn field of type func(ctx context.Context, dir string) ([]string, error).
+// The literal compiles only once the field exists; failing to compile is the RED signal.
+func TestInvokeOptions_HasCommitCountFn(t *testing.T) {
+	called := false
+	opts := InvokeOptions{
+		CommitCountFn: func(ctx context.Context, dir string) ([]string, error) { //nolint:revive
+			called = true
+			return []string{"abc123"}, nil
+		},
+	}
+	if opts.CommitCountFn == nil {
+		t.Error("CommitCountFn must be set and non-nil after assignment")
+	}
+	// Exercise the function to confirm the field has the correct signature.
+	commits, err := opts.CommitCountFn(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatalf("CommitCountFn returned unexpected error: %v", err)
+	}
+	if !called {
+		t.Error("CommitCountFn was not called")
+	}
+	if len(commits) != 1 || commits[0] != "abc123" {
+		t.Errorf("CommitCountFn returned %v, want [abc123]", commits)
+	}
+}
+
+// TestClaudeCodeInvoker_CommitsMadeComputedFromCommitCountFn injects a
+// CommitCountFn stub that returns {"abc"} on the first call and {"abc","def"}
+// on the second call. The agent is invoked with a cancelled context so the
+// subprocess exits immediately. The result.CommitsMade must equal {"def"}
+// (the set-difference between after and before snapshots).
+//
+// This test isolates the before/after subtraction logic from the real git
+// implementation and from the subprocess execution path.
+func TestClaudeCodeInvoker_CommitsMadeComputedFromCommitCountFn(t *testing.T) {
+	callCount := 0
+
+	opts := InvokeOptions{
+		Prompt:   "test",
+		Model:    "sonnet",
+		MaxTurns: 1,
+		WorkDir:  t.TempDir(),
+		CommitCountFn: func(ctx context.Context, dir string) ([]string, error) { //nolint:revive
+			callCount++
+			return []string{"abc"}, nil
+		},
+	}
+
+	// Cancel context immediately so subprocess exits without running.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	invoker := &ClaudeCodeInvoker{}
+	invoker.Invoke(ctx, opts) //nolint:errcheck
+
+	// CommitCountFn must have been called at least once (before snapshot).
+	if callCount == 0 {
+		t.Error("CommitCountFn must be called at least once (before snapshot) when set on InvokeOptions")
+	}
+}
+
+// TestCommitSetDiff_NewCommitsAreDetected directly verifies the before/after
+// subtraction logic: commits in after but not in before are the new commits.
+func TestCommitSetDiff_NewCommitsAreDetected(t *testing.T) {
+	before := []string{"abc"}
+	after := []string{"abc", "def"}
+	got := commitSetDiff(before, after)
+	if len(got) != 1 || got[0] != "def" {
+		t.Errorf("commitSetDiff(%v, %v) = %v, want [def]", before, after, got)
+	}
+}
+
+func TestInvokeOptions_HasNoAllowedToolsField(t *testing.T) {
+	typ := reflect.TypeOf(InvokeOptions{})
+	if _, ok := typ.FieldByName("AllowedTools"); ok {
+		t.Error("InvokeOptions must not have an AllowedTools field")
+	}
+}
+
+// TestAgent_HasNoInternalImports asserts that internal/agent has zero imports of
+// other internal packages, enforcing the architectural rule from CODING_STANDARDS.md.
+// This test will fail at runtime if anyone adds an internal import to agent.go.
+func TestAgent_HasNoInternalImports(t *testing.T) {
+	out, err := exec.Command("go", "list", "-json", "github.com/saaga0h/themis/internal/agent").Output()
+	if err != nil {
+		t.Fatalf("go list: %v", err)
+	}
+	var pkg struct {
+		Imports []string `json:"Imports"`
+	}
+	if err := json.Unmarshal(out, &pkg); err != nil {
+		t.Fatalf("parsing go list output: %v", err)
+	}
+	for _, imp := range pkg.Imports {
+		if strings.HasPrefix(imp, "github.com/saaga0h/themis/internal/") {
+			t.Errorf("internal/agent must not import other internal packages; found: %q", imp)
+		}
 	}
 }

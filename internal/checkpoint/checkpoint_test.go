@@ -5,35 +5,52 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
-	"git.home.federation.fi/lavernea/themis/internal/checkpoint"
+	"github.com/saaga0h/themis/internal/checkpoint"
 )
 
-// initGitRepo creates a temp git repo with an initial commit and returns its path.
+// initGitRepo creates a temp git repo with an initial commit and a remote whose
+// tracking branch (origin/main) marks the base, then returns the repo path.
+//
+// The remote is required because the checkpoint walks BranchCommitLog, which
+// enumerates commits relative to the nearest remote-tracking branch (merge-base
+// against refs/remotes/). A repo with no remote yields an empty log — exactly
+// the situation in production, where the working tree is always cloned from the
+// tracker. The initial commit becomes the base; commits added afterwards by
+// makeCommit are "ahead" and therefore visible to the checkpoint.
 func initGitRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
+	bareDir := t.TempDir()
 
-	run := func(args ...string) {
+	run := func(workDir string, args ...string) {
 		t.Helper()
 		cmd := exec.Command(args[0], args[1:]...)
-		cmd.Dir = dir
+		cmd.Dir = workDir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("command %v failed: %v\n%s", args, err, out)
 		}
 	}
 
-	run("git", "init")
-	run("git", "config", "user.email", "test@test.com")
-	run("git", "config", "user.name", "Test")
+	run(bareDir, "git", "init", "--bare", "--initial-branch=main")
+
+	run(dir, "git", "init", "--initial-branch=main")
+	run(dir, "git", "config", "user.email", "test@test.com")
+	run(dir, "git", "config", "user.name", "Test")
 
 	f := filepath.Join(dir, "README.md")
 	if err := os.WriteFile(f, []byte("# test\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	run("git", "add", "README.md")
-	run("git", "commit", "-m", "chore: initial commit")
+	run(dir, "git", "add", "README.md")
+	run(dir, "git", "commit", "-m", "chore: initial commit")
+
+	// Establish origin/main as the base so merge-base resolution succeeds.
+	run(dir, "git", "remote", "add", "origin", bareDir)
+	run(dir, "git", "push", "origin", "HEAD:refs/heads/main")
+	run(dir, "git", "fetch", "origin")
 
 	return dir
 }
@@ -57,8 +74,8 @@ func makeCommit(t *testing.T, dir, message string) {
 	run("git", "commit", "-m", message)
 }
 
-// AC: Checkpoint verification after TestRed confirms last commit message starts with test(
-// AC: Checkpoint verification after Implement confirms last commit message starts with feat(
+// Checkpoint verification after TestRed confirms last commit message starts with test(
+// Checkpoint verification after Implement confirms last commit message starts with feat(
 
 func TestVerifyCommitPrefix_Matches(t *testing.T) {
 	dir := initGitRepo(t)
@@ -88,7 +105,7 @@ func TestVerifyCommitPrefix_ImplementPrefix(t *testing.T) {
 	}
 }
 
-// AC: Checkpoint verification detects dirty working tree and reports error
+// Checkpoint verification detects dirty working tree and reports error
 
 func TestVerifyCleanWorkingTree_Clean(t *testing.T) {
 	dir := initGitRepo(t)
@@ -109,4 +126,28 @@ func TestVerifyCleanWorkingTree_Dirty(t *testing.T) {
 	if err == nil {
 		t.Error("VerifyCleanWorkingTree on dirty repo should return error")
 	}
+}
+
+func assertBranchIsMain(t *testing.T, dir string) {
+	t.Helper()
+	cmd := exec.Command("git", "symbolic-ref", "--short", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git symbolic-ref: %v\n%s", err, out)
+	}
+	if got := strings.TrimSpace(string(out)); got != "main" {
+		t.Errorf("expected branch 'main', got %q", got)
+	}
+}
+
+func TestInitGitRepo_DefaultBranchIsMain(t *testing.T) {
+	assertBranchIsMain(t, initGitRepo(t))
+}
+
+func TestInitGitRepo_PortableUnderDefaultBranchMaster(t *testing.T) {
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "init.defaultBranch")
+	t.Setenv("GIT_CONFIG_VALUE_0", "master")
+	assertBranchIsMain(t, initGitRepo(t))
 }

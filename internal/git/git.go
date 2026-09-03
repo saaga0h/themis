@@ -1,11 +1,18 @@
+// Package git provides context-aware wrappers around git subprocess calls. Every
+// exported function takes a context.Context and routes through one internal
+// helper that requires an absolute working directory; this package is the only
+// place in the factory that shells out to git.
 package git
 
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -44,6 +51,26 @@ func WorkingTreeClean(ctx context.Context, dir string) (bool, error) {
 		return false, fmt.Errorf("git status: %w", err)
 	}
 	return strings.TrimSpace(out) == "", nil
+}
+
+// CleanWorkingTree discards uncommitted changes to tracked files and removes
+// untracked files/directories, without touching gitignored paths (so
+// .themis/state.json and .themis/review-results.json survive). It returns the
+// number of dirty paths that were reported before cleaning, for logging.
+func CleanWorkingTree(ctx context.Context, dir string) (int, error) {
+	status, err := runGit(ctx, dir, "status", "--porcelain")
+	if err != nil {
+		return 0, fmt.Errorf("git status: %w", err)
+	}
+	dirtyCount := len(parseLines(status))
+
+	if _, err := runGit(ctx, dir, "checkout", "--", "."); err != nil {
+		return 0, fmt.Errorf("git checkout -- .: %w", err)
+	}
+	if _, err := runGit(ctx, dir, "clean", "-fd"); err != nil {
+		return 0, fmt.Errorf("git clean -fd: %w", err)
+	}
+	return dirtyCount, nil
 }
 
 // CurrentBranch returns the name of the currently checked-out branch.
@@ -91,11 +118,187 @@ func Fetch(ctx context.Context, dir string) error {
 	return nil
 }
 
+// ChangedFiles returns newline-separated file paths changed on HEAD relative to
+// the nearest remote tracking branch, using git diff --name-only against the
+// merge-base. Returns empty string when no remote tracking branch exists or any
+// git command fails.
+func ChangedFiles(ctx context.Context, dir string) string {
+	base := branchMergeBase(ctx, dir)
+	if base == "" {
+		return ""
+	}
+	out, err := runGit(ctx, dir, "diff", "--name-only", base)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
+
+// branchMergeBase returns the merge-base SHA between HEAD and the nearest remote
+// tracking branch. Returns empty string if no remote exists or any git command fails.
+// MergeBaseWith returns the merge-base SHA between HEAD and the given base branch,
+// trying origin/<base> then <base>, or "" when neither resolves or base is empty.
+// This is the base a footprint/diff check compares against — the issue's *actual*
+// base branch, not whatever branchMergeBase's first remote ref happens to be (with
+// multiple remotes that can pick an unrelated branch and yield a wildly stale base).
+func MergeBaseWith(ctx context.Context, dir, base string) string {
+	if strings.TrimSpace(base) == "" {
+		return ""
+	}
+	for _, ref := range []string{"origin/" + base, base} {
+		if mb, err := runGit(ctx, dir, "merge-base", "HEAD", ref); err == nil {
+			if s := strings.TrimSpace(mb); s != "" {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
+func branchMergeBase(ctx context.Context, dir string) string {
+	refs, err := runGit(ctx, dir, "for-each-ref", "--format=%(refname:short)", "refs/remotes/")
+	if err != nil || strings.TrimSpace(refs) == "" {
+		return ""
+	}
+	for _, ref := range parseLines(refs) {
+		if strings.Contains(ref, "/HEAD") {
+			continue
+		}
+		mergeBase, err := runGit(ctx, dir, "merge-base", "HEAD", ref)
+		if err != nil {
+			continue
+		}
+		return strings.TrimSpace(mergeBase)
+	}
+	return ""
+}
+
+// BranchCommitLog returns git log --oneline output for commits on the current
+// branch relative to the nearest remote tracking branch. Returns empty string
+// when no remote exists or any git command fails.
+func BranchCommitLog(ctx context.Context, dir string) string {
+	base := branchMergeBase(ctx, dir)
+	if base == "" {
+		return ""
+	}
+	out, err := runGit(ctx, dir, "log", "--oneline", base+"..HEAD")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
+
+// CommitsAheadOfBase counts commits reachable from HEAD but not from the base branch.
+// It tries origin/<base> first, then <base> directly.
+// Returns an error if neither ref can be resolved.
+func CommitsAheadOfBase(ctx context.Context, dir, base string) (int, error) {
+	for _, ref := range []string{"origin/" + base, base} {
+		out, err := runGit(ctx, dir, "rev-list", "--count", ref+"..HEAD")
+		if err != nil {
+			continue
+		}
+		n, err := strconv.Atoi(strings.TrimSpace(out))
+		if err != nil {
+			continue
+		}
+		return n, nil
+	}
+	return 0, fmt.Errorf("could not count commits ahead of %s", base)
+}
+
+// DiffLineCount returns the total number of changed lines (insertions plus
+// deletions) on the current branch relative to the nearest remote tracking
+// branch. Returns 0 when no remote exists or any git command fails. Binary-file
+// rows (which git reports as "-") are skipped.
+func DiffLineCount(ctx context.Context, dir string) int {
+	base := branchMergeBase(ctx, dir)
+	if base == "" {
+		return 0
+	}
+	out, err := runGit(ctx, dir, "diff", "--numstat", base)
+	if err != nil {
+		return 0
+	}
+	total := 0
+	for _, line := range parseLines(out) {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		added, errA := strconv.Atoi(fields[0])
+		deleted, errD := strconv.Atoi(fields[1])
+		if errA != nil || errD != nil {
+			continue
+		}
+		total += added + deleted
+	}
+	return total
+}
+
 // PushBranch pushes the current branch to origin.
 func PushBranch(ctx context.Context, dir, branch string) error {
 	_, err := runGit(ctx, dir, "push", "-u", "origin", branch)
 	if err != nil {
 		return fmt.Errorf("git push origin %s: %w", branch, err)
+	}
+	return nil
+}
+
+// giteaTokenAuthHeader builds the HTTP Basic-auth header value that authenticates
+// a git-over-HTTPS request to Gitea with a personal access token. Gitea accepts a
+// token as the Basic-auth username (the `https://<token>@host/...` form), so the
+// credential is base64("<token>:").
+func giteaTokenAuthHeader(token string) string {
+	return "Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte(token+":"))
+}
+
+// PushBranchWithToken pushes branch to an explicit https remote URL, authenticating
+// with a Gitea token. The token is passed as an HTTP Authorization header injected
+// through git's environment config (GIT_CONFIG_*), so it never appears in the
+// remote URL, the process arguments, or any on-disk git config — and a push error
+// cannot echo it. This lets the factory push with the same GITEA_TOKEN it uses for
+// the API, requiring no credentials stored in any repo's remote (SSH keys or a
+// token baked into .git/config).
+func PushBranchWithToken(ctx context.Context, dir, remoteURL, branch, token string) error {
+	if !filepath.IsAbs(dir) {
+		return fmt.Errorf("dir must be an absolute path, got %q", dir)
+	}
+	cmd := exec.CommandContext(ctx, "git", "-C", dir, "push", remoteURL, branch)
+	cmd.Env = append(os.Environ(),
+		"GIT_CONFIG_COUNT=1",
+		"GIT_CONFIG_KEY_0=http.extraheader",
+		"GIT_CONFIG_VALUE_0="+giteaTokenAuthHeader(token),
+	)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		// stderr may name the remote URL (which holds no token — auth is in the
+		// header) but never the credential, so it is safe to surface.
+		return fmt.Errorf("git push (token auth) %s: %w: %s", branch, err, strings.TrimSpace(stderr.String()))
+	}
+	return nil
+}
+
+// CheckIdentity verifies that a git author identity is configured — user.name and
+// user.email both resolve to non-empty values in dir. It returns an actionable
+// error when either is missing so the factory can fail fast before the first
+// commit-producing step, rather than letting `git commit` fail deep in the
+// pipeline and surface as a misleading "uncommitted changes" checkpoint error.
+func CheckIdentity(ctx context.Context, dir string) error {
+	// `git config user.name` exits non-zero when unset; treat that as empty.
+	name, _ := runGit(ctx, dir, "config", "user.name")
+	email, _ := runGit(ctx, dir, "config", "user.email")
+	return identityError(name, email)
+}
+
+// identityError reports whether a resolved (name, email) pair is a usable git
+// identity, returning a fix-it error when either side is blank.
+func identityError(name, email string) error {
+	if strings.TrimSpace(name) == "" || strings.TrimSpace(email) == "" {
+		return fmt.Errorf("git identity not configured: user.name and user.email must be set — " +
+			"configure them in the repo's .git/config, pass GIT_AUTHOR_NAME/GIT_AUTHOR_EMAIL/" +
+			"GIT_COMMITTER_NAME/GIT_COMMITTER_EMAIL, or bake a default into the sandbox image")
 	}
 	return nil
 }

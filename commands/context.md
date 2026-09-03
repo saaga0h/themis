@@ -158,7 +158,7 @@ CLAUDE.md is not a developer reference. It is a **last-resort safety net**: the 
 - All make targets or scripts → `docs/development.md` Make Targets
 - Architecture or system overviews → `ARCHITECTURE.md`
 - Why design choices were made → `CONCEPTS.md`
-- Subsystem explanations → `docs/subsystems/<name>/README.md`
+- Subsystem explanations → `go doc ./<pkg>` (or, on demand, `/document --full`)
 
 **What still belongs in CLAUDE.md:** the one-liner that prevents a hard failure — "tests require Postgres on :5433", "don't run `go build` directly, codegen runs via `make build`", "this repo has two go.mod files, don't merge them". Facts so sharp and failure-critical they must always be in context, not looked up.
 

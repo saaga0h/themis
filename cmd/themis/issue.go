@@ -6,11 +6,13 @@ import (
 )
 
 type issueArgs struct {
-	number   int
-	provider string
+	number    int
+	provider  string
+	maxTurns  int
+	templates string
 }
 
-// parseIssueArgs parses [<number> [--provider github|gitea]] from args.
+// parseIssueArgs parses [<number> [--provider github|gitea] [--max-turns N] [--templates DIR]] from args.
 func parseIssueArgs(args []string) (issueArgs, error) {
 	if len(args) == 0 || (len(args) > 0 && len(args[0]) > 0 && args[0][0] == '-') {
 		return issueArgs{}, fmt.Errorf("issue number is required")
@@ -22,13 +24,34 @@ func parseIssueArgs(args []string) (issueArgs, error) {
 	}
 
 	provider := "github"
+	maxTurns := defaultMaxTurns
+	templates := ""
 	for i := 1; i < len(args); i++ {
-		if args[i] == "--provider" {
+		switch args[i] {
+		case "--provider":
 			if i+1 >= len(args) {
 				return issueArgs{}, fmt.Errorf("--provider requires a value")
 			}
 			i++
 			provider = args[i]
+		case "--templates":
+			if i+1 >= len(args) {
+				return issueArgs{}, fmt.Errorf("--templates requires a value")
+			}
+			i++
+			templates = args[i]
+		case "--max-turns":
+			if i+1 >= len(args) {
+				return issueArgs{}, fmt.Errorf("--max-turns requires a value")
+			}
+			i++
+			maxTurns, err = strconv.Atoi(args[i])
+			if err != nil {
+				return issueArgs{}, fmt.Errorf("--max-turns must be an integer, got %q", args[i])
+			}
+			if maxTurns <= 0 {
+				return issueArgs{}, fmt.Errorf("--max-turns must be a positive integer, got %d", maxTurns)
+			}
 		}
 	}
 
@@ -38,5 +61,5 @@ func parseIssueArgs(args []string) (issueArgs, error) {
 		return issueArgs{}, fmt.Errorf("unknown provider %q (must be github or gitea)", provider)
 	}
 
-	return issueArgs{number: n, provider: provider}, nil
+	return issueArgs{number: n, provider: provider, maxTurns: maxTurns, templates: templates}, nil
 }

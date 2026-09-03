@@ -2,8 +2,10 @@ package pipeline
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -42,14 +44,13 @@ func TestAllStepsDefined(t *testing.T) {
 
 func TestPipelineStateFields(t *testing.T) {
 	ps := PipelineState{
-		IssueNumber:     42,
-		CurrentStep:     StepFetch,
-		ReviewCycle:     0,
-		MaxReviewCycles: 2,
-		TestFixAttempts: map[string]int{"AC-1": 1},
-		Commits:         []string{"abc123"},
-		StartedAt:       time.Now(),
-		StepHistory:     []StepResult{{Success: true}},
+		IssueNumber:       42,
+		CurrentStep:       StepFetch,
+		TestFixAttempts:   map[string]int{"AC-1": 1},
+		ImplementAttempts: 1,
+		Commits:           []string{"abc123"},
+		StartedAt:         time.Now(),
+		StepHistory:       []StepResult{{Success: true}},
 	}
 	if ps.IssueNumber != 42 {
 		t.Error("IssueNumber not stored")
@@ -57,8 +58,8 @@ func TestPipelineStateFields(t *testing.T) {
 	if ps.CurrentStep != StepFetch {
 		t.Error("CurrentStep not stored")
 	}
-	if ps.MaxReviewCycles != 2 {
-		t.Error("MaxReviewCycles not stored")
+	if ps.ImplementAttempts != 1 {
+		t.Error("ImplementAttempts not stored")
 	}
 	if ps.TestFixAttempts["AC-1"] != 1 {
 		t.Error("TestFixAttempts not stored")
@@ -71,7 +72,46 @@ func TestPipelineStateFields(t *testing.T) {
 	}
 }
 
-// --- Advance() happy path ---
+// TestPipelineState_AttemptFieldsAreOnlyTestFixAndImplement is a regression
+// guard for issue #56: crash-recovery resume logging must derive its attempt
+// count from one of the two existing counters (TestFixAttempts,
+// ImplementAttempts) rather than inventing a third attempt-tracking mechanism.
+// This asserts the exact field set on PipelineState so a future third counter
+// trips this test rather than silently expanding the state shape.
+func TestPipelineState_AttemptFieldsAreOnlyTestFixAndImplement(t *testing.T) {
+	want := map[string]bool{
+		"IssueNumber":       true,
+		"CurrentStep":       true,
+		"TestFixAttempts":   true,
+		"ImplementAttempts": true,
+		"Commits":           true,
+		"StartedAt":         true,
+		"StepHistory":       true,
+		"CodeVersion":       true,
+	}
+
+	typ := reflect.TypeOf(PipelineState{})
+	got := map[string]bool{}
+	for i := 0; i < typ.NumField(); i++ {
+		got[typ.Field(i).Name] = true
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("PipelineState has %d fields, want %d: got=%v want=%v", len(got), len(want), got, want)
+	}
+	for name := range want {
+		if !got[name] {
+			t.Errorf("PipelineState missing expected field %q", name)
+		}
+	}
+	for name := range got {
+		if !want[name] {
+			t.Errorf("PipelineState has unexpected field %q — attempt counters must stay limited to TestFixAttempts and ImplementAttempts; do not add a third mechanism", name)
+		}
+	}
+}
+
+// --- Advance() happy path: linear, no Fix/Refactor, review never loops ---
 
 func TestAdvanceHappyPath(t *testing.T) {
 	happyPath := []struct {
@@ -82,8 +122,7 @@ func TestAdvanceHappyPath(t *testing.T) {
 		{StepScan, StepBranch},
 		{StepBranch, StepTestRed},
 		{StepTestRed, StepImplement},
-		{StepImplement, StepRefactor},
-		{StepRefactor, StepReview},
+		{StepImplement, StepReview},
 		{StepReview, StepDocs},
 		{StepDocs, StepShip},
 	}
@@ -91,7 +130,6 @@ func TestAdvanceHappyPath(t *testing.T) {
 	for _, tc := range happyPath {
 		ps := &PipelineState{
 			CurrentStep:     tc.from,
-			MaxReviewCycles: 2,
 			TestFixAttempts: map[string]int{},
 		}
 		next, err := ps.Advance(StepResult{Success: true})
@@ -105,93 +143,167 @@ func TestAdvanceHappyPath(t *testing.T) {
 	}
 }
 
-// --- Review cycle logic ---
-
-func TestAdvanceReviewBlockingReturnsFix(t *testing.T) {
+// A successful TestRed result advances to Implement even when the retry counter
+// is already at the maximum — success short-circuits the attempt check, so a
+// resumed or rebased branch whose failing tests already exist does not stall on
+// the ceiling.
+func TestAdvanceTestRedSuccessAdvancesAtMaxAttempts(t *testing.T) {
 	ps := &PipelineState{
-		CurrentStep:     StepReview,
-		ReviewCycle:     0,
-		MaxReviewCycles: 2,
-		TestFixAttempts: map[string]int{},
-	}
-	next, err := ps.Advance(StepResult{Success: true, BlockingFindings: true})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if next != StepFix {
-		t.Errorf("expected StepFix, got %v", next)
-	}
-	if ps.ReviewCycle != 1 {
-		t.Errorf("expected ReviewCycle=1, got %d", ps.ReviewCycle)
-	}
-}
-
-func TestAdvanceFixReturnsReview(t *testing.T) {
-	ps := &PipelineState{
-		CurrentStep:     StepFix,
-		ReviewCycle:     1,
-		MaxReviewCycles: 2,
-		TestFixAttempts: map[string]int{},
+		CurrentStep:     StepTestRed,
+		TestFixAttempts: map[string]int{"tests": 3},
 	}
 	next, err := ps.Advance(StepResult{Success: true})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if next != StepReview {
-		t.Errorf("expected StepReview, got %v", next)
+	if next != StepImplement {
+		t.Errorf("got %v, want %v", next, StepImplement)
 	}
 }
 
-func TestAdvanceReviewCycleLimitExceededNoRound3(t *testing.T) {
+// A failed TestRed result at the maximum attempt count still returns the ceiling
+// error.
+func TestAdvanceTestRedFailureAtMaxAttemptsErrors(t *testing.T) {
 	ps := &PipelineState{
-		CurrentStep:     StepReview,
-		ReviewCycle:     2,
-		MaxReviewCycles: 2,
-		TestFixAttempts: map[string]int{},
+		CurrentStep:     StepTestRed,
+		TestFixAttempts: map[string]int{"tests": 3},
 	}
-	_, err := ps.Advance(StepResult{Success: true, BlockingFindings: true})
-	if err == nil {
-		t.Error("expected error when review cycle limit reached without round-3 trigger")
+	if _, err := ps.Advance(StepResult{Success: false, TestACKey: "tests"}); err == nil {
+		t.Fatal("expected error when TestRed fails at the maximum attempt count")
 	}
 }
 
-func TestAdvanceRound3TriggerPermitsCycle3(t *testing.T) {
-	ps := &PipelineState{
-		CurrentStep:     StepReview,
-		ReviewCycle:     2,
-		MaxReviewCycles: 2,
-		TestFixAttempts: map[string]int{},
-	}
-	next, err := ps.Advance(StepResult{
-		Success:          true,
-		BlockingFindings: true,
-		Round3Trigger:    TriggerSecurity,
-	})
+// --- Implement green gate ---
+
+// A completed-but-red Implement result (agent finished, e.g. a missed format/vet)
+// re-runs Implement and increments the attempt counter, rather than advancing to
+// Review with a broken build.
+func TestAdvanceImplementFailureRetries(t *testing.T) {
+	ps := &PipelineState{CurrentStep: StepImplement, TestFixAttempts: map[string]int{}}
+	next, err := ps.Advance(StepResult{Success: false, Completed: true})
 	if err != nil {
-		t.Fatalf("round-3 trigger should permit cycle 3, got error: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if next != StepFix {
-		t.Errorf("expected StepFix for round-3, got %v", next)
+	if next != StepImplement {
+		t.Errorf("got %v, want StepImplement (retry)", next)
 	}
-	if ps.ReviewCycle != 3 {
-		t.Errorf("expected ReviewCycle=3, got %d", ps.ReviewCycle)
+	if ps.ImplementAttempts != 1 {
+		t.Errorf("expected ImplementAttempts=1, got %d", ps.ImplementAttempts)
 	}
 }
 
-func TestAdvanceRound3CycleExhaustedReturnsError(t *testing.T) {
-	ps := &PipelineState{
-		CurrentStep:     StepReview,
-		ReviewCycle:     3,
-		MaxReviewCycles: 2,
-		TestFixAttempts: map[string]int{},
+// A red Implement result at the attempt ceiling returns an error so the issue is
+// blocked for a human rather than looping forever.
+func TestAdvanceImplementFailureAtMaxErrors(t *testing.T) {
+	ps := &PipelineState{CurrentStep: StepImplement, ImplementAttempts: maxGreenGateAttempts, TestFixAttempts: map[string]int{}}
+	if _, err := ps.Advance(StepResult{Success: false, Completed: true}); err == nil {
+		t.Fatal("expected error when Implement fails at the attempt ceiling")
 	}
-	_, err := ps.Advance(StepResult{
-		Success:          true,
-		BlockingFindings: true,
-		Round3Trigger:    TriggerSecurity,
-	})
-	if err == nil {
-		t.Error("expected error after cycle 3 exhausted")
+}
+
+// A stalled Implement — turn limit hit (not completed) with no commit progress and
+// still red — bails immediately with a MANUAL diagnosis rather than re-running the
+// full budget. This is the #58 non-convergence signature.
+func TestAdvanceImplementStallBailsImmediately(t *testing.T) {
+	ps := &PipelineState{CurrentStep: StepImplement, TestFixAttempts: map[string]int{}}
+	_, err := ps.Advance(StepResult{Success: false, Completed: false, Progressed: false})
+	var be *BlockError
+	if !errors.As(err, &be) {
+		t.Fatalf("expected *BlockError from a stall, got %v", err)
+	}
+	if be.Category != BlockManual {
+		t.Errorf("stall category = %q, want MANUAL", be.Category)
+	}
+	if ps.ImplementAttempts != 0 {
+		t.Errorf("a stall must not consume a retry; ImplementAttempts = %d, want 0", ps.ImplementAttempts)
+	}
+}
+
+// A truncated-but-progressing Implement (turn limit hit, but it committed) is still
+// converging, so it retries rather than bailing.
+func TestAdvanceImplementProgressedTruncatedRetries(t *testing.T) {
+	ps := &PipelineState{CurrentStep: StepImplement, TestFixAttempts: map[string]int{}}
+	next, err := ps.Advance(StepResult{Success: false, Completed: false, Progressed: true})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if next != StepImplement || ps.ImplementAttempts != 1 {
+		t.Errorf("a progressing run should retry: next=%v attempts=%d", next, ps.ImplementAttempts)
+	}
+}
+
+// Exhausting the retry ceiling while still progressing is RE-RUN (a bigger budget
+// may finish it), not MANUAL.
+func TestAdvanceImplementExhaustProgressedIsRerun(t *testing.T) {
+	ps := &PipelineState{CurrentStep: StepImplement, ImplementAttempts: maxGreenGateAttempts, TestFixAttempts: map[string]int{}}
+	_, err := ps.Advance(StepResult{Success: false, Completed: false, Progressed: true})
+	var be *BlockError
+	if !errors.As(err, &be) {
+		t.Fatalf("expected *BlockError, got %v", err)
+	}
+	if be.Category != BlockRerun {
+		t.Errorf("exhausted-but-progressing category = %q, want RE-RUN", be.Category)
+	}
+}
+
+// Exhausting the ceiling after a completed-but-red run is MANUAL — the agent
+// finished but the verify won't pass, which needs a human.
+func TestAdvanceImplementExhaustCompletedRedIsManual(t *testing.T) {
+	ps := &PipelineState{CurrentStep: StepImplement, ImplementAttempts: maxGreenGateAttempts, TestFixAttempts: map[string]int{}}
+	_, err := ps.Advance(StepResult{Success: false, Completed: true})
+	var be *BlockError
+	if !errors.As(err, &be) {
+		t.Fatalf("expected *BlockError, got %v", err)
+	}
+	if be.Category != BlockManual {
+		t.Errorf("exhausted-completed-red category = %q, want MANUAL", be.Category)
+	}
+}
+
+// Classify defaults an unrecognised error to MANUAL (the safe direction) and
+// recognises config and transient/infrastructure shapes.
+func TestClassifyHeuristics(t *testing.T) {
+	cases := []struct {
+		msg  string
+		want BlockCategory
+	}{
+		{"git identity not configured: user.name and user.email must be set", BlockConfig},
+		{"git push origin issue/1: connection refused", BlockRerun},
+		{"checkpoint failed after step Implement: working tree has uncommitted changes", BlockManual},
+	}
+	for _, c := range cases {
+		if got := Classify(errors.New(c.msg)).Category; got != c.want {
+			t.Errorf("Classify(%q).Category = %q, want %q", c.msg, got, c.want)
+		}
+	}
+}
+
+// A green Implement result advances straight to Review (no Refactor step).
+func TestAdvanceImplementSuccessAdvancesToReview(t *testing.T) {
+	ps := &PipelineState{CurrentStep: StepImplement, TestFixAttempts: map[string]int{}}
+	next, err := ps.Advance(StepResult{Success: true})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if next != StepReview {
+		t.Errorf("got %v, want StepReview", next)
+	}
+}
+
+// --- Review never loops ---
+
+// Review always proceeds to Docs and never routes to a fix step — its findings
+// inform the PR verdict, not control flow. This holds regardless of the result.
+func TestAdvanceReviewAlwaysProceedsToDocs(t *testing.T) {
+	for _, success := range []bool{true, false} {
+		ps := &PipelineState{CurrentStep: StepReview, TestFixAttempts: map[string]int{}}
+		next, err := ps.Advance(StepResult{Success: success})
+		if err != nil {
+			t.Fatalf("success=%v: unexpected error: %v", success, err)
+		}
+		if next != StepDocs {
+			t.Errorf("success=%v: got %v, want StepDocs", success, next)
+		}
 	}
 }
 
@@ -200,7 +312,6 @@ func TestAdvanceRound3CycleExhaustedReturnsError(t *testing.T) {
 func TestAdvanceTestFixAttemptRetry(t *testing.T) {
 	ps := &PipelineState{
 		CurrentStep:     StepTestRed,
-		MaxReviewCycles: 2,
 		TestFixAttempts: map[string]int{"AC-1": 1},
 	}
 	next, err := ps.Advance(StepResult{Success: false, TestACKey: "AC-1"})
@@ -218,7 +329,6 @@ func TestAdvanceTestFixAttemptRetry(t *testing.T) {
 func TestAdvanceTestFixAttemptExceeded(t *testing.T) {
 	ps := &PipelineState{
 		CurrentStep:     StepTestRed,
-		MaxReviewCycles: 2,
 		TestFixAttempts: map[string]int{"AC-1": 3},
 	}
 	_, err := ps.Advance(StepResult{Success: false, TestACKey: "AC-1"})
@@ -233,14 +343,13 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 
 	original := &PipelineState{
-		IssueNumber:     7,
-		CurrentStep:     StepImplement,
-		ReviewCycle:     1,
-		MaxReviewCycles: 2,
-		TestFixAttempts: map[string]int{"AC-1": 2, "AC-2": 0},
-		Commits:         []string{"sha1", "sha2"},
-		StartedAt:       time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
-		StepHistory:     []StepResult{{Success: true}, {Success: false, BlockingFindings: true}},
+		IssueNumber:       7,
+		CurrentStep:       StepImplement,
+		ImplementAttempts: 1,
+		TestFixAttempts:   map[string]int{"AC-1": 2, "AC-2": 0},
+		Commits:           []string{"sha1", "sha2"},
+		StartedAt:         time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+		StepHistory:       []StepResult{{Success: true}, {Success: false}},
 	}
 
 	if err := SaveState(dir, original); err != nil {
@@ -261,11 +370,8 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	if loaded.CurrentStep != original.CurrentStep {
 		t.Errorf("CurrentStep: got %v, want %v", loaded.CurrentStep, original.CurrentStep)
 	}
-	if loaded.ReviewCycle != original.ReviewCycle {
-		t.Errorf("ReviewCycle: got %d, want %d", loaded.ReviewCycle, original.ReviewCycle)
-	}
-	if loaded.MaxReviewCycles != original.MaxReviewCycles {
-		t.Errorf("MaxReviewCycles: got %d, want %d", loaded.MaxReviewCycles, original.MaxReviewCycles)
+	if loaded.ImplementAttempts != original.ImplementAttempts {
+		t.Errorf("ImplementAttempts: got %d, want %d", loaded.ImplementAttempts, original.ImplementAttempts)
 	}
 	if len(loaded.TestFixAttempts) != len(original.TestFixAttempts) {
 		t.Errorf("TestFixAttempts length: got %d, want %d", len(loaded.TestFixAttempts), len(original.TestFixAttempts))
@@ -308,7 +414,6 @@ func TestSaveStateWritesValidJSON(t *testing.T) {
 	ps := &PipelineState{
 		IssueNumber:     1,
 		CurrentStep:     StepFetch,
-		MaxReviewCycles: 2,
 		TestFixAttempts: map[string]int{},
 		StartedAt:       time.Now(),
 	}

@@ -1,42 +1,35 @@
 # Update documentation for issue #{{ISSUE_NUMBER}}
 
-## What changed
+## What this issue changed
+
+{{ISSUE_TITLE}}
+
+{{ACCEPTANCE_CRITERIA}}
+
+### Files changed
 
 {{CHANGED_FILES}}
 
-## Coding standards
+## Project standards (terminology and conventions)
 
-{{CODING_STANDARDS}}
+{{STANDARDS_DOCS}}
 
 ## Instructions
 
-Update documentation scoped to what this issue changed — not a full audit,
-just the diff. Do not rewrite sections unrelated to the changed code.
+This is a **minimal, issue-scoped** documentation pass — not an audit. A full
+documentation sweep (thoroughness, drift cleanup) is a separate `/document` run;
+that is its job, not yours.
 
-### Determine scope
+Ask one question: **does what this issue changed alter something a documentation
+reader needs to know?** — a CLI flag, an exported function or type, a config
+field, or user-facing behaviour.
 
-Group changed files by package or subsystem.
-
-### Check for required updates
-
-For each changed package:
-
-1. Does `docs/subsystems/<package-name>/README.md` exist? If the package is
-   new and substantial (new types, interfaces, or functions), it MUST be created.
-2. Does `ARCHITECTURE.md` list this package in its component inventory?
-   If not, it MUST be updated.
-3. Does `docs/content-plan.md` reference any new docs? If not, update it.
-
-### Update drifted docs
-
-For each doc that needs updating:
-- Update only the drifted sections — do not rewrite the whole doc
-- New package → update `ARCHITECTURE.md` component inventory and create
-  `docs/subsystems/<name>/README.md` if the package is substantial
-- New public type or function → update the relevant subsystem README
-- Existing behaviour changed → update any doc that describes that behaviour
-
-Do not create module-level docs per issue — that is a separate documentation pass.
+- **If yes:** find the single doc (or few) that describe that surface and make the
+  minimal edit. Use `grep -n` to locate the exact section and edit only it.
+  Mirror the project's existing doc structure — do not invent new docs or sections.
+- **If the change is internal-only** (no reader-facing surface changed), output
+  `STEP COMPLETE — no changes`. Do not document internal refactors and do not
+  scan for unrelated doc drift — that is the full documentation run's job.
 
 ## Commit
 
@@ -46,3 +39,16 @@ docs(<scope>): update documentation for issue #{{ISSUE_NUMBER}}
 ```
 
 If no docs needed updating, do not create an empty commit.
+
+## Completion
+
+First decide in one pass whether any documentation needs updating.
+If nothing needs updating, output immediately:
+
+STEP COMPLETE — no changes
+
+Do not re-scan, do not re-read source files looking for more doc opportunities.
+
+If docs were updated, commit and output:
+
+STEP COMPLETE

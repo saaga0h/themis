@@ -12,24 +12,57 @@
 
 {{BRANCH_NAME}}
 
+## Context
+
+### AC Status
+
+{{AC_STATUS}}
+
+### Pipeline Shape
+
+{{PIPELINE_SHAPE}}
+
+### Commit Log
+
+{{COMMIT_LOG}}
+
 ## Instructions
 
-Create a pull request for the completed work. The PR must:
+Use the `/pr-composition` skill to compose the PR description. Follow the pr-composition skill structure: status line, implementation narrative, pipeline shape, review findings, out-of-scope discoveries, and follow-ups (if any).
 
-1. Target the integration branch (never another feature branch)
-2. Include `Closes #{{ISSUE_NUMBER}}` in the first line of the body
-3. Summarise what was implemented
-4. Include an AC verification table mapping every AC to the test that proves it
-5. Include a **Review Notes** section listing every non-blocking finding
-   captured during the review cycle(s), for the human reviewer to decide on
-6. List any documentation changes made
+### Review findings — authoritative source
 
-### AC verification table format
+Read `.themis/review-results.json` for the review findings. The review step wrote
+it and it is authoritative. **Do not re-analyze the code or re-classify findings.**
 
-| AC | Test | Status |
-|----|------|--------|
-| <AC description> | `<test file>:<test name>` | ✓ |
+The factory never auto-fixes and never auto-merges — it hands findings to the
+human. Report the severities from the JSON as-is:
+- **CRITICAL / HIGH** findings (concrete security vulnerabilities, or acceptance
+  criteria with no test) are **blocking**. List them under "Blocking findings —
+  must be resolved before merge". When any exist, this PR is opened as a **draft**
+  (WIP) so it cannot be merged until a maintainer resolves them.
+- **LOW** findings are non-blocking notes. List them under "Reviewer observations
+  (not addressed — for maintainer triage)".
 
-### After creating the PR
+If `.themis/review-results.json` is absent or empty, state "No review findings"
+in the review section. Do not invent findings.
 
-Update the issue label: remove `ready-for-agent`, add `needs-review`.
+### PR body structure
+
+The PR body must:
+
+1. Include `Closes #{{ISSUE_NUMBER}}` as the first line
+2. Follow the pr-composition structure:
+   - **Status line**: "All ACs passed" or "N of M ACs passed — see below"
+   - **Implementation narrative**: what happened that commits don't capture
+   - **Pipeline shape**: what the commit history reveals (use the pipeline shape above)
+   - **Review findings**: from `.themis/review-results.json` only — not from your own analysis
+   - **Follow-ups**: explicitly deferred items (omit section if none)
+
+Output the complete PR body as your final response. Do not create the PR itself — the system will handle that.
+
+## Completion
+
+When the PR body is composed and output, output:
+
+STEP COMPLETE

@@ -1,327 +1,96 @@
 ---
-description: Audit and update project documentation. Discovers project type, scans for drift between code and docs, then updates what needs updating. Covers root docs (README, CONCEPTS, ARCHITECTURE) + 3-tier docs/ structure. Works across any language/framework.
+description: Audit and update project documentation. By default it updates the human-facing narrative — the root docs (README, CONCEPTS, ARCHITECTURE) and Tier-1 developer guides. With --full or --tier 2+ it generates deeper subsystem/module views from the code, for onboarding or a brownfield→factory transition — generated on demand, not a maintained tier. Works across any language/framework.
 argument-hint: [--dry-run] [--full] [--tier N]
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
 
 # Document Command
 
-You orchestrate documentation auditing and updates by delegating to specialized agents. You retain all judgment calls — what needs CONCEPTS.md, what earns a Tier 3 doc, how to synthesize the drift report.
+You orchestrate documentation auditing and updates by delegating to specialized agents. You retain all judgment calls — whether the project has conceptual depth worth a CONCEPTS.md, which module views earn generation, how to synthesize the drift report.
 
-## Documentation structure
+## What this owns — and what it does not
 
-**Root docs** (human-facing landing surface):
-- `README.md` — practical: what is this, how to set it up, how to run it
-- `CONCEPTS.md` — philosophical: why the design choices, core abstractions, novel mechanisms
-- `ARCHITECTURE.md` — technical: system overview, components, data flows, invariants, constraints
+Facts about the code live **in the code**, as package and symbol doc comments, read with `go doc` (or the language's equivalent). That is the fact layer, and the build pipeline maintains it. `/document` does **not** maintain a parallel subsystem-doc tier, and must never re-narrate code into prose files that then drift.
 
-**docs/ tier** (deeper reference, 3 tiers):
-- **Tier 1** (`docs/`) — development guide, data model, API reference, messaging, content plan
-- **Tier 2** (`docs/subsystems/<name>/`) — per-subsystem architecture, data flows, interfaces
-- **Tier 3** (`docs/subsystems/<name>/modules/`) — module-level business rules, implicit behaviors
+`/document` owns the **human-facing narrative**, in two regimes:
 
-**Modes:**
-- Default: update only what has drifted
-- `--full`: rebuild from scratch, treating code as sole source of truth
-- `--dry-run`: show what would change, write nothing
-- `--tier N`: scope audit to a specific tier (0=root docs, 1, 2, or 3)
+**Maintained (the default):**
+- **Root narrative** — `README.md` (what it is, how to run it), `CONCEPTS.md` (why the design), `ARCHITECTURE.md` (system structure, data flows, invariants).
+- **Tier-1 developer guides** (`docs/*.md`) — development guide, data model, API reference, and the like. Human references kept current.
 
----
+**Generated on demand (opt-in — `--full` / `--tier 2+`):**
+- **Subsystem / module views** — a navigable structure of an unfamiliar codebase, generated **from the code as sole source of truth**. Their purpose is **onboarding** and **brownfield→factory transition** (a baseline so the factory can work an existing project). They are regenerated when wanted, never hand-maintained — so they cannot drift.
 
-## Step 0: Parse arguments
+## Modes
 
-Note whether `--dry-run`, `--full`, `--tier`, or none was passed.
+- **Default (no flags):** audit and update the maintained human docs (root narrative + Tier-1 guides) that have drifted.
+- **`--full`:** additionally (re)generate the on-demand deep views (subsystems, modules) from the code. Use for transition/onboarding.
+- **`--tier N`:** scope to a tier — `0` root narrative, `1` developer guides, `2` subsystems, `3` modules. Tiers 2–3 are the on-demand deep views.
+- **`--dry-run`:** show what would change, write nothing.
 
 ---
 
-## Step 1: Scan
+## Step 0 — Parse arguments
 
-Delegate to **doc-scanner** agent. It will:
-- Identify project type(s) from signature files
-- Map the codebase structure (entry points, packages, config vars, migrations, routes, build targets)
-- Inventory all existing documentation (root docs + docs/ tree)
-- Identify drift between code and docs
-- Suggest subsystem candidates
+Note whether `--dry-run`, `--full`, `--tier`, or none was passed. **Tiers 2–3 run only under `--full` or an explicit `--tier 2`/`--tier 3`.** Default and `--tier 0/1` never touch subsystem/module views.
 
-Wait for the report before proceeding.
+## Step 1 — Scan
 
----
+Delegate to the **doc-scanner** agent: identify the project type, map the codebase structure (entry points, packages, config, routes, build targets), inventory the existing narrative docs, and identify drift between the code and the maintained docs. Wait for the report.
 
-## Step 2: Review scan results
+## Step 2 — Report drift
 
-Read the doc-scanner report. Determine:
+Present findings grouped by document — root narrative and Tier-1 guides always; subsystems/modules only when the deep views are in scope. Note dead references. If `--dry-run`, stop. If nothing drifted and no `--full`/`--tier 2+` was requested, say so and stop.
 
-1. **What root docs exist** — which of README, CONCEPTS, ARCHITECTURE are present?
-2. **What Tier 1 docs exist** — development.md, datamodel.md, api-reference.md, messaging.md, content-plan.md?
-3. **What subsystems are documented** — does `docs/subsystems/` exist? Which subsystems?
-4. **What has drifted** — entry points, config, data model, API, build targets, dead references?
-5. **What is missing entirely** — docs that should exist based on what the code has?
+## Step 3 — Update root narrative (default)
 
-### Subsystem confirmation
+Root docs require the most judgment.
 
-If `docs/subsystems/` exists, use the existing subsystem list as canonical. Check if the scanner found new code groupings that should be added.
+- **README.md** — if missing or drifted, delegate to **doc-writer** with the sections/format to produce (tagline + description + stack; prerequisites, setup, configuration table; commands; running/inspecting as applicable).
+- **ARCHITECTURE.md** — if the project has more than one component or a non-trivial data flow, delegate to **doc-writer** (system-overview diagram, component inventory, data flows, invariants, constraints). When updating, change labels/edges in place — don't restructure.
+- **CONCEPTS.md — write this yourself, never delegate.** It requires the deepest judgment about *why* the system works this way. Not every project needs one; if uncertain, ask. When it exists and drifted, update only the changed rationale, matching the existing style; flag rather than guess.
 
-If no subsystems are documented yet:
-- Review the scanner's subsystem candidates
-- If the groupings are clear, proceed
-- If ambiguous, ask the user: "The codebase suggests these subsystems: [list]. Does this match how you think about the project?"
+## Step 4 — Update Tier-1 developer guides (default)
 
----
+Determine which Tier-1 guides the project needs — development guide (always), data model (when there's a database), API reference (when there are routes), and so on. Delegate each to **doc-writer** in parallel, with the target path, source files, and drift details. `docs/development.md` must include a "When Things Look Wrong" troubleshooting table and a "Secrets & Deployment" section (what env vars exist, never how they're injected).
 
-## Step 3: Report drift
+## Step 5 — Generate deep views (opt-in: `--full` / `--tier 2+`)
 
-Present findings to the user, grouped by document:
+Only when requested. These are generated from the code as the sole source of truth, for onboarding / brownfield transition — not maintained afterward.
 
-```
-## Documentation Audit
+- **Subsystems (Tier 2):** for each code grouping the scanner identifies, delegate to **doc-writer** to produce a `docs/subsystems/<name>/README.md` that answers: how do I extend this? how do I diagnose problems? what is the failure behavior? Launch in parallel.
+- **Modules (Tier 3) — your judgment.** Only where a developer or LLM would make a wrong assumption that causes a bug (a silent failure mode; a non-obvious priority, threshold, or invariant). Delegate each to **doc-writer** with the specific non-obvious behavior to capture. Never for straightforward CRUD or wrappers.
 
-### Root Docs
-- README.md: <exists, up to date | exists, drifted: [specifics] | missing>
-- ARCHITECTURE.md: <exists, up to date | exists, drifted | missing | not needed>
-- CONCEPTS.md: <exists, up to date | exists, drifted | missing | not needed>
+## Step 6 — Verify
 
-### Tier 1
-- docs/development.md: <status + drift details>
-- docs/datamodel.md: <status>
-- docs/api-reference.md: <status>
-- docs/messaging.md: <status>
-- docs/content-plan.md: <status>
+Delegate to **codebase-scanner**: do the root docs exist with their expected sections; do `@parent`/`@source` references resolve; do cross-doc links resolve; is content duplicated between root and deeper docs? Report broken references or gaps.
 
-### Tier 2 (subsystems)
-<per subsystem: documented | undocumented | drifted>
+## Step 7 — Report
 
-### Tier 3 (modules)
-<per existing module doc: up to date | drifted | source file removed>
-
-### Dead References
-<docs that reference files/functions that no longer exist>
-```
-
-If `--dry-run` was passed, stop here.
-
-If nothing has drifted and `--full` was not passed, say so and stop.
+Summarize per document — created / updated / unchanged — plus coverage of the root narrative and Tier-1 guides, the generated deep views (if any), and the verification results.
 
 ---
 
-## Step 4: Update root docs
-
-Root docs require the most judgment. Handle each:
-
-### README.md
-
-If missing: delegate to **doc-writer** with the assignment to create it. Specify the format:
-- One-line tagline + brief description + tech stack
-- Prerequisites, Setup, Configuration table
-- Binaries/Commands/Scripts table
-- Running in Dev, Inspecting State, Infrastructure (as applicable)
-
-If exists and drifted: delegate to **doc-writer** with the specific sections that need updating and the drift details from the scan.
-
-### ARCHITECTURE.md
-
-If missing and the project has more than one component or non-trivial data flow: delegate to **doc-writer**. Specify the format:
-- Mermaid system overview diagram
-- Numbered sections with Table of Contents
-- Component inventory table, data flow sequence diagrams
-- Invariants section, Known Constraints section
-
-If exists and drifted: delegate to **doc-writer** with drift details. Instruct it to update component inventory, data flows, and Mermaid diagrams in place — change labels/edges, don't restructure layout.
-
-### CONCEPTS.md
-
-**Write this yourself** — do not delegate. This requires the deepest judgment about *why* the system works the way it does.
-
-If missing: assess whether the project has genuine conceptual depth — novel algorithms, non-obvious design philosophy, domain abstractions worth explaining. Not every project needs CONCEPTS.md. If uncertain, ask the user.
-
-If it should exist, write it with:
-- Numbered sections, Table of Contents
-- Problem Statement (what this solves, why the approach is non-obvious)
-- One section per core concept (definition, motivation, implementation sketch, what is novel)
-- Design Decisions and Roads Not Taken
-- Relationships Between Concepts (dependency diagram)
-
-If exists and drifted: update only the sections where algorithm descriptions or design decisions have changed. Match the existing style exactly. If uncertain whether a conceptual claim is still accurate, flag it rather than guessing.
-
----
-
-## Step 5: Update Tier 1 docs
-
-Determine which Tier 1 docs are needed based on the scan:
-
-| Document | Create when |
-|---|---|
-| `docs/development.md` | Always |
-| `docs/datamodel.md` | Database exists (migrations, ORM models, schema files) |
-| `docs/api-reference.md` | HTTP/gRPC/GraphQL routes exist |
-| `docs/messaging.md` | Message broker used (MQTT, Kafka, RabbitMQ, etc.) |
-| `docs/state-management.md` | Frontend with non-trivial state (Redux, Zustand, etc.) |
-| `docs/content-plan.md` | Always |
-
-For each needed doc, delegate to **doc-writer** (parallel — one agent per doc). Pass:
-- The target file path
-- The template to use (from the agent's template library)
-- The source files to read (from the scan report)
-- The drift details (what specifically needs creating or updating)
-
-**Special instructions for development.md:** must include a "When Things Look Wrong" troubleshooting table and a "Secrets & Deployment" section. The troubleshooting table maps symptoms → checks → fixes. Secrets section documents what env vars are needed without prescribing how they're injected.
-
-**content-plan.md**: generate from the actual docs/ tree. List every doc with path, tier, one-line description, and comma-separated tags. Tags are the subsystem names, concern areas, or keywords that a command can grep to find this doc — e.g. `mqtt,messaging,broker` or `auth,sessions,tokens` or `datamodel,schema,migrations`. Tags should match the vocabulary a developer would use when naming a feature or plan.
-
-```markdown
-# Documentation Content Plan
-
-| Path | Tier | Description | Tags |
-|---|---|---|---|
-| README.md | root | Project overview, setup, running | setup,onboarding,install |
-| ARCHITECTURE.md | root | System structure, data flows, invariants | architecture,system,components |
-| docs/development.md | 1 | Config reference, all commands, troubleshooting | dev,config,env,build,commands |
-| docs/subsystems/mqtt/README.md | 2 | MQTT subsystem | mqtt,messaging,broker,pubsub |
-...
-```
-
----
-
-## Step 6: Update Tier 2 docs
-
-For each subsystem (confirmed in Step 2), delegate to **doc-writer** with:
-- Target: `docs/subsystems/<name>/README.md`
-- Template: Tier 2 subsystem README
-- Source files: the key files identified by the scanner for that subsystem
-- Instruction: the README must answer these three questions somewhere in its content:
-  1. **How do I add X?** — the common extension path
-  2. **How do I diagnose problems?** — first 2-3 checks
-  3. **What is the failure behavior?** — drop and retry? crash? silently skip?
-
-Launch subsystem agents in parallel — they are independent of each other.
-
----
-
-## Step 7: Decide Tier 3
-
-**This is your decision, not an agent's.** Review the scan results and Tier 2 docs. Ask for each module: would a developer or LLM make a wrong assumption that leads to a bug if this module has no doc?
-
-The bar is **incident surface area**:
-- A function has a silent failure mode (wrong result, not error)
-- A priority order, threshold, or exclusion exists whose reason is not in the code
-- An invariant is enforced non-obviously
-- A bug was caused (or nearly caused) by misunderstanding this module
-
-For each module that earns a Tier 3 doc, delegate to **doc-writer** with:
-- Target: `docs/subsystems/<name>/modules/<module>.md`
-- Template: Tier 3 module doc
-- Source file path
-- Specific instruction about what non-obvious behavior to document
-
-Do NOT create Tier 3 for straightforward CRUD, wrapper functions, or anything fully covered by the Tier 2 README.
-
----
-
-## Step 8: Verify
-
-Delegate to **codebase-scanner** agent with this specific task:
-
-```
-Check the docs/ directory for consistency:
-- Does README.md exist with prerequisites + setup sections?
-- Does ARCHITECTURE.md exist with component inventory? (if project is non-trivial)
-- Do all files listed in docs/content-plan.md actually exist?
-- Do all @parent references in doc metadata resolve to existing files?
-- Do all @source references resolve to existing files?
-- Do markdown links between docs resolve (no dead cross-references)?
-- Is there content duplicated between root docs and docs/ tier?
-```
-
-Report any broken references or gaps.
-
----
-
-## Step 9: Report
-
-Present the final summary:
-
-```
-## Documentation Update Report
-
-### Root Docs
-- README.md: [created | updated section X | no change]
-- ARCHITECTURE.md: [created | updated section X | not needed | no change]
-- CONCEPTS.md: [created | updated section X | not needed | no change]
-
-### Tier 1
-- docs/development.md: [created | updated | no change]
-- docs/datamodel.md: [created | updated | skipped — no database | no change]
-- docs/content-plan.md: [created | updated]
-...
-
-### Tier 2
-- docs/subsystems/<name>/README.md: [created | updated | no change]
-...
-
-### Tier 3
-- docs/subsystems/<name>/modules/<module>.md: [created | no change]
-...
-
-### Verification
-- Cross-references: [all valid | N broken links]
-- Dead references: [none | N found]
-
-### Coverage
-- Root docs: [X/3] present
-- Tier 1: [X] docs covering [Y] project areas
-- Tier 2: [X/Y] subsystems documented
-- Tier 3: [X] module docs where [Y] were identified as needing them
-```
-
----
-
-## Writing style rules (for all delegated writing)
-
-Pass these to every doc-writer agent:
+## Writing style rules (pass to every doc-writer)
 
 - Code is the source of truth. If code and docs disagree, code wins.
-- Do not invent content. If you can't determine something from code alone, leave a TODO marker.
-- Do not duplicate between layers — README says what to run, ARCHITECTURE says how it's structured, CONCEPTS says why.
-- Match existing tone when updating.
-- Do not add padding or filler.
-- Do not remove sections — only update content within them.
-- Cross-reference: if adding to one doc, check if another needs a mention.
-- Mermaid diagrams: update labels and edges, don't restructure layout.
-- Tier 3: lead with non-obvious behavior, not function signature restatements.
-- Secrets: document what env vars exist, never prescribe how they're injected.
-
----
+- Do not invent content; leave a TODO marker when the code doesn't show it.
+- Do not duplicate between layers — README says what to run, ARCHITECTURE how it's structured, CONCEPTS why. **Never re-narrate code that `go doc` already documents.**
+- Match existing tone; no padding; update content within sections rather than removing them.
+- Mermaid diagrams: update labels/edges, don't restructure.
+- Secrets: document what env vars exist, never how they're injected.
 
 ## Important
 
-- **You are the orchestrator.** Agents do the mechanical work. You make the judgment calls.
-- **CONCEPTS.md is yours.** Never delegate it. It requires understanding *why*, not just *what*.
-- **Tier 3 decisions are yours.** Agents can't judge "would someone be surprised by this?" — you can.
-- **doc-scanner runs first, always.** Everything else depends on its report.
-- **Parallel when independent.** Tier 1 docs, Tier 2 subsystems, and Tier 3 modules are independent — launch their doc-writer agents in parallel.
-- **Do not invent content.** If the code doesn't clearly show something, flag it and ask the user rather than guessing.
+- **You are the orchestrator.** Agents do the mechanical work; you make the judgment calls.
+- **CONCEPTS.md is yours** — never delegate it.
+- **Tier-3 decisions are yours** — "would someone be surprised by this?" is a judgment.
+- **doc-scanner runs first, always.**
+- **Deep views are opt-in and on-demand.** Never generate or maintain a subsystem/module tier by default; the code (via `go doc`) is the fact layer.
+- **Do not invent content** — flag and ask rather than guess.
 
 ## Hard boundary with /context
 
-`/document` owns the full developer reference: setup, build commands, env vars, make targets, workflow, troubleshooting, architecture, subsystems, data model, API surface, design rationale, module business rules.
+`/document` owns the developer reference and narrative. `/context` owns only the failure-critical minimum that must be present in every agent context — facts so sharp that not knowing them causes a hard failure or silently wrong result on first contact (e.g. "tests need an external service running at a specific address", "use this build command due to codegen"). Those belong in CLAUDE.md, not here.
 
-`/context` owns **only the failure-critical minimum** that must be present in every agent context before any docs are loaded — facts so sharp that not knowing them causes a hard failure or silently wrong result on first contact.
-
-**Never put in docs/development.md what belongs in CLAUDE.md:**
-- "Tests require an external service running at a specific address" → CLAUDE.md
-- "Don't use the standard build command, use this one instead due to codegen" → CLAUDE.md
-- Non-obvious hard constraints an agent will violate immediately without being told → CLAUDE.md
-
-Everything else — the full setup guide, all env vars, all targets, all workflow — belongs here in docs/development.md, not in CLAUDE.md.
-
-If you find failure-critical facts buried in CLAUDE.md that are actually covered by docs/development.md with no hard-failure consequence, flag it for the user — CLAUDE.md may be longer than it needs to be.
-
-**After creating or updating `docs/development.md`:** check whether CLAUDE.md contains a `## Docs` section referencing it. If not, flag it in the final report:
-
-```
-Note: CLAUDE.md has no reference to docs/development.md. Consider adding:
-
-## Docs
-See `docs/development.md` for build commands, setup, env vars, and troubleshooting.
-```
-
-Do not write to CLAUDE.md yourself — that is `/context`'s territory.
+After creating or updating `docs/development.md`, check whether CLAUDE.md references it; if not, flag it in the report. Do not write to CLAUDE.md yourself — that is `/context`'s territory.
