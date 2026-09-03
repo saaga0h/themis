@@ -98,6 +98,12 @@ func TestIsDestructiveAC_TableDriven(t *testing.T) {
 		{"old thing no longer exists", "the old GiteaFetcher no longer exists in cmd/themis", true},
 		{"removed hardcoded config", "Removed hardcoded Finna config from GetSources handler", true},
 		{"plain behavioural AC", "CreateItem returns 400 for invalid itemType values", false},
+		// #121: a negation used as a precondition (subordinate clause) is not a removal.
+		{"precondition because", "when the issue branch cannot be checked out because it no longer exists, the runner resets to a fresh start", false},
+		{"precondition when", "returns a fresh start when the target branch no longer exists", false},
+		{"precondition if", "if the label no longer exists, the run skips the issue", false},
+		// A real removal that merely mentions a subordinator *after* the phrase stays destructive.
+		{"removal with trailing when", "the cache entry no longer exists when the run finishes", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -118,6 +124,30 @@ func TestValidateDestructiveChecks_ErrorsWhenNoCheckBlockPresent(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), offendingAC) {
 		t.Errorf("ValidateDestructiveChecks error must name the offending AC %q, got %q", offendingAC, err.Error())
+	}
+}
+
+// #121: a precondition-style AC (negation in a subordinate clause) must pass
+// intake with no check block demanded — the #56 wording that hard-failed before.
+func TestValidateDestructiveChecks_PassesWhenNegationIsPrecondition(t *testing.T) {
+	body := "## Acceptance Criteria\n- [ ] when the issue branch cannot be checked out because it no longer exists, the runner resets to a fresh start\n"
+	if err := issuespec.ValidateDestructiveChecks(body); err != nil {
+		t.Errorf("ValidateDestructiveChecks: got %v, want nil (negation is a precondition, not a removal)", err)
+	}
+}
+
+// #121: the rejection message names the matched trigger and suggests the fix.
+func TestValidateDestructiveChecks_ErrorNamesTriggerAndFix(t *testing.T) {
+	body := "## Acceptance Criteria\n- [ ] the old GiteaFetcher no longer exists in cmd/themis\n"
+	err := issuespec.ValidateDestructiveChecks(body)
+	if err == nil {
+		t.Fatal("ValidateDestructiveChecks: expected error for an unpaired destructive AC, got nil")
+	}
+	if !strings.Contains(err.Error(), "no longer exists") {
+		t.Errorf("error should name the trigger phrase %q, got %q", "no longer exists", err.Error())
+	}
+	if !strings.Contains(err.Error(), "reword") {
+		t.Errorf("error should suggest the fix (reword/add a check), got %q", err.Error())
 	}
 }
 

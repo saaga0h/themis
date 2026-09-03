@@ -161,18 +161,54 @@ func ParseCheckBlocks(body string) []string {
 	return blocks
 }
 
-// destructiveACRE matches the AC phrasings skills/issue-writer/SKILL.md
-// prescribes for negative/absence ACs: "No X remains", "X no longer exists",
-// and "Removed X".
-var destructiveACRE = regexp.MustCompile(`(?i)^no\b.*\bremains?\b|\bno longer exists?\b|^removed\b`)
+// leadingRemovalRE matches destructive ACs whose leading assertion is a removal:
+// "No X remains" / "Removed X" (per skills/issue-writer/SKILL.md). Both are
+// anchored to the start of the AC, so they fire only when the AC's main
+// assertion is the removal.
+var leadingRemovalRE = regexp.MustCompile(`(?i)^no\b.*\bremains?\b|^removed\b`)
+
+// noLongerExistsRE matches the "X no longer exists" absence phrasing. Unlike the
+// leading forms this can appear mid-sentence, so on its own it over-matches a
+// negation used as a *precondition* ("…because it no longer exists, the runner
+// resets…"). destructiveTrigger therefore treats it as destructive only when it
+// is not governed by a preceding subordinating conjunction (subordinatorRE).
+var noLongerExistsRE = regexp.MustCompile(`(?i)\bno longer exists?\b`)
+
+// subordinatorRE matches a subordinating conjunction. When one precedes a
+// "no longer exists" phrase in the AC, that phrase describes a condition rather
+// than asserting a removal the change must effect, so it is not destructive.
+// The set is deliberately limited to strong, unambiguous precondition markers:
+// broader ones (as, since, after, before, once, where) can appear innocuously in
+// a genuine removal AC, and wrongly excluding a real removal — silently dropping
+// its check requirement — is the worse failure than a false positive (which
+// yields an actionable "reword or add a check" error).
+var subordinatorRE = regexp.MustCompile(`(?i)\b(because|when|whenever|while|if|unless)\b`)
+
+// destructiveTrigger returns the phrase that classifies ac as a destructive AC,
+// or "" when ac is not destructive. A leading "No X remains" / "Removed X" always
+// qualifies; a "no longer exists" phrase qualifies only as a main assertion — one
+// with no subordinating conjunction before it (a subordinated phrase is a
+// precondition, not a removal). The returned trigger drives the rejection message.
+func destructiveTrigger(ac string) string {
+	ac = strings.TrimSpace(ac)
+	if s := leadingRemovalRE.FindString(ac); s != "" {
+		return s
+	}
+	if m := noLongerExistsRE.FindStringIndex(ac); m != nil && !subordinatorRE.MatchString(ac[:m[0]]) {
+		return ac[m[0]:m[1]]
+	}
+	return ""
+}
 
 // IsDestructiveAC reports whether ac describes a destructive/negative AC — one
 // asserting that something must no longer exist after the change (e.g. "No
-// GiteaQuerier struct remains in cmd/themis", "Removed hardcoded Finna config
-// from GetSources handler"). Destructive ACs require a paired check block; see
+// GiteaQuerier struct remains in cmd/themis", "The GiteaQuerier struct no longer
+// exists", "Removed hardcoded Finna config from GetSources handler"). A negation
+// that merely states a precondition ("…because the branch no longer exists…") is
+// not destructive. Destructive ACs require a paired check block; see
 // ValidateDestructiveChecks.
 func IsDestructiveAC(ac string) bool {
-	return destructiveACRE.MatchString(strings.TrimSpace(ac))
+	return destructiveTrigger(ac) != ""
 }
 
 // ValidateDestructiveChecks returns an error naming the offending AC when body
@@ -208,7 +244,8 @@ func ValidateDestructiveChecks(body string) error {
 
 	for i, m := range acMatches {
 		ac := strings.TrimSpace(body[m[2]:m[3]])
-		if !IsDestructiveAC(ac) {
+		trigger := destructiveTrigger(ac)
+		if trigger == "" {
 			continue
 		}
 		spanStart := m[0]
@@ -232,7 +269,7 @@ func ValidateDestructiveChecks(body string) error {
 			}
 		}
 		if !paired {
-			return fmt.Errorf("destructive AC %q has no accompanying check block", ac)
+			return fmt.Errorf("destructive AC %q (matched %q) requires a paired ```check``` block — add one, or reword if this phrase is a precondition rather than a removal", ac, trigger)
 		}
 	}
 	return nil
