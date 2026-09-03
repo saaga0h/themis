@@ -92,6 +92,12 @@ For every proposed slice, ask: **"What test can I write for this slice alone?"**
 - If the answer is a unit test with meaningful assertions → acceptable
 - If the answer is "the table exists" or "the function compiles" → not a slice,
   combine with something that produces a testable behavior
+
+Also ask: **can that verification run in the sandbox?** If a slice's test or
+check needs a tool or a live service the factory sandbox doesn't have (a cluster
+CLI, a deployed endpoint), flag it in the slice Notes — the sandbox-runnable part
+stays a check, the rest becomes an operator step. Catching this here keeps the
+issue-writer from authoring a check that the run-start preflight (#97) will reject.
 ---
  
 ## Sizing

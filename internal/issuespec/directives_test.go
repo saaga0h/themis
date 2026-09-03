@@ -115,6 +115,53 @@ func TestIsDestructiveAC_TableDriven(t *testing.T) {
 	}
 }
 
+func TestCheckBlockCommands_TableDriven(t *testing.T) {
+	tests := []struct {
+		name  string
+		check string
+		want  []string
+	}{
+		{"negated grep", "! grep -rq 'type X' ./...", []string{"grep"}},
+		{"guarded tool still seen", "test -f spec.nomad && nomad job validate spec.nomad", []string{"nomad"}},
+		{"pure builtins", "test ! -e cmd/themis/gitea_config.go && test ! -e cmd/themis/gitea_config_test.go", nil},
+		{"echo builtin", "echo hi", nil},
+		{"direct tool", "nomad job validate spec.nomad", []string{"nomad"}},
+		{"pipeline both commands", "grep -r X file | jq .", []string{"grep", "jq"}},
+		{"dedupes", "go build ./... && go test ./...", []string{"go"}},
+		{"env assignment stripped", "FOO=bar mytool run", []string{"mytool"}},
+		{"command -v is a builtin", "! command -v nomad", nil},
+		{"variable command omitted", "$TOOL validate X", nil},
+		{"command substitution omitted", "$(which nomad) validate", nil},
+		{"redirection not a command", "grep X file 2>&1", []string{"grep"}},
+		{"absolute path preserved", "/opt/nomad/bin/nomad validate", []string{"/opt/nomad/bin/nomad"}},
+		// Regression (#97 backtest): a `|` inside a quoted regex is not a pipe.
+		{"pipe inside quoted regex", "! grep -rEq 'func (A|B|C)' internal/runner/", []string{"grep"}},
+		// Regression (#97 backtest): a `|` inside $(...) is not a top-level pipe, and
+		// commands nested in the substitution are residue (not extracted).
+		{"pipe inside command substitution", `test -z "$(git diff --name-only | grep -vE '^(a/|b/)')"`, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := issuespec.CheckBlockCommands(tt.check)
+			if !slicesEqual(got, tt.want) {
+				t.Errorf("CheckBlockCommands(%q) = %v, want %v", tt.check, got, tt.want)
+			}
+		})
+	}
+}
+
+func slicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func TestValidateDestructiveChecks_ErrorsWhenNoCheckBlockPresent(t *testing.T) {
 	const offendingAC = "No GiteaQuerier struct remains in cmd/themis"
 	body := "## Acceptance Criteria\n- [ ] " + offendingAC + "\n"

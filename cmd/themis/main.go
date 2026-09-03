@@ -281,6 +281,36 @@ func runIssue(args []string) error {
 	return nil
 }
 
+// preflightCheckRunnability verifies that every command an issue's ```check```
+// blocks invoke resolves on PATH in this sandbox, before any agent work. A check
+// needing a missing binary (e.g. `nomad job validate` with no nomad in the image)
+// can never pass the green gate, so this fails the run up front with an actionable
+// message rather than discovering it after a full pipeline plus a review cycle
+// (#97). It probes only issue-declared checks. lookPath is injected for testing;
+// production passes exec.LookPath — OS-level resolution, so it is shell- and
+// platform-agnostic (no dependency on bash exit codes or `which`).
+func preflightCheckRunnability(issueNumber int, checks []string, lookPath func(string) (string, error)) error {
+	type miss struct{ check, cmd string }
+	var missing []miss
+	for _, check := range checks {
+		for _, cmd := range issuespec.CheckBlockCommands(check) {
+			if _, err := lookPath(cmd); err != nil {
+				missing = append(missing, miss{check: check, cmd: cmd})
+			}
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "issue #%d: a declared check block needs a command this sandbox does not have — the green gate could never run it:", issueNumber)
+	for _, m := range missing {
+		fmt.Fprintf(&b, "\n  missing %q (not on PATH)\n    in check: %s", m.cmd, m.check)
+	}
+	b.WriteString("\nfix: install the tool in the sandbox image, or move this verification to an operator step and keep only sandbox-runnable checks in the issue (see skills/issue-writer/SKILL.md). This is a run-start preflight (#97) — retrying will not help until the tool is present.")
+	return fmt.Errorf("%s", b.String())
+}
+
 func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir string, fetcher tracker.Fetcher, issueWriter runner.IssueWriter, gitOps runner.GitOps, maxTurns int) (runner.Config, error) {
 	checkpointFn, err := checkpoint.NewStepCheckpoint(ctx, workDir)
 	if err != nil {
@@ -300,7 +330,15 @@ func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir strin
 	if err := issuespec.ValidateDestructiveChecks(issue.Body); err != nil {
 		return runner.Config{}, fmt.Errorf("issue #%d: %w", issueNumber, err)
 	}
-	verify := append(append([]string{}, desc.Verify...), issuespec.ParseCheckBlocks(issue.Body)...)
+	checks := issuespec.ParseCheckBlocks(issue.Body)
+	// Runnability preflight (#97): a check needing a binary absent from this
+	// sandbox can never pass the green gate, so fail up front rather than after a
+	// full pipeline. Only issue-declared checks are probed — not desc.Verify, the
+	// project's standing gate, which is already known-runnable.
+	if err := preflightCheckRunnability(issueNumber, checks, exec.LookPath); err != nil {
+		return runner.Config{}, err
+	}
+	verify := append(append([]string{}, desc.Verify...), checks...)
 	// Footprint gate (#111): translate the issue's declared change surface into a
 	// check appended to the green gate for this run. Empty when the issue declares
 	// no footprint or declares `wide` — no gate in those cases.

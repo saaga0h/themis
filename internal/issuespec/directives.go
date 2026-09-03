@@ -161,6 +161,144 @@ func ParseCheckBlocks(body string) []string {
 	return blocks
 }
 
+// shellBuiltins are shell keywords/builtins that are not external binaries. The
+// runnability preflight (#97) must not treat them as a missing tool.
+var shellBuiltins = map[string]bool{
+	"!": true, "[": true, "[[": true, "]]": true, "test": true,
+	"cd": true, "pwd": true, "echo": true, "printf": true, "read": true,
+	"true": true, "false": true, ":": true, "exit": true, "return": true,
+	"export": true, "unset": true, "set": true, "shift": true, "eval": true,
+	"source": true, ".": true, "local": true, "declare": true, "trap": true,
+	"if": true, "then": true, "else": true, "elif": true, "fi": true,
+	"for": true, "while": true, "until": true, "do": true, "done": true,
+	"case": true, "esac": true, "in": true, "function": true, "select": true,
+	"break": true, "continue": true, "wait": true, "time": true,
+	"command": true, "type": true, "hash": true, "getopts": true, "umask": true,
+}
+
+var envAssignRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
+
+// splitTopLevelSegments splits a shell command on control operators (||, &&, ;,
+// |, newline) that appear at the TOP level only — not inside single/double
+// quotes, `$(...)` command substitution, or backticks. This is what keeps a `|`
+// inside a grep regex (`grep -E 'a|b'`) or inside `$(… | …)` from being read as a
+// pipe. Single `&` is not a separator, so redirections like `2>&1` stay attached.
+func splitTopLevelSegments(s string) []string {
+	var segs []string
+	var cur strings.Builder
+	var single, double, backtick bool
+	depth := 0 // $(...) nesting
+	flush := func() { segs = append(segs, cur.String()); cur.Reset() }
+	r := []rune(s)
+	for i := 0; i < len(r); i++ {
+		c := r[i]
+		switch {
+		case single:
+			cur.WriteRune(c)
+			if c == '\'' {
+				single = false
+			}
+		case double:
+			cur.WriteRune(c)
+			if c == '"' {
+				double = false
+			} else if c == '$' && i+1 < len(r) && r[i+1] == '(' {
+				cur.WriteRune(r[i+1])
+				i++
+				depth++
+			}
+		case backtick:
+			cur.WriteRune(c)
+			if c == '`' {
+				backtick = false
+			}
+		case depth > 0:
+			cur.WriteRune(c)
+			switch c {
+			case '(':
+				depth++
+			case ')':
+				depth--
+			case '\'':
+				single = true
+			case '"':
+				double = true
+			}
+		default: // top level
+			switch {
+			case c == '\'':
+				single = true
+				cur.WriteRune(c)
+			case c == '"':
+				double = true
+				cur.WriteRune(c)
+			case c == '`':
+				backtick = true
+				cur.WriteRune(c)
+			case c == '$' && i+1 < len(r) && r[i+1] == '(':
+				cur.WriteRune(c)
+				cur.WriteRune(r[i+1])
+				i++
+				depth++
+			case c == '\n' || c == ';':
+				flush()
+			case c == '|':
+				flush()
+				if i+1 < len(r) && r[i+1] == '|' {
+					i++
+				}
+			case c == '&' && i+1 < len(r) && r[i+1] == '&':
+				flush()
+				i++
+			default:
+				cur.WriteRune(c)
+			}
+		}
+	}
+	flush()
+	return segs
+}
+
+// CheckBlockCommands extracts the external command names a check block invokes,
+// so the runnability preflight (#97) can verify each resolves on PATH. It is a
+// heuristic tokenizer, not a shell parser: it splits the check into top-level
+// segments (quote/substitution-aware, see splitTopLevelSegments), then for each
+// segment takes the leading command word after stripping a `!` negation and
+// VAR=val assignments. It omits shell builtins/keywords and anything it cannot
+// resolve to a concrete name — variables ($X, ${X}), command substitutions
+// ($(...)/backticks), and subshells — so the preflight only ever flags a command
+// it is certain about. Commands nested inside `$(...)` are intentionally not
+// extracted (residue → skill guidance). The result is deduped, order-preserving.
+func CheckBlockCommands(check string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, seg := range splitTopLevelSegments(check) {
+		fields := strings.Fields(seg)
+		i := 0
+		for i < len(fields) && (fields[i] == "!" || envAssignRE.MatchString(fields[i])) {
+			i++
+		}
+		if i >= len(fields) {
+			continue
+		}
+		cmd := fields[i]
+		if cmd == "" || shellBuiltins[cmd] {
+			continue
+		}
+		// Anything we cannot resolve to a concrete binary name is omitted, not guessed:
+		// variables, command substitutions, subshells, and quoted/leading-quote words.
+		if r := []rune(cmd)[0]; r == '$' || r == '`' || r == '(' || r == '\'' || r == '"' {
+			continue
+		}
+		if seen[cmd] {
+			continue
+		}
+		seen[cmd] = true
+		out = append(out, cmd)
+	}
+	return out
+}
+
 // leadingRemovalRE matches destructive ACs whose leading assertion is a removal:
 // "No X remains" / "Removed X" (per skills/issue-writer/SKILL.md). Both are
 // anchored to the start of the AC, so they fire only when the AC's main

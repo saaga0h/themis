@@ -85,6 +85,18 @@ The negated `grep` exits 0 when the type is absent — i.e. the move is complete
 
 (Strict convention is a deliberate starting point to keep extraction deterministic — observe and tune; see #81.)
 
+### `check` blocks must be sandbox-runnable
+
+A `check` runs in the **factory sandbox**, not on your machine. It can only use tools the sandbox image provides. Two rules and one behaviour (#97):
+
+- **Use tools the sandbox has.** Structural checks (`grep`, `test`, `go doc`, the project's own toolchain) are safe. A check that needs a binary the image lacks — e.g. `nomad job validate` with no `nomad` in the sandbox — can never pass.
+- **A verification that needs a live service or cluster is an operator step, not a sandbox check.** Don't encode "the deployed thing responds" or "`nomad job validate` (which calls the cluster API)" as a green-gate check. Document it as an operator/runbook step and keep only the sandbox-runnable structural checks in the issue. (This was the #9 fix: `nomad job validate` → operator step-1; the structural checks stay in the sandbox.)
+- **Invoke the tool directly**, not behind a guard (`test -f x && tool …`), so the check actually reaches it.
+
+A **run-start preflight** hard-stops the run if a check's command isn't on PATH in the sandbox — before any expensive work, with a message naming the tool. But it can only catch *missing binaries*: it can't see whether a live service is reachable, and it can't inspect a tool hidden in a variable (`$TOOL`) or `$(…)` — those stay your responsibility.
+
+Heads-up when authoring: if you reference a tool, a quick local `command -v <tool>` is worth a glance — but your machine is **not** the sandbox (you might legitimately be sketching Nomad/ROCm/GPU work on a laptop that has none of it). A local miss is informational only: make sure the *sandbox image* provides it (or make it an operator step). The preflight is the authority, because it runs where the code will.
+
 ## Declaring the footprint (change-surface gate)
 
 Exhaustive enumeration (below) bounds the *required* change — the sites that must be touched. The **footprint** bounds the *surplus* side: the packages the change may touch at all. Declare it in a fenced ` ```footprint ` block, one **package** path per line — the factory translates it to a green-gate check, so any file the implementation lands outside these packages fails the run (over-engineering usually shows up as surplus files in packages nobody named).
