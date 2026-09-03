@@ -32,6 +32,7 @@ Both adapters promise the same behaviour. Your repo, on either host, must satisf
 
 1. **Provider:** `--provider gitea` (the binary defaults to GitHub).
 2. **Auth:** `GITEA_TOKEN` in the environment. `owner` / `repo` / API base are inferred from the `origin` remote (override with `GITEA_OWNER` / `GITEA_REPO` / `GITEA_API_URL`).
+   - **Credential hygiene:** keep the token in the environment (or a git credential helper / SSH), **not embedded in the remote URL** (`https://user:token@host/…` in `.git/config`) — a URL-embedded token is stored in plaintext and prints in the clear on any `git remote -v`. The factory never writes credentials into `.git/config` (it authenticates each push in isolation); don't reintroduce them by cloning with a tokenised URL.
 3. **Labels:** auto-created if missing — no manual step.
 4. **Target branch:** an issue's `ref` field, when set, is used as the PR base.
 
