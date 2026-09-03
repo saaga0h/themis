@@ -249,6 +249,31 @@ func TestParseIssueItems_EmptySlice(t *testing.T) {
 	}
 }
 
+func TestFilterIssuesByLabel_KeepsOnlyMatching(t *testing.T) {
+	items := []tracker.IssueItem{
+		{Number: 1, Labels: []tracker.IssueItemLabel{{Name: "ready-for-agent"}}},
+		{Number: 2, Labels: []tracker.IssueItemLabel{{Name: "bug"}}},
+		{Number: 3, Labels: []tracker.IssueItemLabel{{Name: "bug"}, {Name: "ready-for-agent"}}},
+		{Number: 4}, // no labels
+	}
+	got := tracker.FilterIssuesByLabel(items, "ready-for-agent")
+	if len(got) != 2 {
+		t.Fatalf("FilterIssuesByLabel: got %d items, want 2", len(got))
+	}
+	if got[0].Number != 1 || got[1].Number != 3 {
+		t.Errorf("FilterIssuesByLabel: got numbers %d,%d want 1,3", got[0].Number, got[1].Number)
+	}
+}
+
+func TestFilterIssuesByLabel_NoneMatch(t *testing.T) {
+	items := []tracker.IssueItem{
+		{Number: 1, Labels: []tracker.IssueItemLabel{{Name: "bug"}}},
+	}
+	if got := tracker.FilterIssuesByLabel(items, "ready-for-agent"); len(got) != 0 {
+		t.Errorf("FilterIssuesByLabel: got %d items, want 0", len(got))
+	}
+}
+
 func TestParseIssueItems_SingleItem_AllFieldsPopulated(t *testing.T) {
 	items := []tracker.IssueItem{
 		{

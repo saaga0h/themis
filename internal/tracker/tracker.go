@@ -172,6 +172,22 @@ func ParseIssueItems(items []IssueItem) []*IssueData {
 	return result
 }
 
+// FilterIssuesByLabel returns the items that carry the given label name. Used by
+// the GitHub querier to filter in-process, since GitHub's server-side label
+// filtering is eventually consistent (see ListReadyIssues).
+func FilterIssuesByLabel(items []IssueItem, label string) []IssueItem {
+	var out []IssueItem
+	for _, it := range items {
+		for _, l := range it.Labels {
+			if l.Name == label {
+				out = append(out, it)
+				break
+			}
+		}
+	}
+	return out
+}
+
 func extractLabelNames(labels []IssueItemLabel) []string {
 	names := make([]string, 0, len(labels))
 	for _, l := range labels {
@@ -283,9 +299,15 @@ func NewGitHubQuerier() *GitHubQuerier {
 }
 
 // ListReadyIssues returns all open issues labelled ready-for-agent via the gh CLI.
+//
+// It lists ALL open issues and filters by label in-process rather than passing
+// --label. GitHub's server-side label filters — both `gh issue list --label`
+// and the REST issues?labels= query — resolve through an eventually-consistent
+// search index, so an issue labelled moments before a run can be missed (verified
+// against a live repo). The unfiltered listing is immediately consistent, and
+// `gh issue list` already excludes pull requests.
 func (q *GitHubQuerier) ListReadyIssues(ctx context.Context) ([]*IssueData, error) {
 	out, err := exec.CommandContext(ctx, "gh", "issue", "list",
-		"--label", labels.ReadyForAgent,
 		"--state", "open",
 		"--json", "number,title,body,labels",
 		"--limit", "1000",
@@ -297,7 +319,7 @@ func (q *GitHubQuerier) ListReadyIssues(ctx context.Context) ([]*IssueData, erro
 	if err := json.Unmarshal(out, &items); err != nil {
 		return nil, fmt.Errorf("parsing gh output: %w", err)
 	}
-	return ParseIssueItems(items), nil
+	return ParseIssueItems(FilterIssuesByLabel(items, labels.ReadyForAgent)), nil
 }
 
 // IsOpen reports whether issue number is in the open state via the gh CLI.
