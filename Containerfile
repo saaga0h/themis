@@ -14,12 +14,6 @@ RUN GOARCH=$(dpkg --print-architecture) && \
     | tar -C /usr/local -xz
 ENV PATH="/usr/local/go/bin:${PATH}"
 
-# tea CLI for Gitea interaction
-ARG TEA_VERSION=0.9.2
-RUN GOARCH=$(dpkg --print-architecture) && \
-    curl -fsSL "https://dl.gitea.com/tea/${TEA_VERSION}/tea-${TEA_VERSION}-linux-${GOARCH}" \
-    -o /usr/local/bin/tea && chmod +x /usr/local/bin/tea
-
 # Git environment defaults so a freshly-cloned target repo works out of the box:
 # trust the mounted workspace (--userns=keep-id makes the bind-mount's owner differ
 # from the in-container user, tripping git's dubious-ownership guard) and provide a
