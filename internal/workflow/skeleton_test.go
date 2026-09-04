@@ -196,3 +196,85 @@ func TestWriteSkeleton_ForceOverwritesExistingFile(t *testing.T) {
 		t.Errorf("forced overwrite content must equal fresh skeleton content;\ngot:\n%s\nwant:\n%s", got, want)
 	}
 }
+
+// #142: the skeleton scaffolds the image: field so a fresh project has the
+// launcher config point (loadable — the existing Parses test would fail on a
+// bad image: line).
+func TestWriteSkeleton_IncludesImageField(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := WriteSkeleton(dir, false); err != nil {
+		t.Fatalf("WriteSkeleton: %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, ".themis", "workflow.yaml"))
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if !strings.Contains(string(raw), "image:") {
+		t.Error("skeleton must scaffold an image: field")
+	}
+}
+
+// #142: the Containerfile scaffold pre-fills the fixed agent layer and leaves the
+// toolchain as a TODO the user fills.
+func TestWriteContainerfile_ScaffoldsAgentLayerAndToolchainTODO(t *testing.T) {
+	dir := t.TempDir()
+	created, err := WriteContainerfile(dir, false)
+	if err != nil {
+		t.Fatalf("WriteContainerfile: %v", err)
+	}
+	if !created {
+		t.Error("expected created=true scaffolding into an empty dir")
+	}
+	s, err := os.ReadFile(filepath.Join(dir, "Containerfile"))
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	for _, want := range []string{"COPY themis /usr/local/bin/themis", "npm install -g @anthropic-ai/claude-code", "TODO"} {
+		if !strings.Contains(string(s), want) {
+			t.Errorf("Containerfile missing %q", want)
+		}
+	}
+}
+
+// #142: .env.example names the tokens but carries no values.
+func TestWriteEnvExample_NamesTokensWithoutValues(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := WriteEnvExample(dir, false); err != nil {
+		t.Fatalf("WriteEnvExample: %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, ".env.example"))
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	s := string(raw)
+	for _, want := range []string{"CLAUDE_CODE_OAUTH_TOKEN=", "GH_TOKEN="} {
+		if !strings.Contains(s, want) {
+			t.Errorf(".env.example missing %q", want)
+		}
+	}
+	for _, line := range strings.Split(s, "\n") {
+		if strings.HasPrefix(line, "CLAUDE_CODE_OAUTH_TOKEN=") && strings.TrimPrefix(line, "CLAUDE_CODE_OAUTH_TOKEN=") != "" {
+			t.Errorf("token line must carry no value: %q", line)
+		}
+	}
+}
+
+// #142: writeScaffold's non-destructive contract holds for the Containerfile too.
+func TestWriteContainerfile_ExistingUnchangedWithoutForce(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Containerfile")
+	if err := os.WriteFile(path, []byte("SENTINEL\n"), 0o644); err != nil {
+		t.Fatalf("write sentinel: %v", err)
+	}
+	created, err := WriteContainerfile(dir, false)
+	if err != nil {
+		t.Fatalf("WriteContainerfile: %v", err)
+	}
+	if created {
+		t.Error("expected created=false when a Containerfile already exists")
+	}
+	got, _ := os.ReadFile(path)
+	if string(got) != "SENTINEL\n" {
+		t.Errorf("existing Containerfile must be unchanged; got %q", got)
+	}
+}

@@ -7,10 +7,12 @@ import (
 	"github.com/saaga0h/themis/internal/workflow"
 )
 
-// runInit scaffolds .themis/workflow.yaml in the current directory. It is
-// non-destructive by default — an existing file is reported as skipped —
-// unless --force is passed, in which case it is overwritten with the
-// skeleton. See internal/workflow.WriteSkeleton for the skeleton content.
+// runInit scaffolds the deterministic per-project config a factory run needs:
+// .themis/workflow.yaml, a Containerfile (agent layer pre-filled, toolchain TODO),
+// and a .env.example. Non-destructive by default — an existing file is reported
+// as skipped — unless --force overwrites. Judgment settings (real verify commands,
+// the toolchain, contracts) stay TODOs the docs explain; init sets up the frame,
+// not the guesses.
 func runInit(args []string) error {
 	force := false
 	for _, a := range args {
@@ -24,22 +26,35 @@ func runInit(args []string) error {
 		return fmt.Errorf("resolving work dir: %w", err)
 	}
 
-	created, err := workflow.WriteSkeleton(workDir, force)
-	if err != nil {
-		return fmt.Errorf("scaffolding .themis/workflow.yaml: %w", err)
+	scaffolds := []struct {
+		name  string
+		write func(string, bool) (bool, error)
+	}{
+		{".themis/workflow.yaml", workflow.WriteSkeleton},
+		{"Containerfile", workflow.WriteContainerfile},
+		{".env.example", workflow.WriteEnvExample},
+	}
+	for _, s := range scaffolds {
+		created, werr := s.write(workDir, force)
+		if werr != nil {
+			return fmt.Errorf("scaffolding %s: %w", s.name, werr)
+		}
+		if created {
+			fmt.Printf("created %s\n", s.name)
+		} else {
+			fmt.Printf("skipped %s (already exists; use --force to overwrite)\n", s.name)
+		}
 	}
 
-	if !created {
-		fmt.Println("skipped: .themis/workflow.yaml already exists (use --force to overwrite)")
-		return nil
-	}
-
-	fmt.Println("created .themis/workflow.yaml")
 	fmt.Println()
-	fmt.Println("Next steps:")
-	fmt.Println("  1. Edit .themis/workflow.yaml — set stack, replace the default verify")
-	fmt.Println("     command with your project's real build/lint/test commands, and point")
-	fmt.Println("     docs at your standards/glossary/architecture files.")
-	fmt.Println("  2. Run themis issue <number> or themis run.")
+	fmt.Println("Next steps (see docs/getting-started):")
+	fmt.Println("  1. .themis/workflow.yaml — set your real verify commands, point docs at your")
+	fmt.Println("     standards/glossary, and set image: to the tag you will build.")
+	fmt.Println("  2. Containerfile — fill the toolchain TODO for your stack (keep the agent layer),")
+	fmt.Println("     drop a linux themis binary beside it, then build the image:")
+	fmt.Println("       podman build -t <image> .      # or: docker build -f Containerfile -t <image> .")
+	fmt.Println("  3. .env — copy from .env.example; fill CLAUDE_CODE_OAUTH_TOKEN and your provider token.")
+	fmt.Println("  4. themis skills install — install the interactive skills into .claude.")
+	fmt.Println("  5. Label an issue ready-for-agent, then run: themis run   (or themis issue <n>).")
 	return nil
 }
