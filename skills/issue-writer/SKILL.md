@@ -9,17 +9,29 @@ When creating issues for factory-processed work, follow this structure and these
 
 ## Where issues go
 
-An issue you author is created in the project's **tracker** — never written to a local file. The tracker is the `provider:` in `.themis/workflow.yaml` (`github` or `gitea`); the specific host/owner/repo come from the git `origin` remote or the connected MCP's own config — you do not hardcode them.
+An issue you author is created in the project's **tracker** — never written to a local file.
 
-Create the issue via the **provider's MCP server**, in the same conversation.
+### Step 1 — determine the provider (don't guess; it's a two-step lookup)
 
-**If no MCP server for that provider is connected — STOP and ask the human.** An undetermined destination is a *blocking* question, not a detail to improvise around. Do NOT work around a closed door:
+You do not have to reason about which forge this is. Use the same rule the `themis` binary uses:
 
+1. If `.themis/workflow.yaml` has a `provider:` (`github` or `gitea`), use it.
+2. Otherwise read the git origin remote — `git remote get-url origin`: if the URL contains `github.com` → **github**, any other host → **gitea**. (No remote → github.)
+
+That's the whole determination. Host/owner/repo aren't yours to figure out either — the connected MCP already knows the repo.
+
+### Step 2 — create via that provider's MCP
+
+Create the issue with the provider's MCP tools (e.g. the Gitea MCP for a gitea project), in the same conversation.
+
+**If that provider's MCP is not connected, STOP and report — tell the human exactly what to do:** e.g. *"This project is `gitea`; I don't see a Gitea MCP connected. Connect it (or tell me how you'd like the issue created) and I'll create the issue — here's the drafted body."* An undetermined *destination* is a blocking question; an undetermined *provider* is not (Step 1 answers it).
+
+Do NOT work around a closed door:
 - **Do NOT** write the issue to a local file as a substitute. A file on disk is not a deliverable; an issue that isn't in the tracker is not an issue. (A drafted body in the conversation is a fine intermediate — a file is not.)
 - **Do NOT** read a token out of `.env` (or anywhere) and call the provider's API directly. That bypasses the access model and puts a secret on the command line and in shell/transcript history. Reference secrets by location, never extract their values.
 - **Do NOT** use `gh`/`tea` unless they are already authenticated for interactive use.
 
-The negative clauses matter more than the positive one: "create via MCP" alone doesn't say what to do when MCP is absent — and the failure mode is inventing a plausible artifact (a file, a raw API call) to have something to hand over. When blocked, stop and say so.
+The negative clauses matter more than the positive one: "create via MCP" alone doesn't say what to do when MCP is absent — and the failure mode is inventing a plausible artifact (a file, a raw API call) to have something to hand over. When blocked, stop and say what to connect.
 
 ## Issue Structure
  
