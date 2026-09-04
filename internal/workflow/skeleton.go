@@ -74,8 +74,10 @@ RUN apt-get update && apt-get install -y git ca-certificates && rm -rf /var/lib/
 # ---------------------------------------------------------------------------
 
 # --- Themis agent layer (keep this) ----------------------------------------
-# The themis LINUX binary: drop a linux build next to this Containerfile (see
-# docs/getting-started for where to get it) so this COPY picks it up.
+# The themis LINUX binary. Put one in this build context as ./themis BEFORE
+# building (this COPY reads it from the current directory):
+#   cp /path/to/themis/bin/themis ./themis    # a linux binary, e.g. from 'make build'
+#   # or download the linux themis binary from a release into ./themis
 COPY themis /usr/local/bin/themis
 # Claude Code — Themis's one hard dependency (npm keeps the fetch integrity-checked).
 RUN npm install -g @anthropic-ai/claude-code

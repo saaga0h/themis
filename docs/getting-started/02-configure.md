@@ -41,7 +41,16 @@ Themis's own [`.themis/workflow.yaml`](../../.themis/workflow.yaml) is a worked 
 
 ## The sandbox image (Podman or Docker)
 
-`themis init` also scaffolds a **`Containerfile`** — the fixed Themis agent layer (the `themis` binary, Claude Code, `gh`) pre-filled, with a **TODO for your toolchain** (the compiler/test tools your `verify` commands need; the file has an inline Go example, and there are more per-stack examples in the docs). Fill the TODO, drop a linux `themis` binary beside it, then build the image locally and point `image:` at the tag.
+`themis init` also scaffolds a **`Containerfile`** — the fixed Themis agent layer (the `themis` binary, Claude Code, `gh`) pre-filled, with a **TODO for your toolchain** (the compiler/test tools your `verify` commands need; the file has an inline Go example, and there are more per-stack examples in the docs). Fill the TODO, then get the `themis` binary into the build context and build.
+
+**Put a linux `themis` binary in the build context.** The Containerfile's `COPY themis /usr/local/bin/themis` reads a file named `themis` from the current directory, so put one there first:
+
+```bash
+cp /path/to/themis/bin/themis ./themis   # a linux binary — e.g. from `make build` in the themis repo
+# or download the linux themis binary from a release into ./themis
+```
+
+(It must be a **linux** binary matching the image's architecture — the sandbox is Linux, regardless of your host OS.) Then build the image locally and point `image:` at the tag.
 
 Themis supports **both container engines** — it autodetects, preferring Podman. Build with whichever you use:
 
