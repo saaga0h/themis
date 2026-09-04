@@ -24,7 +24,7 @@ type runArgs struct {
 
 // parseRunArgs parses [--provider github|gitea] [--dry-run] [--max-turns N] [--templates DIR] from args.
 func parseRunArgs(args []string) (runArgs, error) {
-	provider := "github"
+	provider := "" // unset → resolved from workflow.yaml, then defaulted (see resolveProvider)
 	dryRun := false
 	maxTurns := defaultMaxTurns
 	templates := ""
@@ -63,9 +63,7 @@ func parseRunArgs(args []string) (runArgs, error) {
 		}
 	}
 
-	switch provider {
-	case "github", "gitea":
-	default:
+	if provider != "" && provider != "github" && provider != "gitea" {
 		return runArgs{}, fmt.Errorf("unknown provider %q (must be github or gitea)", provider)
 	}
 

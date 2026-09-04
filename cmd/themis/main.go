@@ -251,6 +251,19 @@ func materializeFactoryAssets() error {
 	return factoryassets.Materialize(themis.Assets, filepath.Join(home, ".claude"))
 }
 
+// resolveProvider picks the issue-tracker provider: the --provider flag if given,
+// otherwise workflow.yaml's provider:, otherwise the "github" default. Both inputs
+// are pre-validated (parse-time / Load) to be "github", "gitea", or empty.
+func resolveProvider(flag, configured string) string {
+	if flag != "" {
+		return flag
+	}
+	if configured != "" {
+		return configured
+	}
+	return "github"
+}
+
 func runIssue(args []string) error {
 	parsed, err := parseIssueArgs(args)
 	if err != nil {
@@ -266,6 +279,11 @@ func runIssue(args []string) error {
 	if err := git.CheckIdentity(context.Background(), repoRoot); err != nil {
 		return err
 	}
+	desc, err := workflow.Load(repoRoot)
+	if err != nil {
+		return fmt.Errorf("loading workflow descriptor: %w", err)
+	}
+	provider := resolveProvider(parsed.provider, desc.Provider)
 	templateDir, cleanup, err := resolveTemplateDir(parsed.templates)
 	if err != nil {
 		return fmt.Errorf("resolving templates: %w", err)
@@ -277,21 +295,21 @@ func runIssue(args []string) error {
 	}
 
 	var giteaOwner, giteaRepo, giteaAPIBase string
-	if parsed.provider == "gitea" {
+	if provider == "gitea" {
 		giteaOwner, giteaRepo, giteaAPIBase, err = tracker.ResolveGiteaConfig(context.Background(), repoRoot)
 		if err != nil {
 			return fmt.Errorf("resolving Gitea config: %w", err)
 		}
 	}
 
-	fetcher, err := tracker.NewFetcher(parsed.provider,
+	fetcher, err := tracker.NewFetcher(provider,
 		giteaOwner, giteaRepo, giteaAPIBase, os.Getenv("GITEA_TOKEN"), giteaClientTimeout)
 	if err != nil {
 		return fmt.Errorf("creating fetcher: %w", err)
 	}
 
-	issueWriter := newIssueWriter(parsed.provider, giteaOwner, giteaRepo, giteaAPIBase)
-	gitOps := newCmdGitOps(parsed.provider, giteaOwner, giteaRepo, giteaAPIBase)
+	issueWriter := newIssueWriter(provider, giteaOwner, giteaRepo, giteaAPIBase)
+	gitOps := newCmdGitOps(provider, giteaOwner, giteaRepo, giteaAPIBase)
 
 	cfg, err := newIssueConfig(context.Background(), parsed.number, repoRoot, templateDir, fetcher, issueWriter, gitOps, parsed.maxTurns)
 	if err != nil {
@@ -423,6 +441,11 @@ func runRun(args []string) error {
 	if err := git.CheckIdentity(context.Background(), repoRoot); err != nil {
 		return err
 	}
+	desc, err := workflow.Load(repoRoot)
+	if err != nil {
+		return fmt.Errorf("loading workflow descriptor: %w", err)
+	}
+	provider := resolveProvider(parsed.provider, desc.Provider)
 	templateDir, cleanup, err := resolveTemplateDir(parsed.templates)
 	if err != nil {
 		return fmt.Errorf("resolving templates: %w", err)
@@ -436,7 +459,7 @@ func runRun(args []string) error {
 	var querier IssueQuerier
 	var giteaOwner, giteaRepo, giteaAPIBase string
 
-	switch parsed.provider {
+	switch provider {
 	case "gitea":
 		giteaOwner, giteaRepo, giteaAPIBase, err = tracker.ResolveGiteaConfig(context.Background(), repoRoot)
 		if err != nil {
@@ -448,7 +471,7 @@ func runRun(args []string) error {
 	}
 
 	var fetcher tracker.Fetcher
-	switch parsed.provider {
+	switch provider {
 	case "gitea":
 		fetcher = tracker.NewGiteaFetcher(giteaOwner, giteaRepo, giteaAPIBase, os.Getenv("GITEA_TOKEN"), giteaClientTimeout)
 	default:
@@ -467,8 +490,8 @@ func runRun(args []string) error {
 			if err := git.Checkout(ctx, repoRoot, base); err != nil {
 				return fmt.Errorf("checkout base %q before issue #%d: %w", base, issue.Number, err)
 			}
-			issueWriter := newIssueWriter(parsed.provider, giteaOwner, giteaRepo, giteaAPIBase)
-			gitOps := newCmdGitOps(parsed.provider, giteaOwner, giteaRepo, giteaAPIBase)
+			issueWriter := newIssueWriter(provider, giteaOwner, giteaRepo, giteaAPIBase)
+			gitOps := newCmdGitOps(provider, giteaOwner, giteaRepo, giteaAPIBase)
 			issueCfg, err := newIssueConfig(ctx, issue.Number, repoRoot, templateDir, fetcher, issueWriter, gitOps, parsed.maxTurns)
 			if err != nil {
 				return fmt.Errorf("creating config for issue #%d: %w", issue.Number, err)

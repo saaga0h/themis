@@ -2,10 +2,10 @@
 
 Themis is **provider-agnostic**. The pipeline, gates, and state machine are identical whichever host you use; only a thin adapter differs — a `Fetcher` (read the issue), an `IssueWriter` (comment, label, open the PR), and an `IssueQuerier` (list `ready-for-agent`). Two providers ship:
 
-- **GitHub** — via the `gh` CLI. The **default** (`--provider github`, or omit the flag).
-- **Gitea** — via the REST API. Pass `--provider gitea`.
+- **GitHub** — via the `gh` CLI.
+- **Gitea** — via the REST API.
 
-GitHub is the default because it's the public, hosted case; Gitea is the self-hosted one.
+**Where you set it:** the `provider:` field in `.themis/workflow.yaml` (`github` or `gitea`) — a per-project fact you set once. The `--provider` flag on `themis run`/`issue` overrides it for a single run; if neither is set, it defaults to `github` (the public, hosted case; Gitea is the self-hosted one).
 
 ## The provider contract
 

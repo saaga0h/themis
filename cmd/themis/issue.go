@@ -23,7 +23,7 @@ func parseIssueArgs(args []string) (issueArgs, error) {
 		return issueArgs{}, fmt.Errorf("issue number must be an integer, got %q", args[0])
 	}
 
-	provider := "github"
+	provider := "" // unset → resolved from workflow.yaml, then defaulted (see resolveProvider)
 	maxTurns := defaultMaxTurns
 	templates := ""
 	for i := 1; i < len(args); i++ {
@@ -55,9 +55,7 @@ func parseIssueArgs(args []string) (issueArgs, error) {
 		}
 	}
 
-	switch provider {
-	case "github", "gitea":
-	default:
+	if provider != "" && provider != "github" && provider != "gitea" {
 		return issueArgs{}, fmt.Errorf("unknown provider %q (must be github or gitea)", provider)
 	}
 

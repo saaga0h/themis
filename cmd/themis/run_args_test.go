@@ -34,13 +34,29 @@ func TestParseRunArgs_ProviderGitHub(t *testing.T) {
 	}
 }
 
-func TestParseRunArgs_DefaultProviderIsGitHub(t *testing.T) {
+func TestParseRunArgs_DefaultProviderIsUnset(t *testing.T) {
+	// No --provider leaves it unset; resolveProvider applies workflow.yaml then the
+	// github default.
 	args, err := parseRunArgs([]string{})
 	if err != nil {
 		t.Fatalf("parseRunArgs error: %v", err)
 	}
-	if args.provider != "github" {
-		t.Errorf("default provider: got %q, want %q", args.provider, "github")
+	if args.provider != "" {
+		t.Errorf("default provider: got %q, want unset (\"\")", args.provider)
+	}
+}
+
+func TestResolveProvider(t *testing.T) {
+	cases := []struct{ flag, cfg, want string }{
+		{"", "", "github"},           // nothing set → default
+		{"", "gitea", "gitea"},       // workflow.yaml provider
+		{"gitea", "github", "gitea"}, // flag overrides config
+		{"github", "", "github"},
+	}
+	for _, c := range cases {
+		if got := resolveProvider(c.flag, c.cfg); got != c.want {
+			t.Errorf("resolveProvider(%q,%q) = %q, want %q", c.flag, c.cfg, got, c.want)
+		}
 	}
 }
 

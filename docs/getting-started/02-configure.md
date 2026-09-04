@@ -28,12 +28,14 @@ docs:
   standards: CODING_STANDARDS.md
   glossary: UBIQUITOUS_LANGUAGE.md
 
+provider: github               # the host this repo is on: github | gitea
 image: ""                      # the sandbox image tag you build (below). Required to run.
 # runtime: podman              # podman | docker; omit to autodetect
 ```
 
 - **`verify`** is the heart of it — the commands that decide "done". A Go project might use `go build ./...`, `test -z "$(gofmt -l .)"`, `go vet ./...`, `go test ./...`; a Node project `npm run build`, `npm run lint`, `npm test`; anything else, whatever proves *your* code. Until you replace the default, the gate fails deliberately — the factory won't run on an unconfigured project.
 - **`docs`** points at your [contract docs](04-contracts.md) — the authoritative standards the review reads. A fresh repo has none yet: you create `CODING_STANDARDS.md` and `UBIQUITOUS_LANGUAGE.md` in [step 4](04-contracts.md) — the `contract-drafter` skill drafts a minimal pair, or write them by hand. `themis init` does **not** generate them (they're judgment, not scaffolding); until a `docs:` path exists, review simply skips it.
+- **`provider`** — the host this repo lives on, where the factory reads issues and opens PRs: `github` or `gitea`. **This is where the provider is set** (the `--provider` flag on `themis run`/`issue` overrides it for one run; unset defaults to `github`). See [`docs/providers.md`](../providers.md) for the per-provider tooling.
 - **`image`** names the sandbox container image the factory runs in — the tag you build from the `Containerfile` (next section). Required to launch a run.
 - **`runtime`** picks the container engine. Omit it to **autodetect — Podman first, Docker as fallback**; set it to `podman` or `docker` to pin one.
 
@@ -106,7 +108,14 @@ Then set that exact tag as `image:` in `workflow.yaml` — e.g. `image: themis-m
 
 ## Credentials
 
-`themis init` also writes **`.env.example`** (token *names* only). Copy it to `.env` (gitignored — never commit it) and fill in `CLAUDE_CODE_OAUTH_TOKEN` (Claude Code auth — Themis's one hard dependency) and your provider token (`GH_TOKEN` for GitHub, `GITEA_TOKEN` for Gitea). Provider specifics are in [`docs/providers.md`](../providers.md).
+`themis init` also writes **`.env.example`** (token *names* only). Copy it to `.env` (gitignored — never commit it) and fill in two secrets:
+
+- **`CLAUDE_CODE_OAUTH_TOKEN`** — Claude Code auth (Themis's one hard dependency). Generate it on your machine with **`claude setup-token`** (from the Claude Code CLI; it walks you through the OAuth flow and prints the token). Paste the result here.
+- **Your provider token** — with Issues + Pull-Requests read/write on the repo:
+  - **GitHub → `GH_TOKEN`**: a fine-grained or classic PAT from *GitHub → Settings → Developer settings → Personal access tokens* (scopes: `repo`, `workflow`). Or reuse an existing `gh auth` token via `gh auth token`.
+  - **Gitea → `GITEA_TOKEN`**: *Gitea → Settings → Applications → Generate New Token* (scopes: issue + repository read/write).
+
+Full provider specifics are in [`docs/providers.md`](../providers.md).
 
 ## Factory labels
 

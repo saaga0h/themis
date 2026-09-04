@@ -8,6 +8,7 @@
 # agents read). Later slices add stage toggles and model tiers.
 
 stack: go
+provider: gitea
 
 # Green Gate: run in order, each must exit 0. The factory runs these via `bash -c`.
 # -mod=readonly stops the toolchain rewriting go.sum mid-run (a full-graph go.sum

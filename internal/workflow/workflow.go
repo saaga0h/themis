@@ -52,6 +52,9 @@ type Descriptor struct {
 	// Runtime optionally pins the container runtime for the launcher: "podman" or
 	// "docker". Empty means autodetect (podman, then docker).
 	Runtime string `yaml:"runtime"`
+	// Provider is the issue tracker / forge this repo lives on: "github" or
+	// "gitea". Empty defaults to github. The --provider flag overrides it.
+	Provider string `yaml:"provider"`
 }
 
 const workflowFile = ".themis/workflow.yaml"
@@ -84,6 +87,9 @@ func Load(dir string) (*Descriptor, error) {
 	}
 	if d.Runtime != "" && d.Runtime != "podman" && d.Runtime != "docker" {
 		return nil, fmt.Errorf("workflow descriptor: runtime %q must be \"podman\", \"docker\", or empty (autodetect)", d.Runtime)
+	}
+	if d.Provider != "" && d.Provider != "github" && d.Provider != "gitea" {
+		return nil, fmt.Errorf("workflow descriptor: provider %q must be \"github\", \"gitea\", or empty (defaults to github)", d.Provider)
 	}
 	return &d, nil
 }

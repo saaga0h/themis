@@ -161,3 +161,23 @@ func TestLoad_RejectsInvalidRuntime(t *testing.T) {
 		t.Fatal("expected error for invalid runtime")
 	}
 }
+
+func TestLoad_ParsesProvider(t *testing.T) {
+	dir := t.TempDir()
+	writeDescriptor(t, dir, "provider: gitea\n")
+	d, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if d.Provider != "gitea" {
+		t.Errorf("provider: got %q, want gitea", d.Provider)
+	}
+}
+
+func TestLoad_RejectsInvalidProvider(t *testing.T) {
+	dir := t.TempDir()
+	writeDescriptor(t, dir, "provider: gitlab\n")
+	if _, err := Load(dir); err == nil {
+		t.Fatal("expected error for invalid provider")
+	}
+}

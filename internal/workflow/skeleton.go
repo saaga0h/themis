@@ -35,6 +35,11 @@ docs:
   glossary: UBIQUITOUS_LANGUAGE.md
   architecture: ""
 
+# provider is the host this repo lives on — where the factory reads issues and
+# opens PRs. github (the default) or gitea. Change it to match your repo; the
+# --provider flag overrides it.
+provider: github
+
 # image is the sandbox container image the factory runs in — built locally from
 # the Containerfile in this project (see the next-steps from 'themis init').
 # Set it to the tag you build, e.g. themis-myproject:latest. Required to run.

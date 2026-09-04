@@ -32,13 +32,15 @@ func TestParseIssueArgs_ValidGitea(t *testing.T) {
 	}
 }
 
-func TestParseIssueArgs_DefaultProviderIsGitHub(t *testing.T) {
+func TestParseIssueArgs_DefaultProviderIsUnset(t *testing.T) {
+	// No --provider leaves it unset; resolveProvider applies workflow.yaml then the
+	// github default.
 	args, err := parseIssueArgs([]string{"7"})
 	if err != nil {
 		t.Fatalf("parseIssueArgs error: %v", err)
 	}
-	if args.provider != "github" {
-		t.Errorf("default provider: got %q, want %q", args.provider, "github")
+	if args.provider != "" {
+		t.Errorf("default provider: got %q, want unset (\"\")", args.provider)
 	}
 }
 
