@@ -1,18 +1,19 @@
 # 2 · Configure a project
 
-Every project the factory works on needs one file: **`.themis/workflow.yaml`** — the *green gate*. It tells the stack-agnostic factory how to prove your code is correct. Themis hardcodes no language; this file is where *your* project declares its stack and its checks.
+Every project the factory works on declares how to build and run it. `themis init` scaffolds that; you fill in the parts only you can know (your verify commands, your toolchain). Themis hardcodes no language — this is where *your* project declares its stack, checks, and sandbox.
 
 ## Scaffold it
 
 From your project root:
 
 ```bash
-themis init          # writes .themis/workflow.yaml (skips if it exists; --force to overwrite)
+themis init          # scaffolds .themis/workflow.yaml, a Containerfile, and .env.example
+                     # (existing files are skipped; --force to overwrite)
 ```
 
-This drops a **stack-neutral skeleton** you fill in. It bakes in no language — the examples are just comments.
+It drops three stack-neutral starting points and prints a next-steps checklist. Nothing is baked to a language — the toolchain is a TODO you fill.
 
-## Fill it in
+## `.themis/workflow.yaml` — the green gate + run config
 
 ```yaml
 stack: "unconfigured"          # informational label: go, rust, node, python, ...
@@ -26,15 +27,36 @@ verify:
 docs:
   standards: CODING_STANDARDS.md
   glossary: UBIQUITOUS_LANGUAGE.md
+
+image: ""                      # the sandbox image tag you build (below). Required to run.
+# runtime: podman              # podman | docker; omit to autodetect
 ```
 
 - **`verify`** is the heart of it — the commands that decide "done". A Go project might use `go build ./...`, `test -z "$(gofmt -l .)"`, `go vet ./...`, `go test ./...`; a Node project `npm run build`, `npm run lint`, `npm test`; anything else, whatever proves *your* code. Until you replace the default, the gate fails deliberately — the factory won't run on an unconfigured project.
 - **`docs`** points at your [contract docs](04-contracts.md) — the authoritative standards the review reads.
+- **`image`** names the sandbox container image the factory runs in — the tag you build from the `Containerfile` (next section). Required to launch a run.
+- **`runtime`** picks the container engine. Omit it to **autodetect — Podman first, Docker as fallback**; set it to `podman` or `docker` to pin one.
 
 Themis's own [`.themis/workflow.yaml`](../../.themis/workflow.yaml) is a worked example.
 
-## The sandbox image
+## The sandbox image (Podman or Docker)
 
-`themis init` scaffolds the `workflow.yaml`; the container image (your toolchain + Claude Code) is set up separately for now — Themis's [`Containerfile`](../../Containerfile) is a Go-based starting point to adapt to your stack. (A generated starter `Containerfile` is a planned `themis init` follow-up.)
+`themis init` also scaffolds a **`Containerfile`** — the fixed Themis agent layer (the `themis` binary, Claude Code, `gh`) pre-filled, with a **TODO for your toolchain** (the compiler/test tools your `verify` commands need; the file has an inline Go example, and there are more per-stack examples in the docs). Fill the TODO, drop a linux `themis` binary beside it, then build the image locally and point `image:` at the tag.
+
+Themis supports **both container engines** — it autodetects, preferring Podman. Build with whichever you use:
+
+```bash
+# Podman (the default):
+podman build -t themis-myproject:latest .
+
+# Docker — `docker build` only auto-finds a file named "Dockerfile", so pass -f:
+docker build -f Containerfile -t themis-myproject:latest .
+```
+
+Set `image: themis-myproject:latest` in `workflow.yaml`. If you have both engines and want to force one, set `runtime:`. There's **no registry** — the image is built and stays local, and the `Containerfile` is **yours to customise per project** (add whatever system libs or CLIs your build needs).
+
+## Credentials
+
+`themis init` also writes **`.env.example`** (token *names* only). Copy it to `.env` (gitignored — never commit it) and fill in `CLAUDE_CODE_OAUTH_TOKEN` (Claude Code auth — Themis's one hard dependency) and your provider token (`GH_TOKEN` for GitHub, `GITEA_TOKEN` for Gitea). Provider specifics are in [`docs/providers.md`](../providers.md).
 
 → Next: [A green baseline](03-project-baseline.md)
