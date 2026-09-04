@@ -33,7 +33,7 @@ image: ""                      # the sandbox image tag you build (below). Requir
 ```
 
 - **`verify`** is the heart of it — the commands that decide "done". A Go project might use `go build ./...`, `test -z "$(gofmt -l .)"`, `go vet ./...`, `go test ./...`; a Node project `npm run build`, `npm run lint`, `npm test`; anything else, whatever proves *your* code. Until you replace the default, the gate fails deliberately — the factory won't run on an unconfigured project.
-- **`docs`** points at your [contract docs](04-contracts.md) — the authoritative standards the review reads.
+- **`docs`** points at your [contract docs](04-contracts.md) — the authoritative standards the review reads. A fresh repo has none yet: you create `CODING_STANDARDS.md` and `UBIQUITOUS_LANGUAGE.md` in [step 4](04-contracts.md) — the `contract-drafter` skill drafts a minimal pair, or write them by hand. `themis init` does **not** generate them (they're judgment, not scaffolding); until a `docs:` path exists, review simply skips it.
 - **`image`** names the sandbox container image the factory runs in — the tag you build from the `Containerfile` (next section). Required to launch a run.
 - **`runtime`** picks the container engine. Omit it to **autodetect — Podman first, Docker as fallback**; set it to `podman` or `docker` to pin one.
 
@@ -46,14 +46,16 @@ Themis's own [`.themis/workflow.yaml`](../../.themis/workflow.yaml) is a worked 
 Themis supports **both container engines** — it autodetects, preferring Podman. Build with whichever you use:
 
 ```bash
-# Podman (the default):
+# Podman (the default) — auto-finds the Containerfile:
 podman build -t themis-myproject:latest .
 
-# Docker — `docker build` only auto-finds a file named "Dockerfile", so pass -f:
+# Docker — only auto-finds a file named "Dockerfile", so point it at the Containerfile with -f:
 docker build -f Containerfile -t themis-myproject:latest .
 ```
 
-Set `image: themis-myproject:latest` in `workflow.yaml`. If you have both engines and want to force one, set `runtime:`. There's **no registry** — the image is built and stays local, and the `Containerfile` is **yours to customise per project** (add whatever system libs or CLIs your build needs).
+**Read `-t` carefully:** it names the **image you're building** — a lowercase tag *you choose* (here `themis-myproject:latest`), **not** the `Containerfile` filename. (`podman build -t Containerfile .` fails with *"repository name must be lowercase"* — that's passing the filename as the tag.) The trailing `.` is the build context (the current directory).
+
+Then set that exact tag as `image:` in `workflow.yaml` — e.g. `image: themis-myproject:latest`. If you have both engines and want to force one, set `runtime:`. There's **no registry** — the image is built and stays local, and the `Containerfile` is **yours to customise per project** (add whatever system libs or CLIs your build needs).
 
 ## Credentials
 
