@@ -119,4 +119,15 @@ The factory keys off two labels on your repo's issues: **`ready-for-agent`** (yo
   gh label create needs-review    --description "Factory opened a PR; awaiting review"
   ```
 
+## Install the interactive skills
+
+The rest of the workflow — shaping the project, writing contracts, authoring issues, reviewing PRs — is driven by Themis's **skills**, which your interactive AI (Claude Code) loads from `.claude`. Install them once, now, so they're available for the next steps:
+
+```bash
+themis skills install            # into this project's .claude/
+# or: themis skills install --global   # into ~/.claude, shared across projects
+```
+
+This places `grill-me`, `split-walker`, `issue-writer`, `contract-drafter`, `review-walker`/`pr-review`, and the `/review` `/document` `/context` commands (plus the review/doc agents they spawn). **Reload Claude Code** afterward so it picks them up. The next steps use these directly — `grill-me` to shape a green baseline, `contract-drafter` to write your contracts.
+
 → Next: [A green baseline](03-project-baseline.md)
