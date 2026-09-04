@@ -45,7 +45,42 @@ Themis's own [`.themis/workflow.yaml`](../../.themis/workflow.yaml) is a worked 
 
 > The factory runs your `verify` commands (from `workflow.yaml`) **inside this image**. So the image must contain every tool those commands call — your compiler/interpreter, your test runner, any linter/formatter you verify with. Read your `verify:` list and add a `RUN` line installing each. (git and Claude Code are already in the image; you add the language-specific tools.)
 
-The scaffold's TODO section says this too, with per-stack examples (Go/Python/Rust/Node). For instance, if your `verify` runs `go build`/`go test`, install Go; if it runs `pytest`, install Python + pytest.
+### Per-stack toolchain examples
+
+Drop one of these into the `# TODO: install your project's toolchain` section of the scaffolded Containerfile (the rest of the file — the themis builder stage, the base, Claude Code — stays as generated). The base is `node:22-bookworm` (Debian), so `apt` and prebuilt tarballs both work.
+
+**Go**
+```dockerfile
+ARG GO_VERSION=1.24.3
+RUN curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-$(dpkg --print-architecture).tar.gz \
+      | tar -C /usr/local -xz \
+    && ln -s /usr/local/go/bin/go /usr/local/bin/go
+```
+Covers `verify` like `go build ./...`, `go vet ./...`, `test -z "$(gofmt -l .)"`, `go test ./...`.
+
+**Python**
+```dockerfile
+RUN apt-get update && apt-get install -y python3 python3-pip python3-venv \
+    && rm -rf /var/lib/apt/lists/*
+RUN pip3 install --no-cache-dir --break-system-packages pytest ruff
+```
+Covers `ruff check .`, `pytest`.
+
+**Node / TypeScript**
+```dockerfile
+# Node is already in the base image. Add global build tools only if your verify needs them:
+RUN npm install -g typescript
+```
+Covers `npm ci`, `npm run build`, `npm test`.
+
+**Rust**
+```dockerfile
+RUN apt-get update && apt-get install -y cargo rustc \
+    && rm -rf /var/lib/apt/lists/*
+```
+Covers `cargo build`, `cargo test`. (For `cargo clippy`, install via `rustup` instead of `apt`.)
+
+> **Changing the base image?** You can (`FROM your-preferred-base`), but keep **bash** and **git**, and make sure **Node/npm** is available — Claude Code is an npm package, so a base without npm needs a `RUN` to install Node first.
 
 **You don't supply the `themis` binary — the image builds it.** A throwaway `golang` builder stage in the scaffolded Containerfile clones and compiles themis *for this image's architecture* (amd64, arm64, riscv, …), then copies just the binary into the final image (Go stays in the builder — your image doesn't carry it). So there's **no prebuilt binary to fetch and no registry image** — nothing arch-specific to get right, and it builds **once, at image-build time**, not per run.
 
