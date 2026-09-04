@@ -229,10 +229,21 @@ func TestWriteContainerfile_ScaffoldsAgentLayerAndToolchainTODO(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
-	for _, want := range []string{"COPY themis /usr/local/bin/themis", "npm install -g @anthropic-ai/claude-code", "TODO"} {
+	// themis is built from source in a builder stage (arch-matching), not COPY'd
+	// from the build context.
+	for _, want := range []string{
+		"ARG THEMIS_REPO=https://github.com/saaga0h/themis.git",
+		"go build -o /themis ./cmd/themis",
+		"COPY --from=themis-build /themis /usr/local/bin/themis",
+		"npm install -g @anthropic-ai/claude-code",
+		"TODO",
+	} {
 		if !strings.Contains(string(s), want) {
 			t.Errorf("Containerfile missing %q", want)
 		}
+	}
+	if strings.Contains(string(s), "COPY themis /usr/local/bin/themis") {
+		t.Error("Containerfile must not COPY a themis binary from the build context (dead cross-platform model)")
 	}
 }
 

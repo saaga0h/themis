@@ -46,20 +46,35 @@ image: ""
 `
 
 // containerfile is the scaffolded Containerfile written by `themis init`. It is
-// the user's to customise per project: the toolchain section is a TODO they fill,
-// the Themis "agent layer" (the binary + Claude Code + gh) is pre-filled. The
-// image is built locally — no registry is involved. See docs/getting-started for
-// per-stack toolchain examples.
+// the user's to customise per project: the toolchain section is a TODO they fill.
+// themis is built from source in a throwaway builder stage so the binary matches
+// the image's architecture (amd64/arm64/riscv/…) with no prebuilt binary or
+// registry image — the repo URL is a build-arg defaulting to the public GitHub.
+// See docs/getting-started for per-stack toolchain examples.
 const containerfile = `# Themis sandbox image for THIS project — build it locally:
 #   podman build -t <the image: tag from .themis/workflow.yaml> .
 #   docker build -f Containerfile -t <the image: tag> .
-# The image needs your project's toolchain (TODO below) plus the fixed Themis
-# agent layer (already filled in). See docs/getting-started for per-stack examples.
+# themis is built from source in the builder stage below, so it matches THIS
+# image's architecture — amd64, arm64, riscv, etc. — with no prebuilt binary and
+# no registry image. Go stays in the builder; the final image is Go-free unless
+# your toolchain adds it. See docs/getting-started for per-stack examples.
+
+# --- themis agent binary: built once at image-build time, for this arch --------
+# Override THEMIS_REPO to build from your own host (e.g. a Gitea mirror) and
+# THEMIS_REF to pin a branch or tag:
+#   podman build --build-arg THEMIS_REPO=<git-url> --build-arg THEMIS_REF=<ref> -t <tag> .
+ARG THEMIS_REPO=https://github.com/saaga0h/themis.git
+ARG THEMIS_REF=main
+FROM golang:1.24-bookworm AS themis-build
+ARG THEMIS_REPO
+ARG THEMIS_REF
+RUN git clone --depth 1 --branch "${THEMIS_REF}" "${THEMIS_REPO}" /src \
+    && cd /src && CGO_ENABLED=0 go build -o /themis ./cmd/themis
+# -------------------------------------------------------------------------------
 
 # A Debian+Node base provides bash, apt, and npm. Claude Code is an npm package
 # and Claude is Themis's one hard dependency, so a Node base is the least-friction
-# default. Change the base if you prefer — just keep bash, git, and a way to
-# install Claude Code and your toolchain.
+# default. Change the base if you prefer — just keep bash and git.
 FROM node:22-bookworm
 
 RUN apt-get update && apt-get install -y git ca-certificates && rm -rf /var/lib/apt/lists/*
@@ -74,11 +89,8 @@ RUN apt-get update && apt-get install -y git ca-certificates && rm -rf /var/lib/
 # ---------------------------------------------------------------------------
 
 # --- Themis agent layer (keep this) ----------------------------------------
-# The themis LINUX binary. Put one in this build context as ./themis BEFORE
-# building (this COPY reads it from the current directory):
-#   cp /path/to/themis/bin/themis ./themis    # a linux binary, e.g. from 'make build'
-#   # or download the linux themis binary from a release into ./themis
-COPY themis /usr/local/bin/themis
+# The themis binary, built above for this image's architecture:
+COPY --from=themis-build /themis /usr/local/bin/themis
 # Claude Code — Themis's one hard dependency (npm keeps the fetch integrity-checked).
 RUN npm install -g @anthropic-ai/claude-code
 # GitHub projects also need the gh CLI (Gitea needs no provider CLI). Uncomment

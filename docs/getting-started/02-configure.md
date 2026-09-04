@@ -41,18 +41,17 @@ Themis's own [`.themis/workflow.yaml`](../../.themis/workflow.yaml) is a worked 
 
 ## The sandbox image (Podman or Docker)
 
-`themis init` also scaffolds a **`Containerfile`** — the fixed Themis agent layer (the `themis` binary, Claude Code, `gh`) pre-filled, with a **TODO for your toolchain** (the compiler/test tools your `verify` commands need; the file has an inline Go example, and there are more per-stack examples in the docs). Fill the TODO, then get the `themis` binary into the build context and build.
+`themis init` also scaffolds a **`Containerfile`** with a **TODO for your toolchain** (the compiler/test tools your `verify` commands need — the file has an inline Go example, and there are more per-stack examples in the docs). Fill the TODO; the rest is pre-filled.
 
-**Put a linux `themis` binary in the build context.** The Containerfile's `COPY themis /usr/local/bin/themis` reads a file named `themis` from the current directory, so put one there first:
+**You don't supply the `themis` binary — the image builds it.** A throwaway `golang` builder stage in the scaffolded Containerfile clones and compiles themis *for this image's architecture* (amd64, arm64, riscv, …), then copies just the binary into the final image (Go stays in the builder — your image doesn't carry it). So there's **no prebuilt binary to fetch and no registry image** — nothing arch-specific to get right, and it builds **once, at image-build time**, not per run.
+
+By default it builds from the public repo (`THEMIS_REPO=https://github.com/saaga0h/themis.git`, `THEMIS_REF=main`). To build from your own host (e.g. a Gitea mirror) or pin a ref, pass build-args:
 
 ```bash
-cp /path/to/themis/bin/themis ./themis   # a linux binary — e.g. from `make build` in the themis repo
-# or download the linux themis binary from a release into ./themis
+podman build --build-arg THEMIS_REPO=<your-git-url> --build-arg THEMIS_REF=<branch-or-tag> -t themis-myproject:latest .
 ```
 
-(It must be a **linux** binary matching the image's architecture — the sandbox is Linux, regardless of your host OS.) Then build the image locally and point `image:` at the tag.
-
-Themis supports **both container engines** — it autodetects, preferring Podman. Build with whichever you use:
+Then build the image and point `image:` at the tag. Themis supports **both container engines** — it autodetects, preferring Podman. Build with whichever you use:
 
 ```bash
 # Podman (the default) — auto-finds the Containerfile:
