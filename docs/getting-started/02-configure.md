@@ -51,7 +51,7 @@ Drop one of these into the `# TODO: install your project's toolchain` section of
 
 **Go**
 ```dockerfile
-ARG GO_VERSION=1.24.3
+ARG GO_VERSION=1.25.0
 RUN curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-$(dpkg --print-architecture).tar.gz \
       | tar -C /usr/local -xz \
     && ln -s /usr/local/go/bin/go /usr/local/bin/go

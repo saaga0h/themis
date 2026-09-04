@@ -7,12 +7,14 @@ RUN apt-get update && apt-get install -y \
   jq \
   && rm -rf /var/lib/apt/lists/*
 
-# Install Go
-ARG GO_VERSION=1.24.3
+# Install Go. GO_VERSION must be >= go.mod's version; GOTOOLCHAIN=auto lets Go
+# fetch a newer toolchain if go.mod moves ahead, so a Go bump doesn't break this.
+ARG GO_VERSION=1.25.0
 RUN GOARCH=$(dpkg --print-architecture) && \
     curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-${GOARCH}.tar.gz \
     | tar -C /usr/local -xz
 ENV PATH="/usr/local/go/bin:${PATH}"
+ENV GOTOOLCHAIN=auto
 
 # Git environment defaults so a freshly-cloned target repo works out of the box:
 # trust the mounted workspace (--userns=keep-id makes the bind-mount's owner differ

@@ -65,7 +65,11 @@ const containerfile = `# Themis sandbox image for THIS project — build it loca
 #   podman build --build-arg THEMIS_REPO=<git-url> --build-arg THEMIS_REF=<ref> -t <tag> .
 ARG THEMIS_REPO=https://github.com/saaga0h/themis.git
 ARG THEMIS_REF=main
-FROM golang:1.24-bookworm AS themis-build
+# The builder's Go must be >= themis's go.mod version. GOTOOLCHAIN=auto lets Go
+# fetch a newer toolchain automatically if go.mod moves ahead of this base, so
+# this doesn't silently break on a future Go bump.
+FROM golang:1.25-bookworm AS themis-build
+ENV GOTOOLCHAIN=auto
 ARG THEMIS_REPO
 ARG THEMIS_REF
 RUN git clone --depth 1 --branch "${THEMIS_REF}" "${THEMIS_REPO}" /src \
@@ -88,7 +92,7 @@ RUN apt-get update && apt-get install -y git ca-certificates && rm -rf /var/lib/
 #
 # HOW: read your workflow.yaml 'verify:' list and add a RUN line installing each
 # tool it invokes. Examples (adapt to your stack; this base is Debian + Node):
-#   Go:     RUN curl -fsSL https://go.dev/dl/go1.24.3.linux-$(dpkg --print-architecture).tar.gz | tar -C /usr/local -xz \
+#   Go:     RUN curl -fsSL https://go.dev/dl/go1.25.0.linux-$(dpkg --print-architecture).tar.gz | tar -C /usr/local -xz \
 #             && ln -s /usr/local/go/bin/go /usr/local/bin/go
 #   Python: RUN apt-get update && apt-get install -y python3 python3-pip && rm -rf /var/lib/apt/lists/*
 #   Rust:   RUN apt-get update && apt-get install -y cargo && rm -rf /var/lib/apt/lists/*
