@@ -1,4 +1,6 @@
-# 1 · Install & run
+# 1 · Install
+
+You can't run the factory yet — it needs a configured project and a built sandbox image first (the next steps). This step just gets the `themis` binary and the prerequisites in place.
 
 ## Prerequisites
 
@@ -10,8 +12,8 @@
 ## Build the binary
 
 ```bash
-make build          # -> bin/themis (static linux binary the sandbox mounts)
-# or: CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o bin/themis ./cmd/themis
+make build   # -> bin/themis (static linux binary; FACTORY_ARCH defaults to your host arch,
+             #    override e.g. FACTORY_ARCH=amd64 for a cross-arch sandbox)
 ```
 
 ## The sandbox
@@ -20,17 +22,6 @@ The factory runs Claude Code with `--dangerously-skip-permissions` so it can wor
 
 The sandbox image needs: your project's **toolchain** (compiler, test runner) + **Claude Code** + the **`themis` binary** + your repo mounted. Store tokens in a `.env` at the repo root (gitignored) and pass them with `--env-file .env`.
 
-## Running
-
-Themis processes issues two ways:
-
-- `themis run` — the loop: every open `ready-for-agent` issue, in order.
-- `themis issue <number>` — a single issue.
-
-Both take `--provider github|gitea` (default `github` — pass `--provider gitea` for a Gitea host). Each host has a small setup contract (the two factory labels, auth, target-branch behaviour) — see [`docs/providers.md`](../providers.md).
-
-> **Status — packaging in progress.** Themis currently dogfoods on *itself* via its `Makefile` (`make factory`, `make factory-issue ISSUE=N`), which builds `themis` from the mounted source inside the container. A **portable wrapper to run the binary against *your own* project** (a prebuilt image + a `--sandbox`-style launcher) is a beta prerequisite being finalized — see [`docs/beta-readiness.md`](../beta-readiness.md). Until then, adapt the `Makefile`'s `FACTORY_RUN` block: mount `bin/themis` + your repo into a container that has your toolchain + Claude Code, and run `themis run --provider …`.
-
-See [`docs/development.md`](../development.md) for the full command/flag reference and troubleshooting.
+With the binary built and the prerequisites in place, you're installed. **Running the factory comes later** — after you configure a project (next), write a contract or two, and build your sandbox image. Provider setup (`gh` for GitHub, token + MCP for Gitea) is in [`docs/providers.md`](../providers.md); the full command/flag reference is in [`docs/development.md`](../development.md).
 
 → Next: [Configure a project](02-configure.md)

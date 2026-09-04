@@ -6,9 +6,12 @@ BUILD_DIR  := bin
 
 .PHONY: factory factory-issue factory-dry factory-cc shell build-image build test lint backtest
 
-# Architecture of the sandbox containers the factory binary runs in. arm64 matches
-# Apple-silicon podman; override (e.g. FACTORY_ARCH=amd64) for other hosts.
-FACTORY_ARCH ?= arm64
+# Architecture of the sandbox containers the factory binary runs in. Defaults to
+# the build host's architecture (go env GOHOSTARCH) — the common case, where the
+# container arch matches the host (arm64 on Apple silicon, amd64 on an amd64 Linux
+# host). Override only for cross-arch builds, e.g. FACTORY_ARCH=amd64 on an arm64
+# host targeting an amd64 sandbox.
+FACTORY_ARCH ?= $(shell go env GOHOSTARCH)
 
 factory-cc: ## Materialize the curated .claude/ the factory container overlays (from factory/manifest.txt)
 	@rm -rf .themis/factory-cc/.claude

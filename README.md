@@ -15,7 +15,7 @@ It works best on **well-specified vertical slices** — one end-to-end testable 
 New to Themis? Walk these in order — each is short:
 
 0. [The model](docs/getting-started/00-the-model.md) — what Themis is, your role, and what a *vertical slice* is
-1. [Install & run](docs/getting-started/01-install-and-run.md) — build the binary, the sandbox
+1. [Install](docs/getting-started/01-install-and-run.md) — build the binary, prerequisites, the sandbox
 2. [Configure a project](docs/getting-started/02-configure.md) — `themis init` and `.themis/workflow.yaml`
 3. [A green baseline](docs/getting-started/03-project-baseline.md) — get your project to a floor the factory can build on
 4. [Contract docs](docs/getting-started/04-contracts.md) — the boundary the factory works within
