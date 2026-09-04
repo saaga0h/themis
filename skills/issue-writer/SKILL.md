@@ -20,18 +20,25 @@ You do not have to reason about which forge this is. Use the same rule the `them
 
 That's the whole determination. Host/owner/repo aren't yours to figure out either — the connected MCP already knows the repo.
 
-### Step 2 — create via that provider's MCP
+### Step 2 — create via that provider's sanctioned tool
 
-Create the issue with the provider's MCP tools (e.g. the Gitea MCP for a gitea project), in the same conversation.
+Create the issue in the same conversation, using the tool for the provider from Step 1:
 
-**If that provider's MCP is not connected, STOP and report — tell the human exactly what to do:** e.g. *"This project is `gitea`; I don't see a Gitea MCP connected. Connect it (or tell me how you'd like the issue created) and I'll create the issue — here's the drafted body."* An undetermined *destination* is a blocking question; an undetermined *provider* is not (Step 1 answers it).
+- **gitea** → the **Gitea MCP**.
+- **github** → the **GitHub MCP** if connected, otherwise an **already-authenticated `gh`** (`gh` is the sanctioned GitHub interactive tool; use it only if `gh auth status` is already logged in — never authenticate it yourself).
 
-Do NOT work around a closed door:
-- **Do NOT** write the issue to a local file as a substitute. A file on disk is not a deliverable; an issue that isn't in the tracker is not an issue. (A drafted body in the conversation is a fine intermediate — a file is not.)
+**If the needed tool isn't available, STOP and report — name exactly what to connect/do:**
+- gitea, no MCP → *"This project is `gitea`; I don't see a Gitea MCP connected. Connect one (or tell me how you'd like the issue created), and I'll create it — here's the drafted body."*
+- github, no MCP and `gh` not authenticated → *"This project is `github`; there's no GitHub MCP and `gh` isn't authenticated. Run `gh auth login` or connect a GitHub MCP, and I'll create it — here's the drafted body."*
+
+An undetermined *provider* is never blocking (Step 1 answers it); a missing *tool* is — and the answer is a precise report, not a workaround.
+
+Do NOT work around a closed door — these are the ways a "helpful" model improvises, and all are forbidden:
+- **Do NOT** write the issue to a file. Not as a deliverable, and **not even a "scratchpad"/temp copy** labelled non-deliverable — a file on disk gets mistaken for the issue later. The **drafted body in the conversation is the only intermediate**; the tracker is the only destination.
 - **Do NOT** read a token out of `.env` (or anywhere) and call the provider's API directly. That bypasses the access model and puts a secret on the command line and in shell/transcript history. Reference secrets by location, never extract their values.
-- **Do NOT** use `gh`/`tea` unless they are already authenticated for interactive use.
+- **Do NOT** authenticate `gh`/`tea` yourself or use them unauthenticated as a bypass.
 
-The negative clauses matter more than the positive one: "create via MCP" alone doesn't say what to do when MCP is absent — and the failure mode is inventing a plausible artifact (a file, a raw API call) to have something to hand over. When blocked, stop and say what to connect.
+The negatives matter more than the positive: "create via MCP" alone doesn't say what to do when the tool is absent — and the failure mode is inventing a plausible artifact (a file, a raw API call) to have something to hand over. When blocked, stop and say what to connect.
 
 ## Issue Structure
  
