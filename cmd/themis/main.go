@@ -13,8 +13,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	themis "github.com/saaga0h/themis"
 	"github.com/saaga0h/themis/internal/agent"
 	"github.com/saaga0h/themis/internal/checkpoint"
+	"github.com/saaga0h/themis/internal/factoryassets"
 	"github.com/saaga0h/themis/internal/git"
 	"github.com/saaga0h/themis/internal/issuespec"
 	"github.com/saaga0h/themis/internal/profile"
@@ -229,6 +231,21 @@ func main() {
 	}
 }
 
+// materializeFactoryAssets writes the embedded factory-internal .claude assets
+// into the user home's .claude so the in-sandbox pipeline's Claude Code sessions
+// load the curated skills/agents without a repo mount. During the #139 transition
+// this runs alongside the factory-cc mount (which still provides the same assets
+// at the project level), so a failure here is non-fatal — it is logged and the
+// mount covers the run. os.UserHomeDir resolves HOME (Unix) / USERPROFILE
+// (Windows); the sandbox is Linux, so this resolves to /home/agent.
+func materializeFactoryAssets() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("resolving home dir: %w", err)
+	}
+	return factoryassets.Materialize(themis.Assets, filepath.Join(home, ".claude"))
+}
+
 func runIssue(args []string) error {
 	parsed, err := parseIssueArgs(args)
 	if err != nil {
@@ -249,6 +266,10 @@ func runIssue(args []string) error {
 		return fmt.Errorf("resolving templates: %w", err)
 	}
 	defer cleanup()
+
+	if err := materializeFactoryAssets(); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not materialize factory .claude assets (%v); the run relies on the mounted factory-cc during the #139 transition\n", err)
+	}
 
 	var giteaOwner, giteaRepo, giteaAPIBase string
 	if parsed.provider == "gitea" {
@@ -402,6 +423,10 @@ func runRun(args []string) error {
 		return fmt.Errorf("resolving templates: %w", err)
 	}
 	defer cleanup()
+
+	if err := materializeFactoryAssets(); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not materialize factory .claude assets (%v); the run relies on the mounted factory-cc during the #139 transition\n", err)
+	}
 
 	var querier IssueQuerier
 	var giteaOwner, giteaRepo, giteaAPIBase string
