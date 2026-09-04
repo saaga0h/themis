@@ -5,7 +5,7 @@ Themis is **provider-agnostic**. The pipeline, gates, and state machine are iden
 - **GitHub** — via the `gh` CLI.
 - **Gitea** — via the REST API.
 
-**Where you set it:** the `provider:` field in `.themis/workflow.yaml` (`github` or `gitea`) — a per-project fact you set once. The `--provider` flag on `themis run`/`issue` overrides it for a single run; if neither is set, it defaults to `github` (the public, hosted case; Gitea is the self-hosted one).
+**Where it comes from:** the provider is **auto-detected from your git `origin` remote** — `github.com` → GitHub, any other host → Gitea — so you usually set nothing. To force it, set `provider: github|gitea` in `.themis/workflow.yaml`, or pass `--provider` on `themis run`/`issue` (flag > config > inferred). With no remote it defaults to `github`.
 
 ## The provider contract
 

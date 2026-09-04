@@ -251,15 +251,21 @@ func materializeFactoryAssets() error {
 	return factoryassets.Materialize(themis.Assets, filepath.Join(home, ".claude"))
 }
 
-// resolveProvider picks the issue-tracker provider: the --provider flag if given,
-// otherwise workflow.yaml's provider:, otherwise the "github" default. Both inputs
-// are pre-validated (parse-time / Load) to be "github", "gitea", or empty.
-func resolveProvider(flag, configured string) string {
+// resolveProvider picks the issue-tracker provider by precedence: the --provider
+// flag, then workflow.yaml's provider:, then what git.InferProvider detected from
+// the origin remote, then the "github" default. This makes provider zero-config
+// for the common case (a repo on github or a gitea host is auto-detected) while
+// still allowing an explicit override. Inputs are pre-validated to be "github",
+// "gitea", or empty.
+func resolveProvider(flag, configured, inferred string) string {
 	if flag != "" {
 		return flag
 	}
 	if configured != "" {
 		return configured
+	}
+	if inferred != "" {
+		return inferred
 	}
 	return "github"
 }
@@ -283,7 +289,7 @@ func runIssue(args []string) error {
 	if err != nil {
 		return fmt.Errorf("loading workflow descriptor: %w", err)
 	}
-	provider := resolveProvider(parsed.provider, desc.Provider)
+	provider := resolveProvider(parsed.provider, desc.Provider, git.InferProvider(context.Background(), repoRoot))
 	templateDir, cleanup, err := resolveTemplateDir(parsed.templates)
 	if err != nil {
 		return fmt.Errorf("resolving templates: %w", err)
@@ -445,7 +451,7 @@ func runRun(args []string) error {
 	if err != nil {
 		return fmt.Errorf("loading workflow descriptor: %w", err)
 	}
-	provider := resolveProvider(parsed.provider, desc.Provider)
+	provider := resolveProvider(parsed.provider, desc.Provider, git.InferProvider(context.Background(), repoRoot))
 	templateDir, cleanup, err := resolveTemplateDir(parsed.templates)
 	if err != nil {
 		return fmt.Errorf("resolving templates: %w", err)

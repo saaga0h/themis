@@ -49,6 +49,26 @@ func InferGiteaConfig(ctx context.Context, dir string) (*GiteaConfig, error) {
 	}, nil
 }
 
+// InferProvider guesses the forge from the git origin remote in dir: "github" if
+// the remote host is github.com, "gitea" for any other host (themis's only other
+// supported provider), or "" when there is no origin remote (the caller then
+// applies its default). A substring match on the raw URL handles https, ssh, and
+// scp-style (git@host:path) remotes alike.
+func InferProvider(ctx context.Context, dir string) string {
+	out, err := runGit(ctx, dir, "remote", "get-url", "origin")
+	if err != nil {
+		return ""
+	}
+	remote := strings.TrimSpace(out)
+	if remote == "" {
+		return ""
+	}
+	if strings.Contains(remote, "github.com") {
+		return "github"
+	}
+	return "gitea"
+}
+
 // GiteaPushURL builds the https clone/push URL for owner/repo from a Gitea API
 // base. Only the scheme and host of apiBase are used, so it works whether apiBase
 // is "https://host" or "https://host/api/v1". The URL carries no credentials —

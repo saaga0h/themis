@@ -47,15 +47,16 @@ func TestParseRunArgs_DefaultProviderIsUnset(t *testing.T) {
 }
 
 func TestResolveProvider(t *testing.T) {
-	cases := []struct{ flag, cfg, want string }{
-		{"", "", "github"},           // nothing set → default
-		{"", "gitea", "gitea"},       // workflow.yaml provider
-		{"gitea", "github", "gitea"}, // flag overrides config
-		{"github", "", "github"},
+	cases := []struct{ flag, cfg, inferred, want string }{
+		{"", "", "", "github"},                 // nothing → default
+		{"", "", "gitea", "gitea"},             // inferred from the git remote
+		{"", "", "github", "github"},           // inferred github
+		{"", "gitea", "github", "gitea"},       // config beats inference
+		{"github", "gitea", "gitea", "github"}, // flag beats all
 	}
 	for _, c := range cases {
-		if got := resolveProvider(c.flag, c.cfg); got != c.want {
-			t.Errorf("resolveProvider(%q,%q) = %q, want %q", c.flag, c.cfg, got, c.want)
+		if got := resolveProvider(c.flag, c.cfg, c.inferred); got != c.want {
+			t.Errorf("resolveProvider(%q,%q,%q) = %q, want %q", c.flag, c.cfg, c.inferred, got, c.want)
 		}
 	}
 }

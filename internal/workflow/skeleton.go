@@ -37,9 +37,10 @@ docs:
   architecture: ""
 
 # provider is the host this repo lives on — where the factory reads issues and
-# opens PRs. github (the default) or gitea. Change it to match your repo; the
-# --provider flag overrides it.
-provider: github
+# opens PRs. It is auto-detected from your git remote (github.com -> github, any
+# other host -> gitea), so you usually don't set it. Uncomment to force it; the
+# --provider flag also overrides.
+# provider: github   # github | gitea
 
 # image is the sandbox container image the factory runs in — built locally from
 # the Containerfile in this project (see the next-steps from 'themis init').
