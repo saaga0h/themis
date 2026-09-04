@@ -45,6 +45,13 @@ type Descriptor struct {
 	// outside its own packages (e.g. go.mod, go.sum). Declared per-repo to keep the
 	// factory stack-agnostic. See issue #111.
 	FootprintExempt []string `yaml:"footprint_exempt"`
+	// Image is the sandbox container image the host-mode launcher runs the factory
+	// in — built locally from the project's Containerfile. Required for a launch
+	// (the launcher errors when it is empty). See cmd/themis launcher (#140).
+	Image string `yaml:"image"`
+	// Runtime optionally pins the container runtime for the launcher: "podman" or
+	// "docker". Empty means autodetect (podman, then docker).
+	Runtime string `yaml:"runtime"`
 }
 
 const workflowFile = ".themis/workflow.yaml"
@@ -74,6 +81,9 @@ func Load(dir string) (*Descriptor, error) {
 		if cmd == "" {
 			return nil, fmt.Errorf("workflow descriptor: verify[%d] is empty", i)
 		}
+	}
+	if d.Runtime != "" && d.Runtime != "podman" && d.Runtime != "docker" {
+		return nil, fmt.Errorf("workflow descriptor: runtime %q must be \"podman\", \"docker\", or empty (autodetect)", d.Runtime)
 	}
 	return &d, nil
 }

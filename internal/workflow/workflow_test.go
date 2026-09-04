@@ -126,3 +126,38 @@ func TestLoad_RejectsUnknownField(t *testing.T) {
 		t.Fatal("expected error for unknown field")
 	}
 }
+
+func TestLoad_ParsesImageAndRuntime(t *testing.T) {
+	dir := t.TempDir()
+	writeDescriptor(t, dir, "image: themis-myproj:latest\nruntime: docker\n")
+	d, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if d.Image != "themis-myproj:latest" {
+		t.Errorf("image: got %q", d.Image)
+	}
+	if d.Runtime != "docker" {
+		t.Errorf("runtime: got %q", d.Runtime)
+	}
+}
+
+func TestLoad_EmptyRuntimeIsAutodetect(t *testing.T) {
+	dir := t.TempDir()
+	writeDescriptor(t, dir, "image: x:latest\n")
+	d, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if d.Runtime != "" {
+		t.Errorf("runtime: got %q, want empty (autodetect)", d.Runtime)
+	}
+}
+
+func TestLoad_RejectsInvalidRuntime(t *testing.T) {
+	dir := t.TempDir()
+	writeDescriptor(t, dir, "runtime: containerd\n")
+	if _, err := Load(dir); err == nil {
+		t.Fatal("expected error for invalid runtime")
+	}
+}
