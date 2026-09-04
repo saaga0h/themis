@@ -3,6 +3,7 @@ package workflow
 import (
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // skeleton is the scaffolded .themis/workflow.yaml written by `themis init`.
@@ -145,6 +146,61 @@ func WriteContainerfile(dir string, force bool) (created bool, err error) {
 // WriteEnvExample scaffolds a .env.example in dir (same force/skip semantics).
 func WriteEnvExample(dir string, force bool) (created bool, err error) {
 	return writeScaffold(filepath.Join(dir, ".env.example"), envExample, force)
+}
+
+// gitignoreEntries are the paths themis needs git-ignored: the secrets file
+// (never commit .env) and the factory's per-run artifacts. .themis/workflow.yaml
+// and the scaffolded Containerfile/.env.example stay committed.
+var gitignoreEntries = []string{
+	".env",
+	".themis/state.json",
+	".themis/review-results.json",
+	".themis/factory-cc/",
+}
+
+// EnsureGitignore makes sure dir/.gitignore contains the themis entries, appending
+// any that are missing (creating the file if absent). Existing content is
+// preserved verbatim — it never removes or reorders. Returns changed=true when it
+// wrote. This is how `themis init` keeps .env (secrets) out of the repository.
+func EnsureGitignore(dir string) (changed bool, err error) {
+	path := filepath.Join(dir, ".gitignore")
+	existing := ""
+	if data, rerr := os.ReadFile(path); rerr == nil {
+		existing = string(data)
+	} else if !os.IsNotExist(rerr) {
+		return false, rerr
+	}
+
+	present := map[string]bool{}
+	for _, line := range strings.Split(existing, "\n") {
+		present[strings.TrimSpace(line)] = true
+	}
+	var missing []string
+	for _, e := range gitignoreEntries {
+		if !present[e] {
+			missing = append(missing, e)
+		}
+	}
+	if len(missing) == 0 {
+		return false, nil
+	}
+
+	var b strings.Builder
+	b.WriteString(existing)
+	if existing != "" && !strings.HasSuffix(existing, "\n") {
+		b.WriteString("\n")
+	}
+	if existing != "" {
+		b.WriteString("\n")
+	}
+	b.WriteString("# Themis — secrets and per-run artifacts (keep out of the repo)\n")
+	for _, e := range missing {
+		b.WriteString(e + "\n")
+	}
+	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // writeScaffold writes content to path. Without force, an existing file is left

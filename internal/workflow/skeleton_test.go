@@ -270,6 +270,52 @@ func TestWriteEnvExample_NamesTokensWithoutValues(t *testing.T) {
 	}
 }
 
+// EnsureGitignore creates .gitignore with .env when absent, is idempotent, and
+// preserves an existing file's content while appending the missing entries.
+func TestEnsureGitignore(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".gitignore")
+
+	changed, err := EnsureGitignore(dir)
+	if err != nil {
+		t.Fatalf("EnsureGitignore (create): %v", err)
+	}
+	if !changed {
+		t.Error("expected changed=true creating a new .gitignore")
+	}
+	raw, _ := os.ReadFile(path)
+	if !strings.Contains(string(raw), ".env") {
+		t.Errorf(".gitignore must ignore .env; got:\n%s", raw)
+	}
+
+	// Idempotent: a second call changes nothing.
+	changed, err = EnsureGitignore(dir)
+	if err != nil {
+		t.Fatalf("EnsureGitignore (idempotent): %v", err)
+	}
+	if changed {
+		t.Error("expected changed=false on a second call")
+	}
+}
+
+func TestEnsureGitignore_PreservesExistingAndAppends(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".gitignore")
+	if err := os.WriteFile(path, []byte("node_modules/\n*.log\n"), 0o644); err != nil {
+		t.Fatalf("seed .gitignore: %v", err)
+	}
+	if _, err := EnsureGitignore(dir); err != nil {
+		t.Fatalf("EnsureGitignore: %v", err)
+	}
+	raw, _ := os.ReadFile(path)
+	s := string(raw)
+	for _, want := range []string{"node_modules/", "*.log", ".env"} {
+		if !strings.Contains(s, want) {
+			t.Errorf(".gitignore must contain %q (preserve existing + append); got:\n%s", want, s)
+		}
+	}
+}
+
 // #142: writeScaffold's non-destructive contract holds for the Containerfile too.
 func TestWriteContainerfile_ExistingUnchangedWithoutForce(t *testing.T) {
 	dir := t.TempDir()

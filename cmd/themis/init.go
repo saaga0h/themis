@@ -46,6 +46,16 @@ func runInit(args []string) error {
 		}
 	}
 
+	// Keep .env (secrets) and the factory's per-run artifacts out of the repo.
+	// Append-only: preserves any existing .gitignore.
+	if changed, err := workflow.EnsureGitignore(workDir); err != nil {
+		return fmt.Errorf("updating .gitignore: %w", err)
+	} else if changed {
+		fmt.Println("updated .gitignore (.env + factory artifacts)")
+	} else {
+		fmt.Println("skipped .gitignore (.env + factory artifacts already ignored)")
+	}
+
 	fmt.Println()
 	fmt.Println("Next steps (see docs/getting-started):")
 	fmt.Println("  1. .themis/workflow.yaml — set your real verify commands, point docs at your")
