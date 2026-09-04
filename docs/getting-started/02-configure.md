@@ -41,7 +41,11 @@ Themis's own [`.themis/workflow.yaml`](../../.themis/workflow.yaml) is a worked 
 
 ## The sandbox image (Podman or Docker)
 
-`themis init` also scaffolds a **`Containerfile`** with a **TODO for your toolchain** (the compiler/test tools your `verify` commands need — the file has an inline Go example, and there are more per-stack examples in the docs). Fill the TODO; the rest is pre-filled.
+`themis init` also scaffolds a **`Containerfile`**. It's mostly pre-filled; the one part you complete is the **toolchain**, and here's exactly what that means:
+
+> The factory runs your `verify` commands (from `workflow.yaml`) **inside this image**. So the image must contain every tool those commands call — your compiler/interpreter, your test runner, any linter/formatter you verify with. Read your `verify:` list and add a `RUN` line installing each. (git and Claude Code are already in the image; you add the language-specific tools.)
+
+The scaffold's TODO section says this too, with per-stack examples (Go/Python/Rust/Node). For instance, if your `verify` runs `go build`/`go test`, install Go; if it runs `pytest`, install Python + pytest.
 
 **You don't supply the `themis` binary — the image builds it.** A throwaway `golang` builder stage in the scaffolded Containerfile clones and compiles themis *for this image's architecture* (amd64, arm64, riscv, …), then copies just the binary into the final image (Go stays in the builder — your image doesn't carry it). So there's **no prebuilt binary to fetch and no registry image** — nothing arch-specific to get right, and it builds **once, at image-build time**, not per run.
 

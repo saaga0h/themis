@@ -79,13 +79,20 @@ FROM node:22-bookworm
 
 RUN apt-get update && apt-get install -y git ca-certificates && rm -rf /var/lib/apt/lists/*
 
-# --- TODO: your project's toolchain ----------------------------------------
-# Install whatever your .themis/workflow.yaml 'verify' commands need — your
-# compiler, test runner, linters. See docs/getting-started for copy-paste
-# examples (Go, Node, Python, ...). For example, for Go:
-#   ARG GO_VERSION=1.24.3
-#   RUN curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-$(dpkg --print-architecture).tar.gz \
-#       | tar -C /usr/local -xz && ln -s /usr/local/go/bin/go /usr/local/bin/go
+# --- TODO: install your project's toolchain --------------------------------
+# WHAT THIS IS: the factory runs the 'verify' commands from your
+# .themis/workflow.yaml *inside this image*. So this image must contain every
+# tool those commands call — your language's compiler/interpreter, its test
+# runner, and any formatter/linter you verify with. git and Claude Code are
+# already here (below); you add the language-specific tools.
+#
+# HOW: read your workflow.yaml 'verify:' list and add a RUN line installing each
+# tool it invokes. Examples (adapt to your stack; this base is Debian + Node):
+#   Go:     RUN curl -fsSL https://go.dev/dl/go1.24.3.linux-$(dpkg --print-architecture).tar.gz | tar -C /usr/local -xz \
+#             && ln -s /usr/local/go/bin/go /usr/local/bin/go
+#   Python: RUN apt-get update && apt-get install -y python3 python3-pip && rm -rf /var/lib/apt/lists/*
+#   Rust:   RUN apt-get update && apt-get install -y cargo && rm -rf /var/lib/apt/lists/*
+#   Node:   already installed (this base image is node:22-bookworm)
 # ---------------------------------------------------------------------------
 
 # --- Themis agent layer (keep this) ----------------------------------------
