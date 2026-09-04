@@ -108,4 +108,15 @@ Then set that exact tag as `image:` in `workflow.yaml` — e.g. `image: themis-m
 
 `themis init` also writes **`.env.example`** (token *names* only). Copy it to `.env` (gitignored — never commit it) and fill in `CLAUDE_CODE_OAUTH_TOKEN` (Claude Code auth — Themis's one hard dependency) and your provider token (`GH_TOKEN` for GitHub, `GITEA_TOKEN` for Gitea). Provider specifics are in [`docs/providers.md`](../providers.md).
 
+## Factory labels
+
+The factory keys off two labels on your repo's issues: **`ready-for-agent`** (you add it to an issue to hand it to the factory) and **`needs-review`** (the factory adds it when it opens the PR). Create them once:
+
+- **Gitea** — nothing to do; the factory auto-creates them on first use.
+- **GitHub** — create them yourself (the `gh` path adds labels by name and errors if they don't exist):
+  ```bash
+  gh label create ready-for-agent --description "Ready for the factory"
+  gh label create needs-review    --description "Factory opened a PR; awaiting review"
+  ```
+
 → Next: [A green baseline](03-project-baseline.md)
