@@ -6,7 +6,21 @@ description: "When creating issues for factory-processed work, follow this struc
 # Issue Writing Skill
  
 When creating issues for factory-processed work, follow this structure and these rules.
- 
+
+## Where issues go
+
+An issue you author is created in the project's **tracker** — never written to a local file. The tracker is the `provider:` in `.themis/workflow.yaml` (`github` or `gitea`); the specific host/owner/repo come from the git `origin` remote or the connected MCP's own config — you do not hardcode them.
+
+Create the issue via the **provider's MCP server**, in the same conversation.
+
+**If no MCP server for that provider is connected — STOP and ask the human.** An undetermined destination is a *blocking* question, not a detail to improvise around. Do NOT work around a closed door:
+
+- **Do NOT** write the issue to a local file as a substitute. A file on disk is not a deliverable; an issue that isn't in the tracker is not an issue. (A drafted body in the conversation is a fine intermediate — a file is not.)
+- **Do NOT** read a token out of `.env` (or anywhere) and call the provider's API directly. That bypasses the access model and puts a secret on the command line and in shell/transcript history. Reference secrets by location, never extract their values.
+- **Do NOT** use `gh`/`tea` unless they are already authenticated for interactive use.
+
+The negative clauses matter more than the positive one: "create via MCP" alone doesn't say what to do when MCP is absent — and the failure mode is inventing a plausible artifact (a file, a raw API call) to have something to hand over. When blocked, stop and say so.
+
 ## Issue Structure
  
 Every issue follows this template:
