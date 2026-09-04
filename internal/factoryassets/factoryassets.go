@@ -3,10 +3,14 @@
 // settings — from an embedded filesystem into a target .claude directory, so an
 // in-sandbox run has them without any repo mount or the themis repo being present.
 //
+// It also installs the interactive authoring/review set (skills, commands, and
+// the agents those spawn) into a user's .claude via InstallInteractive — the
+// cross-platform replacement for the retired install.sh.
+//
 // The embedded filesystem is supplied by the caller (the module-root themis
 // package holds the go:embed; see the note there on why the embed cannot live
-// here). Keeping the embed out of this package leaves the manifest→materialize
-// logic pure and testable against any fs.FS.
+// here). Keeping the embed out of this package leaves the copy logic pure and
+// testable against any fs.FS.
 package factoryassets
 
 import (
@@ -55,6 +59,60 @@ func Materialize(fsys fs.FS, claudeDir string) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(claudeDir, "settings.json"), []byte(settingsJSON), 0o644)
+}
+
+// interactiveSkills are the human's authoring/review skills. skills/ also holds
+// factory-internal (test-red, pr-composition) and design add-ons (deepen,
+// deepening, design-it-twice), so the interactive set is named explicitly rather
+// than "all of skills/".
+var interactiveSkills = []string{
+	"grill-me", "split-walker", "issue-writer", "contract-drafter",
+	"review-walker", "pr-review",
+}
+
+// pipelineOnlyAgents are spawned only by the in-sandbox pipeline, never by an
+// interactive command, so they are excluded from the interactive install. All
+// other agents (the /review panel, /document's doc-*, pr-review's pr-*) are
+// installed so the interactive commands can spawn them.
+var pipelineOnlyAgents = map[string]bool{
+	"test-architect": true, "test-writer": true, "test-runner": true,
+}
+
+// InstallInteractive writes the interactive authoring/review assets from fsys
+// into claudeDir: the named interactive skills, every command, and every agent
+// except the pipeline-only ones. Used by `themis skills install` to populate a
+// user's .claude on any OS.
+func InstallInteractive(fsys fs.FS, claudeDir string) error {
+	for _, name := range interactiveSkills {
+		if err := copyTree(fsys, "skills/"+name, filepath.Join(claudeDir, "skills", name)); err != nil {
+			return err
+		}
+	}
+	if err := copyDirFiles(fsys, "commands", filepath.Join(claudeDir, "commands"), nil); err != nil {
+		return err
+	}
+	return copyDirFiles(fsys, "agents", filepath.Join(claudeDir, "agents"), pipelineOnlyAgents)
+}
+
+// copyDirFiles copies each *.md file directly under srcDir into dstDir, skipping
+// any whose base name (without .md) is in exclude.
+func copyDirFiles(fsys fs.FS, srcDir, dstDir string, exclude map[string]bool) error {
+	entries, err := fs.ReadDir(fsys, srcDir)
+	if err != nil {
+		return fmt.Errorf("reading embedded %s: %w", srcDir, err)
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		if exclude[strings.TrimSuffix(e.Name(), ".md")] {
+			continue
+		}
+		if err := copyFile(fsys, srcDir+"/"+e.Name(), filepath.Join(dstDir, e.Name())); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func parseManifest(fsys fs.FS) ([]manifestEntry, error) {

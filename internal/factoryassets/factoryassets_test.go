@@ -44,3 +44,34 @@ func TestMaterialize_WritesManifestAssetsAndSettings(t *testing.T) {
 		t.Errorf("settings.json missing disableBundledSkills: %s", data)
 	}
 }
+
+// InstallInteractive writes the named interactive skills, all commands, and every
+// agent except the pipeline-only ones — and none of the factory-internal skills.
+func TestInstallInteractive_WritesInteractiveSetNotPipelineOnly(t *testing.T) {
+	claude := filepath.Join(t.TempDir(), ".claude")
+	if err := factoryassets.InstallInteractive(themis.Assets, claude); err != nil {
+		t.Fatalf("InstallInteractive: %v", err)
+	}
+
+	for _, s := range []string{"grill-me", "split-walker", "issue-writer", "contract-drafter", "review-walker", "pr-review"} {
+		if _, err := os.Stat(filepath.Join(claude, "skills", s, "SKILL.md")); err != nil {
+			t.Errorf("expected interactive skill %s: %v", s, err)
+		}
+	}
+	for _, c := range []string{"review.md", "document.md", "context.md"} {
+		if _, err := os.Stat(filepath.Join(claude, "commands", c)); err != nil {
+			t.Errorf("expected command %s: %v", c, err)
+		}
+	}
+	// An interactive (review-panel) agent is installed; a pipeline-only one is not.
+	if _, err := os.Stat(filepath.Join(claude, "agents", "architecture-reviewer.md")); err != nil {
+		t.Errorf("expected interactive agent architecture-reviewer: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(claude, "agents", "test-architect.md")); err == nil {
+		t.Error("pipeline-only agent test-architect must not be installed interactively")
+	}
+	// Factory-internal skills are not part of the interactive install.
+	if _, err := os.Stat(filepath.Join(claude, "skills", "test-red")); err == nil {
+		t.Error("factory-internal skill test-red must not be in the interactive install")
+	}
+}
