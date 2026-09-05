@@ -137,15 +137,21 @@ func ChangedFiles(ctx context.Context, dir string) string {
 // branchMergeBase returns the merge-base SHA between HEAD and the nearest remote
 // tracking branch. Returns empty string if no remote exists or any git command fails.
 // MergeBaseWith returns the merge-base SHA between HEAD and the given base branch,
-// trying origin/<base> then <base>, or "" when neither resolves or base is empty.
-// This is the base a footprint/diff check compares against — the issue's *actual*
-// base branch, not whatever branchMergeBase's first remote ref happens to be (with
-// multiple remotes that can pick an unrelated branch and yield a wildly stale base).
+// trying the LOCAL <base> first, then origin/<base>, or "" when neither resolves
+// or base is empty. This is the base a footprint/diff check compares against — the
+// commit the issue branch was actually cut from.
+//
+// Local-first is deliberate: the factory cuts the issue branch from the local base
+// branch, so the local ref is the true branch point. Preferring origin/<base>
+// would merge-base against a stale remote when the local base has commits not yet
+// pushed — leaking those base commits into the branch diff and false-blocking the
+// footprint gate (the "push the base branch first" footgun). Falling back to
+// origin/<base> keeps it working when no local ref exists (e.g. a detached checkout).
 func MergeBaseWith(ctx context.Context, dir, base string) string {
 	if strings.TrimSpace(base) == "" {
 		return ""
 	}
-	for _, ref := range []string{"origin/" + base, base} {
+	for _, ref := range []string{base, "origin/" + base} {
 		if mb, err := runGit(ctx, dir, "merge-base", "HEAD", ref); err == nil {
 			if s := strings.TrimSpace(mb); s != "" {
 				return s

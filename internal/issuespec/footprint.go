@@ -97,6 +97,13 @@ func (f Footprint) CheckCommand(exempt []string) string {
 	for _, e := range exempt {
 		alts = append(alts, "^"+regexp.QuoteMeta(e)+"$") // exact file
 	}
+	// Always exempt factory/project meta: .themis/ (the factory's own state,
+	// config, and scratch artifacts) and .gitignore. These are never feature
+	// files, so an issue must not be footprint-blocked over them.
+	alts = append(alts,
+		"^"+regexp.QuoteMeta(".themis")+"/",    // ^\.themis/
+		"^"+regexp.QuoteMeta(".gitignore")+"$", // ^\.gitignore$
+	)
 	allowed := strings.Join(alts, "|")
 	return fmt.Sprintf(
 		`if [ -z "$BASE" ]; then exit 0; fi; `+

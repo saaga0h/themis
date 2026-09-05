@@ -59,10 +59,18 @@ The PR body must:
    - **Review findings**: from `.themis/review-results.json` only — not from your own analysis
    - **Follow-ups**: explicitly deferred items (omit section if none)
 
-Output the complete PR body as your final response. Do not create the PR itself — the system will handle that.
+Output ONLY the PR body, wrapped exactly between the two marker lines below — nothing before the first marker, and nothing between the markers except the body itself (no preamble, no commentary, no code fences):
+
+<<<THEMIS_PR_BODY>>>
+Closes #{{ISSUE_NUMBER}}
+
+...the rest of the composed PR body...
+<<<END_THEMIS_PR_BODY>>>
+
+Do not create the PR itself — the system will handle that.
 
 ## Completion
 
-When the PR body is composed and output, output:
+After the end marker, on its own line, output:
 
 STEP COMPLETE

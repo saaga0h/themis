@@ -86,6 +86,21 @@ func TestFootprint_CheckCommand_AllowedAndExempt(t *testing.T) {
 	}
 }
 
+// Factory/project meta (.themis/ and .gitignore) is always allowed, even without
+// being declared in the issue's footprint or the repo's exempt list.
+func TestFootprint_CheckCommand_AlwaysExemptsMeta(t *testing.T) {
+	fp := ParseFootprint("```footprint\ninternal/tracker\n```")
+	cmd := fp.CheckCommand(nil)
+	for _, want := range []string{
+		`^\.themis/`,
+		`^\.gitignore$`,
+	} {
+		if !strings.Contains(cmd, want) {
+			t.Errorf("CheckCommand must always exempt %q\ngot: %s", want, cmd)
+		}
+	}
+}
+
 func TestFootprint_CheckCommand_EmptyWhenUndeclared(t *testing.T) {
 	if cmd := (Footprint{}).CheckCommand(nil); cmd != "" {
 		t.Errorf("undeclared footprint must produce no check command, got %q", cmd)

@@ -398,6 +398,46 @@ func formatACs(acs []string) string {
 	return strings.TrimRight(sb.String(), "\n")
 }
 
+// prBody markers delimit the composed PR body in the ship agent's output, so the
+// runner publishes only the body — not the agent's conversational preamble or its
+// "STEP COMPLETE" completion marker (both of which otherwise leaked into the PR).
+const (
+	prBodyStartMarker = "<<<THEMIS_PR_BODY>>>"
+	prBodyEndMarker   = "<<<END_THEMIS_PR_BODY>>>"
+)
+
+// extractPRBody pulls the PR body from the ship agent's stdout. It prefers the
+// content between the PR-body markers; absent them it falls back to the stripped
+// stdout with any trailing completion marker removed.
+func extractPRBody(stdout string) string {
+	if i := strings.Index(stdout, prBodyStartMarker); i >= 0 {
+		rest := stdout[i+len(prBodyStartMarker):]
+		if j := strings.Index(rest, prBodyEndMarker); j >= 0 {
+			rest = rest[:j]
+		}
+		return strings.TrimSpace(stripCodeFences(rest))
+	}
+	// Strip the completion marker first so a trailing "STEP COMPLETE" after a
+	// closing code fence doesn't leave the fence stranded inside the body.
+	return strings.TrimSpace(stripCodeFences(stripCompletionMarkers(stdout)))
+}
+
+// stripCompletionMarkers removes trailing agent completion-signal lines (e.g.
+// "STEP COMPLETE") and blank lines, so a completion marker never ends up in a
+// published PR body when the delimiters are absent.
+func stripCompletionMarkers(s string) string {
+	lines := strings.Split(s, "\n")
+	for len(lines) > 0 {
+		last := strings.TrimSpace(lines[len(lines)-1])
+		if last == "" || strings.EqualFold(last, "STEP COMPLETE") {
+			lines = lines[:len(lines)-1]
+			continue
+		}
+		break
+	}
+	return strings.Join(lines, "\n")
+}
+
 // stripCodeFences removes leading/trailing code fence markers from agent output.
 // Claude Code's --print mode sometimes wraps markdown responses in ```...``` blocks.
 func stripCodeFences(s string) string {

@@ -98,8 +98,8 @@ func runShipStep(ctx context.Context, cfg Config, issue *tracker.IssueData, stat
 			invokeResult, invokeErr := cfg.Invoker.Invoke(ctx, shipOpts)
 			if invokeErr != nil {
 				fmt.Fprintf(log, "warning: ship agent invocation failed: %v; falling back to buildPRBody\n", invokeErr)
-			} else if invokeResult.Stdout != "" {
-				prBody = stripCodeFences(invokeResult.Stdout)
+			} else if body := extractPRBody(invokeResult.Stdout); body != "" {
+				prBody = body
 			}
 		}
 	}

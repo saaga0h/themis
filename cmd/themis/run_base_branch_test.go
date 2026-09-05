@@ -21,6 +21,10 @@ func TestBaseBranchForIssue(t *testing.T) {
 		{"empty ref falls back to origin branch (GitHub)", "", "themis-2.0", "themis-2.0"},
 		{"empty ref + empty origin falls back to main", "", "", "main"},
 		{"whitespace-only ref falls back to origin", "   ", "master", "master"},
+		// A factory issue branch must never be used as the base — neither the issue's
+		// own leftover (which makes Ship see current==base) nor a sibling's.
+		{"origin is a stale issue branch → main, not self", "", "issue/2-add-harness", "main"},
+		{"origin is another issue branch → main, no stacking", "", "issue/5-delete-flow", "main"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

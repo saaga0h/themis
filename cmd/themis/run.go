@@ -99,11 +99,19 @@ var dependsOnRE = regexp.MustCompile(`(?i)depends on #(\d+)`)
 // factory was invoked on (originBranch), and only then to "main". This removes the
 // hardcoded "main" that branched issues from a stale default (see the #112 loop
 // failure) and works for any provider without assuming a default-branch name.
+// issueBranchPrefix is the namespace the factory creates issue branches under
+// (see runner.issueBranchName: "issue/<n>-<slug>"). The base resolver excludes it
+// so an issue never bases on its own or a sibling's branch.
+const issueBranchPrefix = "issue/"
+
 func baseBranchForIssue(issue *tracker.IssueData, originBranch string) string {
 	if r := strings.TrimPrefix(strings.TrimSpace(issue.Ref), "refs/heads/"); r != "" {
 		return r
 	}
-	if originBranch != "" {
+	// Never base on a factory issue branch — neither the issue's own (a stale
+	// leftover the run checked out, which makes Ship see current==base) nor a
+	// sibling's (which would stack the work). Fall through to the default branch.
+	if originBranch != "" && !strings.HasPrefix(originBranch, issueBranchPrefix) {
 		return originBranch
 	}
 	return "main"
