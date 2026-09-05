@@ -119,3 +119,47 @@ block-category the user already saw.
 - #56 — crash-recovery robustness (resume-branch, dirty-tree, restart discipline)
 - #88 / telemetry — the factory's own narrative to Loki (the diagnosis skill's data source)
 - #87 — scope ceiling (volunteer runs feed the calibration)
+
+---
+
+## Assessment — 2026-09-05 (post-GitHub-dogfood)
+
+A verified audit against the "Minimum viable beta package" list above, done after the
+first full GitHub end-to-end dogfood (greenfield Node repo `saaga0h/todo`). Evidence is
+from real runs and repo inspection, not memory.
+
+**Headline:** the doc's premise — *"the core is beta-quality; the gap is the
+usable-by-a-stranger layer"* — is now **evidenced, not asserted**. Step 1 (prove GitHub)
+is done, and the base-resolution unknown it flagged turned out to be a real bug, now
+fixed. The remaining blockers cluster exactly where the doc predicted: **first-failure
+survivability** (telemetry bundle + diagnosis skill + troubleshooting).
+
+### Scorecard
+
+| MVP-beta item | Verdict | Evidence |
+|---|---|---|
+| 1. Prove GitHub e2e | ✅ **done** | Issues #2/#3/#4 → PRs #7/#8/#9; both ready + draft(blocking-finding) routes; dependency-DAG skip (#5/#6 correctly deferred on open #4); `gh pr create` + label swap (ready-for-agent→needs-review) working. The flagged base-resolution/originating-branch unknown had a real bug (`$BASE` vs unpushed local base; base==issue-branch) — fixed in `bbe6d9a`. |
+| 2. Package (build + telemetry stack + query path) | ◑ **partial** | Build-from-source Containerfile + `themis init` scaffolding done. Telemetry **emission** exists (`cmd/themis/emitter_otel.go`, OTLP→Vector→Loki) but is **env-gated** (`OTEL_EXPORTER_OTLP_ENDPOINT`) and the **collector stack is not bundled** (none in `Containerfile`/`factory/`); no loki query path shipped. So the diagnosis data source is absent out-of-the-box. |
+| 3. `diagnose-themis-run` skill | ✗ **not done** | No such skill in `skills/` (only `pr-diagnose`, a different thing). The doc calls this *make-or-break for retention*. Seed taxonomy exists below; this session added real evidence (base-resolution class, footprint false-blocks, check-block retry). |
+| 4. GitHub-first getting-started | ✅ **done** (1 stale line) | No v1 slash-command lies in README/getting-started/providers (rewritten this session: getting-started, providers.md, new configuration-reference.md). **But the README `## Status` line is stale** — still says "GitHub support… not yet proven end-to-end." |
+| 5. Writing-issues guide | ✅ **mostly** | `getting-started/05-build-loop.md` teaches issue authoring (precise ACs, footprint, ready-for-agent) + the `issue-writer` skill (check-block-quality guidance added `3b55445`). |
+| 6. "When it blocks" troubleshooting page | ✗ **not done** | No troubleshooting page in `docs/`. |
+
+**Gaps beyond the doc's list, surfaced this session:**
+- **Non-Node presets unproven e2e** — the `go`/`python`/`rust` presets (`internal/preset`) are unit-tested but never run through a real image build + factory cycle. A preset that doesn't actually build would bounce a volunteer.
+- **Onboarding not cold-read by an external user; Windows host `init` untested** on real Windows.
+- **Cost/trust not stated loudly** — sandbox/PR-gated is implied in `00-the-model.md`; the ~$2–4/issue cost expectation isn't prominent.
+
+### Go / no-go
+
+- **Supervised beta (a few volunteers we actively watch + diagnose for): GO.** Core, GitHub, and onboarding are proven; *we* are the diagnosis skill for a small, watched cohort. This is also how the diagnosis-skill training set grows.
+- **Open / unsupervised beta: NO-GO** until the survivability cluster lands. A stranger's first failure *will* happen (ours did, repeatedly) and must be survivable without us — the doc's own make-or-break.
+
+### Ranked remaining before unsupervised beta
+
+1. **Bundle telemetry collection + a query path** (completes item 2) — the data source for #2/#3.
+2. **Author `diagnose-themis-run` skill** (item 3) — the make-or-break survivability tool; seed taxonomy above + this session's real runs.
+3. **"When it blocks" troubleshooting page** (item 6) — built on #2.
+4. **Prove `go`/`python`/`rust` presets e2e** — build one image + run one issue per language.
+5. **External cold-read of onboarding + Windows `init` check.**
+6. **Polish:** refresh the stale README `## Status` line; state cost/trust loudly.
