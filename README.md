@@ -27,6 +27,7 @@ New to Themis? Walk these in order — each is short:
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — how the pipeline is built
 - [`CONCEPTS.md`](CONCEPTS.md) — why it's designed this way
 - [`SKILLS.md`](SKILLS.md) — the skills/agents/commands: what's needed to run the factory vs optional add-ons
+- [`docs/configuration-reference.md`](docs/configuration-reference.md) — every `themis init` flag, `workflow.yaml` field, and Containerfile stanza; how to configure a language without a preset
 - [`docs/providers.md`](docs/providers.md) — GitHub vs Gitea: the provider contract and per-host setup
 - [`docs/development.md`](docs/development.md) — build/test/run reference, environment variables, troubleshooting
 - [`CODING_STANDARDS.md`](CODING_STANDARDS.md), [`UBIQUITOUS_LANGUAGE.md`](UBIQUITOUS_LANGUAGE.md) — Themis's own contract docs (and a model for yours)

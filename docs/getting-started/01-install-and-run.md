@@ -20,7 +20,7 @@ make build   # -> bin/themis (static linux binary; FACTORY_ARCH defaults to your
 
 The factory runs Claude Code with `--dangerously-skip-permissions` so it can work unattended. **The container is the blast radius** — it bounds what the agent can touch to the mounted workspace, nothing else on the host. Never run the factory outside its container, and never on issues or repositories you don't trust to execute code (the green gate runs project-defined shell — see [`CODING_STANDARDS.md` → Trust Model](../../CODING_STANDARDS.md)).
 
-The sandbox image needs: your project's **toolchain** (compiler, test runner) + **Claude Code** + the **`themis` binary** + your repo mounted. Store tokens in a `.env` at the repo root (gitignored) and pass them with `--env-file .env`.
+The sandbox image needs: your project's **toolchain** (compiler, test runner) + **Claude Code** + the **`themis` binary** + your repo mounted. You don't assemble this by hand — `themis init` scaffolds the `Containerfile` (Claude Code and the `themis` binary are built in automatically; for a supported language the toolchain is filled in too), and you build the image from it in the next step. Store tokens in a `.env` at the repo root (gitignored) and pass them with `--env-file .env`. Every field and stanza is documented in the [configuration reference](../configuration-reference.md).
 
 With the binary built and the prerequisites in place, you're installed. **Running the factory comes later** — after you configure a project (next), write a contract or two, and build your sandbox image. Provider setup (`gh` for GitHub, token + MCP for Gitea) is in [`docs/providers.md`](../providers.md); the full command/flag reference is in [`docs/development.md`](../development.md).
 
