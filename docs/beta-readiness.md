@@ -139,7 +139,7 @@ survivability** (telemetry bundle + diagnosis skill + troubleshooting).
 | MVP-beta item | Verdict | Evidence |
 |---|---|---|
 | 1. Prove GitHub e2e | ✅ **done** | Issues #2/#3/#4 → PRs #7/#8/#9; both ready + draft(blocking-finding) routes; dependency-DAG skip (#5/#6 correctly deferred on open #4); `gh pr create` + label swap (ready-for-agent→needs-review) working. The flagged base-resolution/originating-branch unknown had a real bug (`$BASE` vs unpushed local base; base==issue-branch) — fixed in `bbe6d9a`. |
-| 2. Package (build + telemetry stack + query path) | ◑ **partial** | Build-from-source Containerfile + `themis init` scaffolding done. Telemetry **emission** exists (`cmd/themis/emitter_otel.go`, OTLP→Vector→Loki) but is **env-gated** (`OTEL_EXPORTER_OTLP_ENDPOINT`) and the **collector stack is not bundled** (none in `Containerfile`/`factory/`); no loki query path shipped. So the diagnosis data source is absent out-of-the-box. |
+| 2. Package (build + telemetry stack + query path) | ◑ **partial** | Build-from-source Containerfile + `themis init` scaffolding done. Telemetry **emission** exists (`cmd/themis/emitter_otel.go`) but is **env-gated** (`OTEL_EXPORTER_OTLP_ENDPOINT`) and the **sink is not bundled**; no query path shipped → the diagnosis data source is absent out-of-the-box. **Simplification (2026-09-05): use VictoriaLogs as the sink** — it ingests OTLP natively (no Vector) and exposes LogsQL for queries, so the bundle is a *single binary*, not a Loki+Vector stack. The emitter is OTLP-generic, so this needs **no code change** — just point `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` at VictoriaLogs (operator has validated VM-logs OTLP on another repo). |
 | 3. `diagnose-themis-run` skill | ✗ **not done** | No such skill in `skills/` (only `pr-diagnose`, a different thing). The doc calls this *make-or-break for retention*. Seed taxonomy exists below; this session added real evidence (base-resolution class, footprint false-blocks, check-block retry). |
 | 4. GitHub-first getting-started | ✅ **done** (1 stale line) | No v1 slash-command lies in README/getting-started/providers (rewritten this session: getting-started, providers.md, new configuration-reference.md). **But the README `## Status` line is stale** — still says "GitHub support… not yet proven end-to-end." |
 | 5. Writing-issues guide | ✅ **mostly** | `getting-started/05-build-loop.md` teaches issue authoring (precise ACs, footprint, ready-for-agent) + the `issue-writer` skill (check-block-quality guidance added `3b55445`). |
@@ -157,7 +157,7 @@ survivability** (telemetry bundle + diagnosis skill + troubleshooting).
 
 ### Ranked remaining before unsupervised beta
 
-1. **Bundle telemetry collection + a query path** (completes item 2) — the data source for #2/#3.
+1. **Bundle telemetry** (completes item 2) — ship/run **VictoriaLogs** (single binary, native OTLP ingest + LogsQL query), point `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` at it; no emitter change. The LogsQL query path becomes the diagnosis skill's data source (#2/#3).
 2. **Author `diagnose-themis-run` skill** (item 3) — the make-or-break survivability tool; seed taxonomy above + this session's real runs.
 3. **"When it blocks" troubleshooting page** (item 6) — built on #2.
 4. **Prove `go`/`python`/`rust` presets e2e** — build one image + run one issue per language.
