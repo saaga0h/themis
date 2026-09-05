@@ -28,6 +28,13 @@ func runSkills(args []string) error {
 		}
 	}
 
+	return installSkills(global)
+}
+
+// installSkills materializes the interactive skill/command/agent set into
+// ./.claude (project) or ~/.claude (global). Shared by `themis skills install`
+// and the interactive `themis init` completion prompt.
+func installSkills(global bool) error {
 	base := "."
 	if global {
 		home, err := os.UserHomeDir()

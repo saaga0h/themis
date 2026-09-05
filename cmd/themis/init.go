@@ -87,13 +87,19 @@ func runInit(args []string) error {
 	if img == "" {
 		img = defaultImageTag(workDir)
 	}
-	return writeProject(workDir, workflow.InitConfig{
+	cfg := workflow.InitConfig{
 		Language: lang,
 		Stack:    *stack,
 		Image:    img,
 		Provider: *provider,
 		Runtime:  *runtime,
-	}, *force)
+	}
+	if err := writeProjectFiles(workDir, cfg, *force); err != nil {
+		return err
+	}
+	fmt.Print(guidance(effectiveProvider(workDir, cfg.Provider), cfg.Language, cfg.Image))
+	fmt.Println("\nInstall the interactive skills:  themis skills install [--global]")
+	return nil
 }
 
 // initMode is the resolved dispatch for `themis init`.
@@ -137,7 +143,8 @@ func runInteractiveInit(workDir string, force bool) error {
 		ProviderDef:  providerDef,
 		ImageExists:  imageExists,
 	}
-	ans, err := form.Run(tui.New(os.Stdin, os.Stdout))
+	p := tui.New(os.Stdin, os.Stdout)
+	ans, err := form.Run(p)
 	if err != nil {
 		// No usable input (e.g. stdin is /dev/null, which reads as a char device
 		// but is not an interactive terminal): treat it as the no-terminal case
@@ -149,17 +156,34 @@ func runInteractiveInit(workDir string, force bool) error {
 		return fmt.Errorf("themis init: %w", err)
 	}
 	// Interactive confirms the provider explicitly, so it is written uncommented.
-	return writeProject(workDir, workflow.InitConfig{
+	cfg := workflow.InitConfig{
 		Language: ans.Language,
 		Image:    ans.Image,
 		Provider: ans.Provider,
-	}, force)
+	}
+	if err := writeProjectFiles(workDir, cfg, force); err != nil {
+		return err
+	}
+
+	// Offer to install the interactive skills — the one thing we cannot detect
+	// (whether they are already installed). Skip covers "already installed".
+	if idx, serr := p.Select("Install the interactive skills (grill-me, issue-writer, review, …)?",
+		[]string{"Into this project (./.claude)", "Globally (~/.claude)", "Skip (already installed)"}, 0); serr == nil {
+		if act := skillsChoice(idx); act.install {
+			if e := installSkills(act.global); e != nil {
+				fmt.Fprintf(os.Stderr, "skills install failed: %v\n", e)
+			}
+		}
+	}
+
+	fmt.Print(guidance(ans.Provider, cfg.Language, cfg.Image))
+	return nil
 }
 
-// writeProject scaffolds the three files + .gitignore for cfg and prints the
-// next steps. Shared by the headless and interactive paths so they cannot
-// diverge.
-func writeProject(workDir string, cfg workflow.InitConfig, force bool) error {
+// writeProjectFiles scaffolds the three files + .gitignore for cfg. Shared by the
+// headless and interactive paths so they cannot diverge. Guidance is printed by
+// the caller (it differs: interactive prompts for skills first).
+func writeProjectFiles(workDir string, cfg workflow.InitConfig, force bool) error {
 	scaffolds := []struct {
 		name  string
 		write func() (bool, error)
@@ -187,9 +211,72 @@ func writeProject(workDir string, cfg workflow.InitConfig, force bool) error {
 	} else {
 		fmt.Println("skipped .gitignore (.env + factory artifacts already ignored)")
 	}
-
-	printNextSteps(cfg.Language == "other", cfg)
 	return nil
+}
+
+// effectiveProvider is the provider used for guidance: the configured value if
+// set, else what the git remote implies, else github (the default).
+func effectiveProvider(workDir, configured string) string {
+	if configured != "" {
+		return configured
+	}
+	if inferred := git.InferProvider(context.Background(), workDir); inferred != "" {
+		return inferred
+	}
+	return "github"
+}
+
+// skillsAction is the resolved skills-install choice.
+type skillsAction struct {
+	install bool
+	global  bool
+}
+
+// skillsChoice maps the completion prompt's selected index to an action:
+// 0 = into the project, 1 = globally, anything else = skip.
+func skillsChoice(idx int) skillsAction {
+	switch idx {
+	case 0:
+		return skillsAction{install: true, global: false}
+	case 1:
+		return skillsAction{install: true, global: true}
+	default:
+		return skillsAction{install: false}
+	}
+}
+
+// guidance returns the post-init next steps, conditional on provider and
+// language. Shown after both the headless and interactive paths.
+func guidance(provider, language, image string) string {
+	var b strings.Builder
+	if language == "other" {
+		b.WriteString("Note: language 'other' wrote an intentionally incomplete config —\n")
+		b.WriteString("  set your verify commands in .themis/workflow.yaml and install your\n")
+		b.WriteString("  toolchain in the Containerfile TODO. See docs/configuration-reference.md.\n\n")
+	}
+
+	var steps []string
+	steps = append(steps,
+		fmt.Sprintf("Build the sandbox image:  podman build -t %s .\n     # Docker: docker build -f Containerfile -t %s .", image, image))
+	steps = append(steps,
+		"Credentials — copy .env.example to .env; set CLAUDE_CODE_OAUTH_TOKEN and your provider token.")
+	if provider == "gitea" {
+		steps = append(steps,
+			"Gitea — connect a Gitea MCP server for interactive issue authoring; the factory\n     labels are auto-created. See docs/providers.md.")
+	} else {
+		steps = append(steps,
+			"GitHub — install and authenticate the gh CLI (gh auth login), then create the\n     factory labels:\n       gh label create ready-for-agent\n       gh label create needs-review")
+	}
+	steps = append(steps,
+		"Contracts — create CODING_STANDARDS.md and UBIQUITOUS_LANGUAGE.md (contract-drafter skill or by hand).")
+	steps = append(steps,
+		"Label an issue ready-for-agent, then run: themis run   (or themis issue <n>).")
+
+	b.WriteString("Next steps (see docs/getting-started):\n")
+	for i, s := range steps {
+		b.WriteString(fmt.Sprintf("  %d. %s\n", i+1, s))
+	}
+	return b.String()
 }
 
 // stdinIsTTY reports whether stdin is an interactive terminal (a character
@@ -228,23 +315,4 @@ func defaultImageTag(workDir string) string {
 		base = "project"
 	}
 	return "themis-" + base + ":latest"
-}
-
-// printNextSteps prints post-init guidance. This is the minimal #145/#146
-// version; #147 replaces it with fully provider/language-conditional guidance.
-func printNextSteps(other bool, cfg workflow.InitConfig) {
-	fmt.Println()
-	if other {
-		fmt.Println("Note: language 'other' wrote an intentionally incomplete config —")
-		fmt.Println("  set your verify commands in .themis/workflow.yaml and install your")
-		fmt.Println("  toolchain in the Containerfile TODO. See docs/configuration-reference.md.")
-		fmt.Println()
-	}
-	fmt.Println("Next steps (see docs/getting-started):")
-	fmt.Printf("  1. Build the sandbox image:  podman build -t %s .\n", cfg.Image)
-	fmt.Printf("     # Docker: docker build -f Containerfile -t %s .\n", cfg.Image)
-	fmt.Println("  2. .env — copy from .env.example; fill CLAUDE_CODE_OAUTH_TOKEN and your provider token.")
-	fmt.Println("  3. Contracts — create CODING_STANDARDS.md and UBIQUITOUS_LANGUAGE.md (contract-drafter skill or by hand).")
-	fmt.Println("  4. themis skills install — install the interactive skills into .claude.")
-	fmt.Println("  5. Label an issue ready-for-agent, then run: themis run   (or themis issue <n>).")
 }

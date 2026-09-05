@@ -175,6 +175,24 @@ func TestInit_ForceOverwrites(t *testing.T) {
 	}
 }
 
+// Guidance is printed after a headless run and is provider-conditional.
+func TestInit_HeadlessGuidanceGithub(t *testing.T) {
+	dir := t.TempDir()
+	cmd := exec.Command(binary, "init", "--language", "go", "--provider", "github")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("init must exit 0, got %v\noutput: %s", err, out)
+	}
+	s := string(out)
+	if !strings.Contains(s, "gh auth login") || !strings.Contains(s, "gh label create ready-for-agent") {
+		t.Errorf("headless github init must print gh guidance; got:\n%s", s)
+	}
+	if strings.Contains(s, "Gitea MCP") {
+		t.Errorf("github init must not print Gitea guidance; got:\n%s", s)
+	}
+}
+
 // init writes .env.example and ignores .env.
 func TestInit_WritesEnvExampleAndGitignore(t *testing.T) {
 	dir := t.TempDir()
