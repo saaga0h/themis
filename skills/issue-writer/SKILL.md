@@ -118,6 +118,15 @@ The negated `grep` exits 0 when the type is absent — i.e. the move is complete
 
 (Strict convention is a deliberate starting point to keep extraction deterministic — observe and tune; see #81.)
 
+### `check` block quality — a grep is a proxy, not a proof
+
+A `grep`-based `check` asserts the **presence or absence of a text pattern**, never behaviour. That is exactly right for a negative/absence AC ("the old type is gone"). It is a weak and gameable proxy for anything else. Two failure modes to design against:
+
+- **Idiom-brittle.** `! grep -q 'createElement("li")'` catches one spelling. `createElement('li')` (single quotes), a template string, or `insertAdjacentHTML` all slip past it. If you grep for a forbidden construct, match the construct robustly (a regex covering the realistic spellings, `-E`), or the check gives false confidence.
+- **Existence, not usage.** `grep -q 'function renderTodoList'` passes when the function merely *exists* — even if the code *also* does the thing the AC forbids elsewhere. A check like `usesX || hasHelper` proves the helper is present, not that all of X routes through it.
+
+The rule: **if the AC is behavioural, write a behavioural test, not a grep.** "After a create, the list re-renders via a fresh fetch rather than a hand-built node" is a runtime property — assert it with a test that observes the re-fetch, not with `grep function renderTodoList`. Reserve `check` blocks for genuinely static facts (absence, placement, package boundary). When a static check is the best available proxy for a structural contract, make it hard to evade and **pair it with the positive behavioural test** so gaming one fails the other. (Observed in the todo dogfood: a `renderTodoList` grep-check correctly caught a hand-built-`<li>` implementation, but the same check would have passed had the agent kept the manual node *and* added the function — the behavioural AC needed a test.)
+
 ### `check` blocks must be sandbox-runnable
 
 A `check` runs in the **factory sandbox**, not on your machine. It can only use tools the sandbox image provides. Two rules and one behaviour (#97):
