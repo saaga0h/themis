@@ -68,7 +68,7 @@ everything stack-specific is declared here, never hardcoded.
 | `provider` | `github` \| `gitea` | The host the factory reads issues from and opens PRs on. Omit to auto-detect from the git remote (github.com → github, any other host → gitea); with no remote it defaults to `github`. The `--provider` flag overrides. |
 | `image` | string | The sandbox image tag the factory runs in — built locally from the `Containerfile`. **Required to run.** |
 | `runtime` | `podman` \| `docker` | Pins the container runtime. Omit to autodetect (podman, then docker). |
-| `footprint_exempt` | list of paths | Paths a footprint gate always allows regardless of an issue's declared packages — generated/lockfiles a legitimate change touches (e.g. `go.mod`, `go.sum`). Declared per-repo to keep the factory stack-agnostic. |
+| `footprint_exempt` | list of paths | Files a footprint gate always allows regardless of an issue's declared packages — manifests/lockfiles a legitimate change touches (e.g. `go.mod`/`go.sum`, `package.json`/`package-lock.json`). `themis init` seeds these per language; add your own (e.g. `yarn.lock`) as needed. |
 
 **`verify` is the field that matters most.** It is what "done" means for your
 project. Write the commands that prove your code: for a compiled language a

@@ -64,11 +64,12 @@ func WriteContainerfileFor(dir string, cfg InitConfig, force bool) (created bool
 
 // workflowView is the rendering data for workflowTmpl.
 type workflowView struct {
-	Stack        string
-	VerifyBlock  string
-	ProviderLine string
-	Image        string
-	RuntimeLine  string
+	Stack          string
+	VerifyBlock    string
+	FootprintBlock string
+	ProviderLine   string
+	Image          string
+	RuntimeLine    string
 }
 
 func renderWorkflow(cfg InitConfig) (string, error) {
@@ -76,8 +77,10 @@ func renderWorkflow(cfg InitConfig) (string, error) {
 
 	stack := cfg.Stack
 	verify := []string{neutralVerify}
+	var exempt []string
 	if known {
 		verify = p.Verify
+		exempt = p.FootprintExempt
 		if stack == "" {
 			stack = p.Stack
 		}
@@ -91,6 +94,16 @@ func renderWorkflow(cfg InitConfig) (string, error) {
 		vb.WriteString("\n  - " + yamlScalar(cmd))
 	}
 
+	footprintBlock := "# footprint_exempt:   # e.g. your manifest + lockfile"
+	if len(exempt) > 0 {
+		var fb strings.Builder
+		fb.WriteString("footprint_exempt:")
+		for _, e := range exempt {
+			fb.WriteString("\n  - " + yamlScalar(e))
+		}
+		footprintBlock = fb.String()
+	}
+
 	providerLine := "# provider: github   # github | gitea"
 	if cfg.Provider != "" {
 		providerLine = "provider: " + cfg.Provider + "   # github | gitea"
@@ -101,11 +114,12 @@ func renderWorkflow(cfg InitConfig) (string, error) {
 	}
 
 	return mustRender(workflowTmpl, workflowView{
-		Stack:        stack,
-		VerifyBlock:  vb.String(),
-		ProviderLine: providerLine,
-		Image:        cfg.Image,
-		RuntimeLine:  runtimeLine,
+		Stack:          stack,
+		VerifyBlock:    vb.String(),
+		FootprintBlock: footprintBlock,
+		ProviderLine:   providerLine,
+		Image:          cfg.Image,
+		RuntimeLine:    runtimeLine,
 	})
 }
 

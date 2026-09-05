@@ -48,6 +48,41 @@ func TestWriteWorkflow_KnownLanguagesRoundTrip(t *testing.T) {
 	}
 }
 
+func TestWriteWorkflow_SeedsFootprintExempt(t *testing.T) {
+	// Known language → footprint_exempt seeded from the preset and parsed by Load.
+	dir := t.TempDir()
+	if _, err := WriteWorkflow(dir, InitConfig{Language: "node"}, false); err != nil {
+		t.Fatalf("WriteWorkflow: %v", err)
+	}
+	d, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if want := []string{"package.json", "package-lock.json"}; !reflect.DeepEqual(d.FootprintExempt, want) {
+		t.Errorf("node FootprintExempt = %q, want %q", d.FootprintExempt, want)
+	}
+
+	// go → go.mod/go.sum
+	dirGo := t.TempDir()
+	if _, err := WriteWorkflow(dirGo, InitConfig{Language: "go"}, false); err != nil {
+		t.Fatalf("WriteWorkflow: %v", err)
+	}
+	dGo, _ := Load(dirGo)
+	if want := []string{"go.mod", "go.sum"}; !reflect.DeepEqual(dGo.FootprintExempt, want) {
+		t.Errorf("go FootprintExempt = %q, want %q", dGo.FootprintExempt, want)
+	}
+
+	// other → none (the commented placeholder is not parsed as a value)
+	dirOther := t.TempDir()
+	if _, err := WriteWorkflow(dirOther, InitConfig{Language: "other"}, false); err != nil {
+		t.Fatalf("WriteWorkflow: %v", err)
+	}
+	dOther, _ := Load(dirOther)
+	if len(dOther.FootprintExempt) != 0 {
+		t.Errorf("other FootprintExempt = %q, want empty", dOther.FootprintExempt)
+	}
+}
+
 func TestWriteWorkflow_ProviderSetVsCommented(t *testing.T) {
 	// Set → written uncommented and parsed by the loader.
 	dir := t.TempDir()

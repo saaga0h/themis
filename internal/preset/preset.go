@@ -20,6 +20,10 @@ type Preset struct {
 	Display   string   // label shown in the init picker
 	Verify    []string // the verify: commands
 	Toolchain string   // the Containerfile RUN stanza(s) that install the toolchain
+	// FootprintExempt are the manifest/lockfiles a legitimate change may touch
+	// outside its own packages (the language's analog of go.mod/go.sum). Seeded
+	// into workflow.yaml so the footprint gate does not false-block on them.
+	FootprintExempt []string
 }
 
 // table maps a canonical language id to its preset. The keys are the canonical
@@ -38,6 +42,7 @@ var table = map[string]Preset{
 RUN curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-$(dpkg --print-architecture).tar.gz \
       | tar -C /usr/local -xz \
     && ln -s /usr/local/go/bin/go /usr/local/bin/go`,
+		FootprintExempt: []string{"go.mod", "go.sum"},
 	},
 	"python": {
 		Stack:   "python",
@@ -46,12 +51,14 @@ RUN curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-$(dpkg --print-architectu
 		Toolchain: `RUN apt-get update && apt-get install -y python3 python3-pip python3-venv \
     && rm -rf /var/lib/apt/lists/*
 RUN pip3 install --no-cache-dir --break-system-packages pytest ruff`,
+		FootprintExempt: []string{"pyproject.toml", "requirements.txt"},
 	},
 	"node": {
-		Stack:     "node",
-		Display:   "JavaScript / TypeScript",
-		Verify:    []string{"npm ci", "npm run build", "npm test"},
-		Toolchain: `RUN npm install -g typescript`,
+		Stack:           "node",
+		Display:         "JavaScript / TypeScript",
+		Verify:          []string{"npm ci", "npm run build", "npm test"},
+		Toolchain:       `RUN npm install -g typescript`,
+		FootprintExempt: []string{"package.json", "package-lock.json"},
 	},
 	"rust": {
 		Stack:   "rust",
@@ -59,6 +66,7 @@ RUN pip3 install --no-cache-dir --break-system-packages pytest ruff`,
 		Verify:  []string{"cargo build", "cargo test"},
 		Toolchain: `RUN apt-get update && apt-get install -y cargo rustc \
     && rm -rf /var/lib/apt/lists/*`,
+		FootprintExempt: []string{"Cargo.toml", "Cargo.lock"},
 	},
 }
 
@@ -73,6 +81,9 @@ func Get(id string) (Preset, bool) {
 	v := make([]string, len(p.Verify))
 	copy(v, p.Verify)
 	p.Verify = v
+	fe := make([]string, len(p.FootprintExempt))
+	copy(fe, p.FootprintExempt)
+	p.FootprintExempt = fe
 	return p, true
 }
 

@@ -71,6 +71,21 @@ func TestGetRust(t *testing.T) {
 	}
 }
 
+func TestFootprintExempt(t *testing.T) {
+	cases := map[string][]string{
+		"go":     {"go.mod", "go.sum"},
+		"python": {"pyproject.toml", "requirements.txt"},
+		"node":   {"package.json", "package-lock.json"},
+		"rust":   {"Cargo.toml", "Cargo.lock"},
+	}
+	for id, want := range cases {
+		p, _ := Get(id)
+		if !reflect.DeepEqual(p.FootprintExempt, want) {
+			t.Errorf("%s FootprintExempt = %q, want %q", id, p.FootprintExempt, want)
+		}
+	}
+}
+
 func TestGetUnknownReturnsZero(t *testing.T) {
 	for _, id := range []string{"other", "cobol", "", "GO"} {
 		p, ok := Get(id)

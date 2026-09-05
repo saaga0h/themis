@@ -30,6 +30,10 @@ docs:
   glossary: UBIQUITOUS_LANGUAGE.md
   architecture: ""
 
+# footprint_exempt lists files a footprint gate always allows — manifests and
+# lockfiles a legitimate change touches outside its own packages.
+{{.FootprintBlock}}
+
 # provider is the host this repo lives on — where the factory reads issues and
 # opens PRs. Auto-detected from your git remote (github.com -> github, any other
 # host -> gitea), so you usually don't set it. The --provider flag also overrides.
@@ -154,6 +158,7 @@ var gitignoreEntries = []string{
 	".env",
 	".themis/state.json",
 	".themis/review-results.json",
+	".themis/ac-targets.json",
 	".themis/factory-cc/",
 }
 
