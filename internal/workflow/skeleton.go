@@ -6,28 +6,22 @@ import (
 	"strings"
 )
 
-// skeleton is the scaffolded .themis/workflow.yaml written by `themis init`.
-// The stack value and verify command are deliberately unconfigured — a fresh
-// project must not green-gate until someone edits this file with real
-// commands. Language names appear only in the comment, never as the live
-// stack: value, so the factory stays stack-agnostic.
-const skeleton = `# .themis/workflow.yaml — this project's pipeline descriptor.
+// workflowTmpl renders .themis/workflow.yaml. Everything language-specific comes
+// from the InitConfig / preset (see compose.go); the factory binary stays
+// stack-agnostic. Language names appear only in comments, never hardcoded as the
+// live stack: value.
+const workflowTmpl = `# .themis/workflow.yaml — this project's pipeline descriptor.
 # The factory binary is stack-agnostic: everything stack-specific (the Green
 # Gate commands, the authoritative docs) is declared here, not hardcoded.
 
 # stack is an informational label only — it selects no behavior. Examples:
 # go, node, python, rust, java, ruby, javascript, typescript, c++.
-stack: "unconfigured"
+stack: "{{.Stack}}"
 
 # verify is the Green Gate: shell commands run in order via ` + "`bash -c`" + `;
-# each must exit 0 for a run to ship. The command below fails on purpose so
-# an unconfigured project cannot green-gate by accident — replace it with
-# your project's real build/lint/test commands, e.g.:
-#   - go build ./... && go vet ./... && go test ./...
-#   - npm ci && npm run build && npm test
-#   - pip install -e . && pytest
-verify:
-  - "echo 'themis: no verify commands configured in .themis/workflow.yaml' && exit 1"
+# each must exit 0 for a run to ship. Replace these with your project's real
+# build/lint/test commands. See docs/configuration-reference.md.
+{{.VerifyBlock}}
 
 # docs names the authoritative documents agents read during review. Paths are
 # relative to the project root; unset fields are skipped.
@@ -37,34 +31,31 @@ docs:
   architecture: ""
 
 # provider is the host this repo lives on — where the factory reads issues and
-# opens PRs. It is auto-detected from your git remote (github.com -> github, any
-# other host -> gitea), so you usually don't set it. Uncomment to force it; the
-# --provider flag also overrides.
-# provider: github   # github | gitea
+# opens PRs. Auto-detected from your git remote (github.com -> github, any other
+# host -> gitea), so you usually don't set it. The --provider flag also overrides.
+{{.ProviderLine}}
 
 # image is the sandbox container image the factory runs in — built locally from
-# the Containerfile in this project (see the next-steps from 'themis init').
-# Set it to the tag you build, e.g. themis-myproject:latest. Required to run.
-image: ""
+# the Containerfile in this project. Required to run.
+image: "{{.Image}}"
 
 # runtime optionally pins the container runtime: podman or docker. Leave unset
 # to autodetect (podman, then docker).
-# runtime: podman
+{{.RuntimeLine}}
 `
 
-// containerfile is the scaffolded Containerfile written by `themis init`. It is
-// the user's to customise per project: the toolchain section is a TODO they fill.
-// themis is built from source in a throwaway builder stage so the binary matches
-// the image's architecture (amd64/arm64/riscv/…) with no prebuilt binary or
-// registry image — the repo URL is a build-arg defaulting to the public GitHub.
-// See docs/getting-started for per-stack toolchain examples.
-const containerfile = `# Themis sandbox image for THIS project — build it locally:
+// containerfileTmpl renders the scaffolded Containerfile. themis is built from
+// source in a throwaway builder stage so the binary matches the image's
+// architecture (amd64/arm64/riscv/…). The toolchain block is substituted per
+// language (compose.go); no per-language examples live here — those are in the
+// preset table (internal/preset) and the reference docs.
+const containerfileTmpl = `# Themis sandbox image for THIS project — build it locally:
 #   podman build -t <the image: tag from .themis/workflow.yaml> .
 #   docker build -f Containerfile -t <the image: tag> .
 # themis is built from source in the builder stage below, so it matches THIS
 # image's architecture — amd64, arm64, riscv, etc. — with no prebuilt binary and
 # no registry image. Go stays in the builder; the final image is Go-free unless
-# your toolchain adds it. See the Themis getting-started docs for per-stack examples.
+# your toolchain adds it. See docs/configuration-reference.md for details.
 
 # --- themis agent binary: built once at image-build time, for this arch --------
 # Override THEMIS_REPO to build from your own host (e.g. a Gitea mirror) and
@@ -90,23 +81,7 @@ FROM node:22-bookworm
 
 RUN apt-get update && apt-get install -y git ca-certificates && rm -rf /var/lib/apt/lists/*
 
-# --- TODO: install your project's toolchain --------------------------------
-# WHAT THIS IS: the factory runs the 'verify' commands from your
-# .themis/workflow.yaml *inside this image*. So this image must contain every
-# tool those commands call — your language's compiler/interpreter, its test
-# runner, and any formatter/linter you verify with. git and Claude Code are
-# already here (below); you add the language-specific tools.
-#
-# HOW: read your workflow.yaml 'verify:' list and add a RUN line installing each
-# tool it invokes. Examples (adapt to your stack; this base is Debian + Node):
-#   Go:     RUN curl -fsSL https://go.dev/dl/go1.25.0.linux-$(dpkg --print-architecture).tar.gz | tar -C /usr/local -xz \
-#             && ln -s /usr/local/go/bin/go /usr/local/bin/go
-#   Python: RUN apt-get update && apt-get install -y python3 python3-pip && rm -rf /var/lib/apt/lists/*
-#   Rust:   RUN apt-get update && apt-get install -y cargo && rm -rf /var/lib/apt/lists/*
-#   Node:   already installed (this base image is node:22-bookworm)
-# Full copy-paste examples per stack are in the Themis getting-started docs
-# ("Configure a project").
-# ---------------------------------------------------------------------------
+{{.ToolchainBlock}}
 
 # --- Themis agent layer (keep this) ----------------------------------------
 # The themis binary, built above for this image's architecture:
@@ -114,10 +89,31 @@ COPY --from=themis-build /themis /usr/local/bin/themis
 # Claude Code — Themis's one hard dependency (npm keeps the fetch integrity-checked).
 RUN npm install -g @anthropic-ai/claude-code
 # GitHub projects also need the gh CLI (Gitea needs no provider CLI). Uncomment
-# and see docs/getting-started for the install snippet:
-# RUN <install gh — see docs/getting-started>
+# and see docs/configuration-reference.md for the install snippet:
+# RUN <install gh — see docs/configuration-reference.md>
 # ---------------------------------------------------------------------------
 `
+
+// toolchainTODO is the Containerfile toolchain block for the "other"/unconfigured
+// path — a TODO that points at the reference docs, with no per-language examples
+// (those are generated for known languages and documented in the reference).
+const toolchainTODO = `# --- TODO: install your project's toolchain --------------------------------
+# The factory runs the 'verify' commands from your .themis/workflow.yaml *inside
+# this image*, so it must contain every tool those commands call — your
+# compiler/interpreter, test runner, and any linter/formatter you verify with.
+# git and Claude Code are already here (below); you add the language tools.
+#
+# Add a RUN line per tool your verify: list invokes. See
+# docs/configuration-reference.md for how to write this for your language.
+# ---------------------------------------------------------------------------`
+
+// toolchainGenerated wraps a preset's toolchain stanza with a header naming the
+// language it was generated for. Args: language id, preset toolchain stanza.
+const toolchainGenerated = `# --- Project toolchain (generated for %s) ----------------------------------
+# The factory runs your workflow.yaml verify commands inside this image, so it
+# needs your language's tools. Generated from the themis preset — edit freely.
+%s
+# ---------------------------------------------------------------------------`
 
 // envExample is the scaffolded .env.example (token NAMES only, never values).
 // The real values go in a .env file that must not be committed.
@@ -133,15 +129,17 @@ GH_TOKEN=
 # GITEA_TOKEN=
 `
 
-// WriteSkeleton scaffolds .themis/workflow.yaml in dir. See writeScaffold for the
-// force/skip semantics.
+// WriteSkeleton scaffolds the neutral (unconfigured) .themis/workflow.yaml in dir
+// — the "other"/no-preset path. Known languages use WriteWorkflow with a
+// language InitConfig. See writeScaffold for the force/skip semantics.
 func WriteSkeleton(dir string, force bool) (created bool, err error) {
-	return writeScaffold(filepath.Join(dir, workflowFile), skeleton, force)
+	return WriteWorkflow(dir, neutralConfig(), force)
 }
 
-// WriteContainerfile scaffolds a Containerfile in dir (same force/skip semantics).
+// WriteContainerfile scaffolds the neutral Containerfile (toolchain TODO) in dir.
+// Known languages use WriteContainerfileFor. Same force/skip semantics.
 func WriteContainerfile(dir string, force bool) (created bool, err error) {
-	return writeScaffold(filepath.Join(dir, "Containerfile"), containerfile, force)
+	return WriteContainerfileFor(dir, neutralConfig(), force)
 }
 
 // WriteEnvExample scaffolds a .env.example in dir (same force/skip semantics).
