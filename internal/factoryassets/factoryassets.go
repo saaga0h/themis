@@ -68,6 +68,7 @@ func Materialize(fsys fs.FS, claudeDir string) error {
 var interactiveSkills = []string{
 	"grill-me", "split-walker", "issue-writer", "contract-drafter",
 	"review-walker", "pr-review",
+	"diagnose-themis-run", "themis-bug-report",
 }
 
 // pipelineOnlyAgents are spawned only by the in-sandbox pipeline, never by an
