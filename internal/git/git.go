@@ -250,21 +250,22 @@ func PushBranch(ctx context.Context, dir, branch string) error {
 	return nil
 }
 
-// giteaTokenAuthHeader builds the HTTP Basic-auth header value that authenticates
-// a git-over-HTTPS request to Gitea with a personal access token. Gitea accepts a
-// token as the Basic-auth username (the `https://<token>@host/...` form), so the
-// credential is base64("<token>:").
-func giteaTokenAuthHeader(token string) string {
+// tokenBasicAuthHeader builds the HTTP Basic-auth header value that authenticates
+// a git-over-HTTPS request with a personal access token. Both Gitea and GitHub
+// accept a token as the Basic-auth username (the `https://<token>@host/...` form),
+// so the credential is base64("<token>:").
+func tokenBasicAuthHeader(token string) string {
 	return "Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte(token+":"))
 }
 
 // PushBranchWithToken pushes branch to an explicit https remote URL, authenticating
-// with a Gitea token. The token is passed as an HTTP Authorization header injected
-// through git's environment config (GIT_CONFIG_*), so it never appears in the
-// remote URL, the process arguments, or any on-disk git config — and a push error
-// cannot echo it. This lets the factory push with the same GITEA_TOKEN it uses for
-// the API, requiring no credentials stored in any repo's remote (SSH keys or a
-// token baked into .git/config).
+// with a personal access token (Gitea or GitHub). The token is passed as an HTTP
+// Authorization header injected through git's environment config (GIT_CONFIG_*), so
+// it never appears in the remote URL, the process arguments, or any on-disk git
+// config — and a push error cannot echo it. This lets the factory push with the
+// same token it uses for the API, requiring no credentials in any repo's remote
+// (no SSH key, no token baked into .git/config) — the key reason the push works
+// inside the sandbox, where the host's SSH agent and credential helper don't reach.
 func PushBranchWithToken(ctx context.Context, dir, remoteURL, branch, token string) error {
 	if !filepath.IsAbs(dir) {
 		return fmt.Errorf("dir must be an absolute path, got %q", dir)
@@ -273,7 +274,7 @@ func PushBranchWithToken(ctx context.Context, dir, remoteURL, branch, token stri
 	cmd.Env = append(os.Environ(),
 		"GIT_CONFIG_COUNT=1",
 		"GIT_CONFIG_KEY_0=http.extraheader",
-		"GIT_CONFIG_VALUE_0="+giteaTokenAuthHeader(token),
+		"GIT_CONFIG_VALUE_0="+tokenBasicAuthHeader(token),
 	)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

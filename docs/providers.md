@@ -18,11 +18,11 @@ Both adapters promise the same behaviour. Your repo, on either host, must satisf
 ## GitHub setup
 
 1. **Provider:** default — no flag needed, or `--provider github`.
-2. **Auth:** the factory runs `gh` **inside the sandbox**, so it authenticates from **`GH_TOKEN`** (or `GITHUB_TOKEN`) in the environment, passed via `.env` / `--env-file`. A host `gh auth login` — **including a browser/web login** — does **not** cross into the container, and neither does your host's `gh` binary. Put a token in `.env`:
+2. **Auth:** the factory runs `gh` **inside the sandbox**, so it authenticates from **`GITHUB_TOKEN`** in the environment, passed via `.env` / `--env-file` — and the factory's own `git push` uses the same token over https. A host `gh auth login` — **including a browser/web login** — does **not** cross into the container, and neither does your host's `gh` binary. Put a token in `.env`:
    ```bash
-   echo "GH_TOKEN=$(gh auth token)" >> .env   # writes the token without printing it
+   echo "GITHUB_TOKEN=$(gh auth token)" >> .env   # writes the token without printing it
    ```
-   `gh auth token` prints the token your terminal login already uses (works even after a browser login) — **convenient, but it carries your account's full access** (every scope your `gh` login was granted). For least privilege, instead create a **fine-grained PAT** limited to this one repo, with **Issues** and **Pull requests** read/write (plus **Contents** read/write for branches/commits), and use that as `GH_TOKEN`. Either way, `.env` is gitignored — keep it that way; a token in a file is as sensitive as the access it carries.
+   `gh auth token` prints the token your terminal login already uses (works even after a browser login) — **convenient, but it carries your account's full access** (every scope your `gh` login was granted). For least privilege, instead create a **fine-grained PAT** limited to this one repo, with **Issues** and **Pull requests** read/write (plus **Contents** read/write for branches/commits), and use that as `GITHUB_TOKEN`. Either way, `.env` is gitignored — keep it that way; a token in a file is as sensitive as the access it carries.
 
    `gh` must also be present in the sandbox image — `themis init` scaffolds its install for a GitHub project.
 3. **Labels:** create both factory labels in the repo before running — the `gh` path adds/removes labels by name and errors if they don't exist:

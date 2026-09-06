@@ -108,10 +108,10 @@ RUN npm install -g @anthropic-ai/claude-code
 `
 
 // ghInstall installs the GitHub CLI, which the factory shells to *inside the
-// sandbox* for a GitHub project. It authenticates from GH_TOKEN (passed via
+// sandbox* for a GitHub project. It authenticates from GITHUB_TOKEN (passed via
 // --env-file .env) — a host 'gh auth login' does not cross into the container.
 const ghInstall = `# GitHub provider: the factory runs the gh CLI inside this sandbox (host gh does
-# not cross the boundary). gh authenticates from GH_TOKEN in your .env — a host
+# not cross the boundary). gh authenticates from GITHUB_TOKEN in your .env — a host
 # 'gh auth login' does NOT carry in. (This is Debian's gh; for the newest gh use
 # the official apt repo — see docs/configuration-reference.md.)
 RUN apt-get update && apt-get install -y gh && rm -rf /var/lib/apt/lists/*`
@@ -149,7 +149,7 @@ CLAUDE_CODE_OAUTH_TOKEN=
 
 # Provider token — set the one for your host:
 #   GitHub:
-GH_TOKEN=
+GITHUB_TOKEN=
 #   Gitea:
 # GITEA_TOKEN=
 `

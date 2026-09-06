@@ -31,10 +31,11 @@ func TestGiteaPushURL_Invalid(t *testing.T) {
 	}
 }
 
-// The auth header must carry the token as the Basic-auth username (Gitea's
-// token-as-username form) and must never expose the token in cleartext.
-func TestGiteaTokenAuthHeader(t *testing.T) {
-	h := giteaTokenAuthHeader("secrettoken")
+// The auth header must carry the token as the Basic-auth username (the
+// token-as-username form Gitea and GitHub both accept) and must never expose the
+// token in cleartext.
+func TestTokenBasicAuthHeader(t *testing.T) {
+	h := tokenBasicAuthHeader("secrettoken")
 	const prefix = "Authorization: Basic "
 	if !strings.HasPrefix(h, prefix) {
 		t.Fatalf("header %q missing prefix %q", h, prefix)

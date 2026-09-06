@@ -7,7 +7,7 @@ You can't run the factory yet — it needs a configured project and a built sand
 - **Go** — only if you build from source or use `go install`; not needed if you download a release binary.
 - **Podman (rootless) or Docker** — the sandbox. `--userns=keep-id` is required for rootless Podman.
 - **`CLAUDE_CODE_OAUTH_TOKEN`** — generated on your host with `claude setup-token`. Themis's one hard dependency.
-- **A host token** — `GH_TOKEN` (GitHub) or `GITEA_TOKEN` (Gitea), with Issues + Pull-requests read/write.
+- **A host token** — `GITHUB_TOKEN` (GitHub) or `GITEA_TOKEN` (Gitea), with Issues + Pull-requests read/write.
 
 ## Get the `themis` binary
 

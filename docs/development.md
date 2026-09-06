@@ -15,7 +15,7 @@
 | Podman (rootless) or Docker | `--userns=keep-id` required for rootless Podman |
 | `gh` CLI | Required when `--provider github` (default) |
 | `CLAUDE_CODE_OAUTH_TOKEN` | Headless Claude Code auth; generated via `claude setup-token` on the host |
-| `GH_TOKEN` | GitHub fine-grained token with Issues (read/write) and Pull requests (read/write) — GitHub provider only |
+| `GITHUB_TOKEN` | GitHub fine-grained token with Issues (read/write) and Pull requests (read/write) — GitHub provider only |
 | `GITEA_TOKEN` | Gitea personal access token with Issues and Pull requests permissions — Gitea provider only |
 
 ## Build, Test, Lint
@@ -79,7 +79,7 @@ For full subcommand behavior (loop ordering, dependency skipping, blocking label
 | Variable | Required | Description |
 |---|---|---|
 | `CLAUDE_CODE_OAUTH_TOKEN` | Yes | OAuth token for Claude Code headless invocations; generated with `claude setup-token` |
-| `GH_TOKEN` | GitHub only | GitHub fine-grained PAT; consumed by the `gh` CLI for issue and PR operations |
+| `GITHUB_TOKEN` | GitHub only | GitHub fine-grained PAT; consumed by the `gh` CLI for issue and PR operations and by the factory's `git push` over https |
 | `GITEA_TOKEN` | Gitea only | Gitea PAT; used by `GiteaQuerier`, `GiteaFetcher`, and `giteaIssueWriter` for all Gitea API calls |
 | `GITEA_OWNER` | Gitea only* | Repository owner; overrides the value inferred from the `origin` git remote |
 | `GITEA_REPO` | Gitea only* | Repository name; overrides the value inferred from the `origin` git remote |
@@ -102,14 +102,14 @@ All tokens are expected in a `.env` file at the repo root (loaded by `--env-file
 | `insufficient turns remaining` printed; remaining issues skipped | `THEMIS_TURNS_REMAINING_FRACTION` is below `0.10` | Run `themis run` in a fresh Claude Code session with a full turn budget, or unset `THEMIS_TURNS_REMAINING_FRACTION`. |
 | `checkpoint failed after step <step>` | Last commit on the branch does not have the expected conventional commit prefix | Step-to-prefix map: `test-red→test(`, `implement→feat(`, `refactor→refactor(`, `fix→fix(`, `docs→docs(`. Agent made a commit with the wrong prefix. Either amend the commit message or delete `.themis/state.json` and re-run. |
 | `cannot determine Gitea config (remote: ...); set GITEA_OWNER, GITEA_REPO, and GITEA_API_URL` | `git.InferGiteaConfig` could not parse the `origin` remote URL | SCP-style SSH remotes (`git@host:owner/repo.git`) are not supported by inference. Set `GITEA_OWNER`, `GITEA_REPO`, and `GITEA_API_URL` explicitly in `.env`. |
-| `gh issue list` or `gh pr create` fails with auth error | `GH_TOKEN` not set or not passed into the container | Verify `.env` contains `GH_TOKEN` and that `--env-file .env` is present in the `podman run` invocation. |
+| `gh issue list` or `gh pr create` fails with auth error | `GITHUB_TOKEN` not set or not passed into the container | Verify `.env` contains `GITHUB_TOKEN` and that `--env-file .env` is present in the `podman run` invocation. |
 
 ## Secrets & Deployment
 
 The following secrets are required at runtime:
 
 - `CLAUDE_CODE_OAUTH_TOKEN` — Claude Code headless auth token
-- `GH_TOKEN` — GitHub PAT (GitHub provider only)
+- `GITHUB_TOKEN` — GitHub PAT (GitHub provider only)
 - `GITEA_TOKEN` — Gitea PAT (Gitea provider only)
 
 Store them in a `.env` file at the repo root. The Makefile passes this file to `podman run` via `--env-file .env`. `--userns=keep-id` is mandatory for rootless Podman — without it the container process runs as a different UID and cannot read the `~/.claude` mount.

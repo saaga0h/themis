@@ -46,9 +46,10 @@ func newScrubber(apiBase string) func(string) string {
 // green-gate verify commands — builds, tests, greps, and issue-declared check
 // blocks — must never see. Those commands run arbitrary shell and their output is
 // published (tracker comments, telemetry), so a command that echoes or dumps env
-// would leak a secret. GITEA_TOKEN/GITHUB_TOKEN authenticate git push and the
-// tracker API; CLAUDE_CODE_OAUTH_TOKEN is held only to forward to the Claude Code
-// subprocess (internal/agent) and is read by no factory Go code.
+// would leak a secret. GITEA_TOKEN and GITHUB_TOKEN authenticate git push and the
+// tracker API (gh reads GITHUB_TOKEN, and the factory pushes with it over https).
+// CLAUDE_CODE_OAUTH_TOKEN is held only to forward to the Claude Code subprocess
+// (internal/agent) and is read by no factory Go code.
 var factorySecretEnv = map[string]bool{
 	"GITEA_TOKEN":             true,
 	"GITHUB_TOKEN":            true,
@@ -113,25 +114,33 @@ func verifyRunner(verify []string, baseBranch string) func(ctx context.Context, 
 }
 
 // cmdGitOps wraps internal/git functions and satisfies runner.GitOps.
-// pushURL and token, when set (gitea), make PushBranch authenticate with the
-// factory's GITEA_TOKEN over https — so the target repo needs no push
-// credentials in its git remote (no SSH key, no token baked into .git/config).
+// pushURL and token, when set, make PushBranch authenticate over https with the
+// factory's provider token — so the target repo needs no push credentials in its
+// git remote (no SSH key, no token baked into .git/config). This is what lets Ship
+// push from inside the sandbox, where the host's SSH agent and gh login don't reach.
 type cmdGitOps struct {
 	pushURL string
 	token   string
 }
 
-// newCmdGitOps builds the GitOps for a provider. For gitea it derives the https
-// push URL from the resolved config and takes the token from GITEA_TOKEN, so
-// pushes authenticate the same way the API does. For other providers (or when the
-// URL can't be derived) it leaves them empty and PushBranch falls back to pushing
-// to origin with whatever auth the remote is configured for.
-func newCmdGitOps(provider, owner, repo, apiBase string) *cmdGitOps {
+// newCmdGitOps builds the GitOps for a provider, wiring an https token-authenticated
+// push so it works inside the sandbox. For gitea it derives the push URL from the
+// resolved API config; for github it derives it from the origin remote (any of the
+// https/ssh/scp forms). Both take the same <PROVIDER>_TOKEN that authenticates the
+// API. When the URL or token can't be resolved it leaves them empty and PushBranch
+// falls back to `git push origin` with the remote's own auth.
+func newCmdGitOps(provider, owner, repo, apiBase, repoRoot string) *cmdGitOps {
 	g := &cmdGitOps{}
-	if provider == "gitea" {
+	switch provider {
+	case "gitea":
 		if pushURL, err := git.GiteaPushURL(apiBase, owner, repo); err == nil {
 			g.pushURL = pushURL
 			g.token = os.Getenv("GITEA_TOKEN")
+		}
+	case "github":
+		if pushURL, err := git.GitHubPushURL(context.Background(), repoRoot); err == nil {
+			g.pushURL = pushURL
+			g.token = os.Getenv("GITHUB_TOKEN")
 		}
 	}
 	return g
@@ -324,7 +333,7 @@ func runIssue(args []string) error {
 	}
 
 	issueWriter := newIssueWriter(provider, giteaOwner, giteaRepo, giteaAPIBase)
-	gitOps := newCmdGitOps(provider, giteaOwner, giteaRepo, giteaAPIBase)
+	gitOps := newCmdGitOps(provider, giteaOwner, giteaRepo, giteaAPIBase, repoRoot)
 
 	cfg, err := newIssueConfig(context.Background(), parsed.number, repoRoot, templateDir, fetcher, issueWriter, gitOps, parsed.maxTurns)
 	if err != nil {
@@ -533,7 +542,7 @@ func runRun(args []string) error {
 				return fmt.Errorf("checkout base %q before issue #%d: %w", base, issue.Number, err)
 			}
 			issueWriter := newIssueWriter(provider, giteaOwner, giteaRepo, giteaAPIBase)
-			gitOps := newCmdGitOps(provider, giteaOwner, giteaRepo, giteaAPIBase)
+			gitOps := newCmdGitOps(provider, giteaOwner, giteaRepo, giteaAPIBase, repoRoot)
 			issueCfg, err := newIssueConfig(ctx, issue.Number, repoRoot, templateDir, fetcher, issueWriter, gitOps, parsed.maxTurns)
 			if err != nil {
 				return fmt.Errorf("creating config for issue #%d: %w", issue.Number, err)

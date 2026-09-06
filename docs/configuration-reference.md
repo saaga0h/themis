@@ -110,7 +110,7 @@ locally (there is no registry image). Its stanzas, top to bottom:
 - **Provider tools** — for a **GitHub** project the scaffold installs the `gh`
   CLI, because the factory shells to `gh` **inside the sandbox** (your host's `gh`
   does not cross the container boundary). In-sandbox `gh` authenticates from
-  **`GH_TOKEN`** in your `.env` — a host `gh auth login` does not carry in. A
+  **`GITHUB_TOKEN`** in your `.env` — a host `gh auth login` does not carry in. A
   **Gitea** project needs no CLI (pure REST). `themis init` picks the right one
   from your provider; if you switch a project to GitHub later, add (Debian's gh):
   ```dockerfile
@@ -184,7 +184,7 @@ presets are the reference implementation of this shape.
 
 - **`CLAUDE_CODE_OAUTH_TOKEN`** — Claude Code auth (Themis's one hard
   dependency). Generate it with `claude setup-token`.
-- **Your provider token** — `GH_TOKEN` (GitHub) or `GITEA_TOKEN` (Gitea), with
+- **Your provider token** — `GITHUB_TOKEN` (GitHub) or `GITEA_TOKEN` (Gitea), with
   Issues + Pull-requests read/write.
 
 Provider-specific setup (the `gh` CLI, the Gitea MCP, labels) is in

@@ -258,7 +258,7 @@ func TestWriteEnvExample_NamesTokensWithoutValues(t *testing.T) {
 		t.Fatalf("read: %v", err)
 	}
 	s := string(raw)
-	for _, want := range []string{"CLAUDE_CODE_OAUTH_TOKEN=", "GH_TOKEN="} {
+	for _, want := range []string{"CLAUDE_CODE_OAUTH_TOKEN=", "GITHUB_TOKEN="} {
 		if !strings.Contains(s, want) {
 			t.Errorf(".env.example missing %q", want)
 		}
