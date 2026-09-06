@@ -150,6 +150,25 @@ survivability** (telemetry bundle + diagnosis skill + troubleshooting).
 - **Onboarding not cold-read by an external user; Windows host `init` untested** on real Windows.
 - **Cost/trust not stated loudly** — sandbox/PR-gated is implied in `00-the-model.md`; the ~$2–4/issue cost expectation isn't prominent.
 
+### Update (2026-09-06): a hidden safety gap, found and fixed
+
+While validating telemetry, reading the run path turned up something the earlier
+scorecard missed: **`themis run`/`themis issue` had no sandbox enforcement.** They
+ran the pipeline in-process wherever themis ran — so on the host, the factory drove
+Claude Code with `--dangerously-skip-permissions` **unsandboxed on the user's
+machine**. The "host-mode launcher" was referenced in comments but never
+implemented; the only containerizing path was `make factory`. That is a hard
+NO-GO for any beta.
+
+Fixed this session (commit `7819422`, #140): a host-mode launcher gates `run`/`issue`
+— on the host it launches the sandbox container or **refuses**, never falling back
+to in-process; sandbox detection is corroborated (marker `== "1"` AND an
+independent container signal) so a spoofed/inherited env var can't disarm it;
+validated by a zero-context adversarial audit. **Rebuild the host binary to make it
+live.** Remaining cleanup: `make factory` still bind-mounts `factory-cc/.claude`
+over the workspace (shadowing the project's `.claude`) — finish #139 (retire that
+mount; the launcher supersedes it).
+
 ### Go / no-go
 
 - **Supervised beta (a few volunteers we actively watch + diagnose for): GO.** Core, GitHub, and onboarding are proven; *we* are the diagnosis skill for a small, watched cohort. This is also how the diagnosis-skill training set grows.
