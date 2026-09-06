@@ -87,6 +87,17 @@ RUN apt-get update && apt-get install -y git ca-certificates && rm -rf /var/lib/
 
 {{.ToolchainBlock}}
 
+# --- Sandbox run essentials (keep this) ------------------------------------
+# themis runs the factory pipeline in-process when it sees this marker — i.e.
+# when it is already inside the sandbox. The host-mode launcher also sets it, so
+# ` + "`themis run`" + ` on the host launches this image instead of running unsandboxed.
+ENV THEMIS_IN_SANDBOX=1
+# The launcher bind-mounts your repo at /workspace and runs there.
+WORKDIR /workspace
+# Trust the bind-mounted repo for git (its owner differs under --userns=keep-id).
+RUN git config --system --add safe.directory /workspace
+# ---------------------------------------------------------------------------
+
 # --- Themis agent layer (keep this) ----------------------------------------
 # The themis binary, built above for this image's architecture:
 COPY --from=themis-build /themis /usr/local/bin/themis

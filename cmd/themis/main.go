@@ -293,6 +293,11 @@ func runIssue(args []string) error {
 	if err != nil {
 		return fmt.Errorf("loading workflow descriptor: %w", err)
 	}
+	// Sandbox boundary: on the host, launch the container (or refuse); proceed
+	// in-process only when already inside the sandbox. Never run unsandboxed.
+	if handled, lerr := maybeLaunchSandbox(repoRoot, desc, append([]string{"issue"}, args...)); handled {
+		return lerr
+	}
 	provider := resolveProvider(parsed.provider, desc.Provider, git.InferProvider(context.Background(), repoRoot))
 	templateDir, cleanup, err := resolveTemplateDir(parsed.templates)
 	if err != nil {
@@ -476,6 +481,11 @@ func runRun(args []string) error {
 	desc, err := workflow.Load(repoRoot)
 	if err != nil {
 		return fmt.Errorf("loading workflow descriptor: %w", err)
+	}
+	// Sandbox boundary: on the host, launch the container (or refuse); proceed
+	// in-process only when already inside the sandbox. Never run unsandboxed.
+	if handled, lerr := maybeLaunchSandbox(repoRoot, desc, append([]string{"run"}, args...)); handled {
+		return lerr
 	}
 	provider := resolveProvider(parsed.provider, desc.Provider, git.InferProvider(context.Background(), repoRoot))
 	templateDir, cleanup, err := resolveTemplateDir(parsed.templates)
