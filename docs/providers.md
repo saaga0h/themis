@@ -32,7 +32,7 @@ Both adapters promise the same behaviour. Your repo, on either host, must satisf
    ```
 4. **Target branch:** GitHub issues can't declare one; PRs target the resolved base.
 
-> **Status: not yet proven end-to-end.** The GitHub adapter is implemented but has only been exercised by unit tests, not a live run — Themis is dogfooded on Gitea. Two behaviours are pending live verification: that `gh pr create` infers the head branch correctly in the sandbox flow, and that the "PR already exists" detection matches the installed `gh` version's wording. The sandbox image also does not yet ship `gh` (it ships `tea`), so in-container GitHub runs wait on a packaging step. Track this under the GitHub end-to-end issue.
+> **Status: proven end-to-end.** A live sandbox run took a GitHub issue through the full pipeline to an opened PR — init → build image → run → https token push → `gh pr create`. Reaching that fixed three sandbox-auth gaps, all now resolved: the image ships `gh` (the scaffold installs it for GitHub projects); the factory pushes over https with `GITHUB_TOKEN` rather than the repo's own remote auth (a host SSH key or `gh` login does not cross the sandbox boundary); and `gh pr create` is passed `--head` explicitly, because the out-of-band token push sets no upstream tracking. One behaviour remains only lightly exercised: the "PR already exists" idempotency check matches on gh's stderr wording, which can vary by gh version — re-verify if a re-run misbehaves.
 
 ## Gitea setup
 
