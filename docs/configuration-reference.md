@@ -90,7 +90,10 @@ locally (there is no registry image). Its stanzas, top to bottom:
   build-args control the source:
   - `THEMIS_REPO` (default `https://github.com/saaga0h/themis.git`) — override to
     build from your own host, e.g. a Gitea mirror.
-  - `THEMIS_REF` (default `main`) — pin a branch or tag.
+  - `THEMIS_REF` (default `main`) — pin a branch or tag. Note: the clone+build is
+    a cached layer, so a plain rebuild keeps the *old* themis even as `main` moves.
+    To update themis in the image, rebuild with `--no-cache` or bump `THEMIS_REF`
+    (a changed ref busts the cache).
 
   ```bash
   podman build --build-arg THEMIS_REPO=<git-url> --build-arg THEMIS_REF=<ref> -t <tag> .

@@ -79,6 +79,14 @@ docker build -f Containerfile -t themis-myproject:latest .
 repo, pass `--build-arg THEMIS_REPO=…` — see the
 [Containerfile reference](../configuration-reference.md#the-containerfile).
 
+> **Updating themis in the image:** the builder stage clones + compiles themis in
+> a layer keyed on its command, so a plain rebuild **reuses a cached (stale)
+> themis** even though `main` moved on. To pull a newer themis, rebuild with
+> `--no-cache` (`podman build --no-cache -t <tag> .`) or bump `--build-arg
+> THEMIS_REF=<tag-or-commit>` (a changed ref busts the cache). If a run's telemetry
+> shows no `themis/factory` records, this is usually why — the image is running an
+> older themis than your host.
+
 ## Credentials
 
 Copy `.env.example` to `.env` (gitignored — never commit it) and fill in two secrets:

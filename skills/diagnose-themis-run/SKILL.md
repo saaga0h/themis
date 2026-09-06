@@ -28,6 +28,21 @@ The factory's own per-step records carry the instrumentation scope
 **`scope.name:"themis/factory"`**; Claude Code's session telemetry is separate
 (`scope.name:"com.anthropic.claude_code.events"`). Fields land flat.
 
+**Endpoint host — you are usually on the host, not in a container.** The
+`settings.json` value is the *in-sandbox* view (often `host.containers.internal`
+or `host.docker.internal`, which won't resolve on the host). When running this
+skill from your terminal, query the same port on **`localhost`** instead
+(`http://localhost:<port>`). Derive the port from the configured endpoint; if the
+configured host doesn't resolve, fall back to `localhost`.
+
+**If there are zero `scope.name:"themis/factory"` records** but Claude Code events
+*are* present, the factory's own emitter never fired — the **in-container themis
+lacks the telemetry wiring**, usually because the image's builder stage
+(`git clone … && go build`) was cached and shipped a stale themis. Say so, and
+recommend rebuilding the sandbox image with `--no-cache`. Meanwhile, diagnose from
+the Claude Code events (`pipeline.step`, `issue.number` on the stream, per-turn
+events) + git state — and note the diagnosis is partial.
+
 ```bash
 # Derive the query base from the configured endpoint (host:port stays the same):
 EP=$(python3 -c "import json;print(json.load(open('.claude/settings.json'))['env']['OTEL_EXPORTER_OTLP_LOGS_ENDPOINT'])")
