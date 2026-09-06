@@ -109,13 +109,16 @@ locally (there is no registry image). Its stanzas, top to bottom:
   does not cross the container boundary). In-sandbox `gh` authenticates from
   **`GH_TOKEN`** in your `.env` — a host `gh auth login` does not carry in. A
   **Gitea** project needs no CLI (pure REST). `themis init` picks the right one
-  from your provider; if you switch a project to GitHub later, add:
+  from your provider; if you switch a project to GitHub later, add (Debian's gh):
+  ```dockerfile
+  RUN apt-get update && apt-get install -y gh && rm -rf /var/lib/apt/lists/*
+  ```
+  If you need the newest gh (Debian's is a version or two behind), use the
+  official signed apt repo instead:
   ```dockerfile
   RUN apt-get update && apt-get install -y curl gpg \
-   && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-        | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
-   && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-        > /etc/apt/sources.list.d/github-cli.list \
+   && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
+   && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list \
    && apt-get update && apt-get install -y gh && rm -rf /var/lib/apt/lists/*
   ```
 

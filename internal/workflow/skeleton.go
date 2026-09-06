@@ -111,14 +111,10 @@ RUN npm install -g @anthropic-ai/claude-code
 // sandbox* for a GitHub project. It authenticates from GH_TOKEN (passed via
 // --env-file .env) — a host 'gh auth login' does not cross into the container.
 const ghInstall = `# GitHub provider: the factory runs the gh CLI inside this sandbox (host gh does
-# not cross the boundary). gh authenticates from GH_TOKEN in your .env.
-RUN apt-get update && apt-get install -y curl gpg \
- && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-      | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
- && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-      > /etc/apt/sources.list.d/github-cli.list \
- && apt-get update && apt-get install -y gh \
- && rm -rf /var/lib/apt/lists/*`
+# not cross the boundary). gh authenticates from GH_TOKEN in your .env — a host
+# 'gh auth login' does NOT carry in. (This is Debian's gh; for the newest gh use
+# the official apt repo — see docs/configuration-reference.md.)
+RUN apt-get update && apt-get install -y gh && rm -rf /var/lib/apt/lists/*`
 
 // giteaNoTools documents that the Gitea provider needs no CLI in the image.
 const giteaNoTools = `# Gitea provider: the factory uses the REST API — no provider CLI needed in the image.`
