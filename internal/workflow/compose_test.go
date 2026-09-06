@@ -189,6 +189,28 @@ func TestWriteContainerfileFor_KnownSubstitutesToolchain(t *testing.T) {
 	}
 }
 
+func TestWriteContainerfileFor_ProviderTools(t *testing.T) {
+	// github (and unset, the default) → gh installed in the image; gitea → not.
+	for _, prov := range []string{"github", ""} {
+		dir := t.TempDir()
+		if _, err := WriteContainerfileFor(dir, InitConfig{Language: "go", Provider: prov}, false); err != nil {
+			t.Fatalf("WriteContainerfileFor(%q): %v", prov, err)
+		}
+		s := string(mustRead(t, filepath.Join(dir, "Containerfile")))
+		if !strings.Contains(s, "apt-get install -y gh") {
+			t.Errorf("provider %q must install gh in the image:\n%s", prov, s)
+		}
+	}
+	dir := t.TempDir()
+	if _, err := WriteContainerfileFor(dir, InitConfig{Language: "go", Provider: "gitea"}, false); err != nil {
+		t.Fatalf("WriteContainerfileFor(gitea): %v", err)
+	}
+	s := string(mustRead(t, filepath.Join(dir, "Containerfile")))
+	if strings.Contains(s, "apt-get install -y gh") {
+		t.Errorf("gitea must not install gh (REST API, no CLI):\n%s", s)
+	}
+}
+
 func TestWriteContainerfileFor_OtherKeepsTODOAndDocsPointer(t *testing.T) {
 	dir := t.TempDir()
 	if _, err := WriteContainerfileFor(dir, InitConfig{Language: "other"}, false); err != nil {

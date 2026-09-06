@@ -126,6 +126,7 @@ func renderWorkflow(cfg InitConfig) (string, error) {
 // containerfileView is the rendering data for containerfileTmpl.
 type containerfileView struct {
 	ToolchainBlock string
+	ProviderTools  string
 }
 
 func renderContainerfile(cfg InitConfig) (string, error) {
@@ -134,7 +135,14 @@ func renderContainerfile(cfg InitConfig) (string, error) {
 	if known {
 		block = fmt.Sprintf(toolchainGenerated, cfg.Language, p.Toolchain)
 	}
-	return mustRender(containerfileTmpl, containerfileView{ToolchainBlock: block})
+	// GitHub needs the gh CLI in the image; Gitea needs none. github is the
+	// default, so an unset provider gets gh too (harmless if unused; avoids the
+	// "gh missing in the sandbox" footgun for the common case).
+	providerTools := ghInstall
+	if cfg.Provider == "gitea" {
+		providerTools = giteaNoTools
+	}
+	return mustRender(containerfileTmpl, containerfileView{ToolchainBlock: block, ProviderTools: providerTools})
 }
 
 // yamlScalar renders s as a single valid YAML scalar (quoted only as needed), so
