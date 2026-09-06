@@ -42,6 +42,22 @@ func TestGhIssueWriter_CreatePR_Draft_PassesDraftFlag(t *testing.T) {
 	}
 }
 
+// The head branch must be named explicitly: the factory's out-of-band token push
+// sets no upstream tracking, so gh cannot infer the head without --head.
+func TestGhIssueWriter_CreatePR_PassesHeadBranch(t *testing.T) {
+	dir := writeFakeGH(t, "#!/bin/sh\necho \"$*\"\n")
+	t.Setenv("PATH", dir)
+
+	g := &ghIssueWriter{}
+	out, err := g.CreatePR(t.Context(), runner.PROptions{Title: "x", Body: "y", Head: "issue/5-thing"})
+	if err != nil {
+		t.Fatalf("CreatePR: unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "--head issue/5-thing") {
+		t.Errorf("CreatePR passed %q, want it to contain %q", out, "--head issue/5-thing")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // AC7 — runGH redaction
 // ---------------------------------------------------------------------------

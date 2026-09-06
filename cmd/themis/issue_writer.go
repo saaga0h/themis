@@ -42,6 +42,14 @@ func (g *ghIssueWriter) CreatePR(ctx context.Context, opts runner.PROptions) (st
 		base = "main"
 	}
 	args := []string{"pr", "create", "--title", opts.Title, "--body", opts.Body, "--base", base}
+	// Name the head branch explicitly. The factory pushes with PushBranchWithToken
+	// to an https URL without setting upstream tracking, so gh cannot infer the head
+	// from the current branch's remote-tracking ref — without --head it aborts (or
+	// tries its own push to origin, which is SSH inside the sandbox). With --head gh
+	// resolves the branch through the API, where the push already placed it.
+	if opts.Head != "" {
+		args = append(args, "--head", opts.Head)
+	}
 	if opts.Draft {
 		args = append(args, "--draft")
 	}
@@ -55,7 +63,10 @@ func (g *ghIssueWriter) CreatePR(ctx context.Context, opts runner.PROptions) (st
 		if strings.Contains(strings.ToLower(stderr.String()), "already exists") {
 			return "", runner.ErrPRAlreadyExists
 		}
-		return "", fmt.Errorf("gh pr create: %w", err)
+		// Surface gh's stderr — its diagnostic (missing label, unresolved base repo,
+		// auth) is the whole reason the step failed. gh does not echo --body content
+		// on error, so this leaks no PR text.
+		return "", fmt.Errorf("gh pr create: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	return strings.TrimSpace(string(out)), nil
 }
