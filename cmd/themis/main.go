@@ -15,6 +15,7 @@ import (
 
 	themis "github.com/saaga0h/themis"
 	"github.com/saaga0h/themis/internal/agent"
+	"github.com/saaga0h/themis/internal/ccsettings"
 	"github.com/saaga0h/themis/internal/checkpoint"
 	"github.com/saaga0h/themis/internal/factoryassets"
 	"github.com/saaga0h/themis/internal/git"
@@ -364,6 +365,18 @@ func preflightCheckRunnability(issueNumber int, checks []string, lookPath func(s
 	return fmt.Errorf("%s", b.String())
 }
 
+// applyProjectEnv sets each var from the project's settings.json env into the
+// process, but only when it is not already set — an explicit launch env always
+// wins over settings.json. lookup/set are injected for testability.
+func applyProjectEnv(env map[string]string, lookup func(string) (string, bool), set func(string, string) error) {
+	for k, v := range env {
+		if _, ok := lookup(k); ok {
+			continue
+		}
+		_ = set(k, v)
+	}
+}
+
 func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir string, fetcher tracker.Fetcher, issueWriter runner.IssueWriter, gitOps runner.GitOps, maxTurns int) (runner.Config, error) {
 	checkpointFn, err := checkpoint.NewStepCheckpoint(ctx, workDir)
 	if err != nil {
@@ -409,6 +422,16 @@ func newIssueConfig(ctx context.Context, issueNumber int, workDir, tmplDir strin
 	// time (before the Branch step) is the base the issue is cut from.
 	curBranch, _ := git.CurrentBranch(ctx, workDir)
 	baseBranch := baseBranchForIssue(issue, curBranch)
+	// Honor the project's Claude Code env (.claude/settings.json "env") for the
+	// factory process, so the same file that configures interactive CC and the
+	// sandbox CC also feeds Themis's own OTLP emitter (below) and is forwarded to
+	// the CC subprocess. Existing env wins — an explicit launch env / --env-file is
+	// never overridden. Optional: a missing file is a no-op; a malformed one warns.
+	if projEnv, cerr := ccsettings.Env(workDir); cerr != nil {
+		fmt.Fprintf(os.Stderr, "warning: reading .claude/settings.json env: %v\n", cerr)
+	} else {
+		applyProjectEnv(projEnv, os.LookupEnv, os.Setenv)
+	}
 	// Diagnostic emitter: ships the factory's own per-step narrative to the OTLP
 	// collector when OTEL_* env is set (same gating as Claude Code's telemetry);
 	// nil otherwise. Run defers EmitterShutdown to flush the batch on exit.
