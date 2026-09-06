@@ -74,8 +74,14 @@ FROM golang:1.25-bookworm AS themis-build
 ENV GOTOOLCHAIN=auto
 ARG THEMIS_REPO
 ARG THEMIS_REF
+# Stamp the version into the binary. When THEMIS_REF is a tag (the release case)
+# git describe returns that tag; on a branch it returns the short commit — either
+# beats the unstamped "dev", so themis --version and the state-version check are
+# meaningful about what is actually running in the sandbox.
 RUN git clone --depth 1 --branch "${THEMIS_REF}" "${THEMIS_REPO}" /src \
-    && cd /src && CGO_ENABLED=0 go build -o /themis ./cmd/themis
+    && cd /src \
+    && VERSION="$(git describe --tags --always --dirty 2>/dev/null || echo "${THEMIS_REF}")" \
+    && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /themis ./cmd/themis
 # -------------------------------------------------------------------------------
 
 # A Debian+Node base provides bash, apt, and npm. Claude Code is an npm package

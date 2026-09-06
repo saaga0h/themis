@@ -233,7 +233,8 @@ func TestWriteContainerfile_ScaffoldsAgentLayerAndToolchainTODO(t *testing.T) {
 	// from the build context.
 	for _, want := range []string{
 		"ARG THEMIS_REPO=https://github.com/saaga0h/themis.git",
-		"go build -o /themis ./cmd/themis",
+		"go build -trimpath -ldflags \"-s -w -X main.version=${VERSION}\" -o /themis ./cmd/themis",
+		"git describe --tags --always --dirty",
 		"COPY --from=themis-build /themis /usr/local/bin/themis",
 		"npm install -g @anthropic-ai/claude-code",
 		"TODO",

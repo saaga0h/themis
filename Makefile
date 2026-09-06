@@ -90,16 +90,26 @@ build: ## Build the static linux/$(FACTORY_ARCH) factory binary (-> bin/themis) 
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(FACTORY_ARCH) go build -trimpath -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY) $(CMD)
 	@file $(BUILD_DIR)/$(BINARY) 2>/dev/null || true
 
-dist: ## Cross-compile static host binaries for the release matrix (+ SHA256SUMS) -> dist/
+dist: ## Cross-compile static host binaries as per-platform archives (+ SHA256SUMS) -> dist/
 	@rm -rf $(DIST_DIR) && mkdir -p $(DIST_DIR)
 	@for p in $(PLATFORMS); do \
 		os=$${p%/*}; arch=$${p#*/}; ext=""; [ "$$os" = "windows" ] && ext=".exe"; \
-		out=$(DIST_DIR)/$(BINARY)-$$os-$$arch$$ext; \
-		echo "  building $$out ($(VERSION))"; \
-		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags "$(LDFLAGS)" -o $$out $(CMD) || exit 1; \
+		name=$(BINARY)-$(VERSION)-$$os-$$arch; \
+		stage=$(DIST_DIR)/$$name; \
+		mkdir -p $$stage; \
+		echo "  building $$name"; \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags "$(LDFLAGS)" -o $$stage/$(BINARY)$$ext $(CMD) || exit 1; \
+		[ -f LICENSE ] && cp LICENSE $$stage/ || true; \
+		[ -f README.md ] && cp README.md $$stage/ || true; \
+		if [ "$$os" = "windows" ]; then \
+			( cd $(DIST_DIR) && zip -q -r $$name.zip $$name ) || { echo "dist: 'zip' is required for the windows archive" >&2; exit 1; }; \
+		else \
+			tar -czf $(DIST_DIR)/$$name.tar.gz -C $(DIST_DIR) $$name || exit 1; \
+		fi; \
+		rm -rf $$stage; \
 	done
 	@cd $(DIST_DIR) && { command -v sha256sum >/dev/null 2>&1 && sha256sum * || shasum -a 256 *; } > SHA256SUMS
-	@echo "dist: $(DIST_DIR)/ ready ($(VERSION)); checksums in $(DIST_DIR)/SHA256SUMS"
+	@echo "dist: $(DIST_DIR)/ ready ($(VERSION)); archives + checksums in $(DIST_DIR)/SHA256SUMS"
 
 # A semver pre-release (v2.0.0-beta, v1.2.0-rc.1) carries a hyphen — mark it a
 # GitHub pre-release so it is not surfaced as "latest".
