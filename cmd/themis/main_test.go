@@ -41,6 +41,16 @@ func TestVersionPrintsNonEmptyString(t *testing.T) {
 	if s == "" {
 		t.Error("themis version must print a non-empty version string to stdout")
 	}
+	// The conventional --version / -v flags must print the same string.
+	for _, flag := range []string{"--version", "-v"} {
+		out, err := exec.Command(binary, flag).Output()
+		if err != nil {
+			t.Fatalf("themis %s must exit 0, got: %v", flag, err)
+		}
+		if got := strings.TrimSpace(string(out)); got != s {
+			t.Errorf("themis %s = %q, want %q (same as `version`)", flag, got, s)
+		}
+	}
 }
 
 // Makefile exists with build, test, and lint targets that succeed

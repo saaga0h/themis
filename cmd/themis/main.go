@@ -205,9 +205,10 @@ func profileLoader(dir string) (runner.ProfileData, error) {
 	}, nil
 }
 
-// version is the build version, reported by `themis version` and stamped into
-// telemetry. It defaults to "dev" for a plain `go build` and is overridden at
-// release time via -ldflags "-X main.version=<tag>" (see the Makefile).
+// version is the build version, reported by `themis version` (also `--version`,
+// `-v`) and stamped into telemetry. It defaults to "dev" for a plain `go build`
+// and is overridden at release time via -ldflags "-X main.version=<tag>" — by the
+// Makefile for host binaries and by the scaffold Containerfile for the sandbox.
 var version = "dev"
 
 // defaultMaxTurns is the CLI default for --max-turns, sourced from the runner
@@ -221,7 +222,7 @@ func main() {
 	}
 
 	switch os.Args[1] {
-	case "version":
+	case "version", "--version", "-v":
 		fmt.Println(version)
 	case "init":
 		if err := runInit(os.Args[2:]); err != nil {
