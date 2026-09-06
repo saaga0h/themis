@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"time"
 )
 
 // StepRecord is one structured diagnostic record about a pipeline step (or the
@@ -56,6 +57,26 @@ func emitStep(ctx context.Context, cfg Config, log io.Writer, rec StepRecord) {
 		}
 	}()
 	cfg.Emitter.Emit(ctx, rec)
+}
+
+// emitStepFailure emits an "error" StepRecord for a step that fails on an early
+// exit — a checkpoint failure, or one of Ship's base-branch/no-commits/push/
+// PR-create guards — then returns err unchanged so a caller can write
+// `return nil, emitStepFailure(...)`. Without it the factory emits a record only
+// when a step *completes*, so exactly the failures a diagnosis needs are invisible
+// in the sink: a Ship push error looked like a "silent stop" to the
+// diagnose-themis-run skill, which then misattributed it to Themis. The err's
+// bounded tail becomes Detail (scrubbed by emitStep before it leaves the process).
+func emitStepFailure(ctx context.Context, cfg Config, log io.Writer, rid, stage string, stepStart time.Time, err error) error {
+	emitStep(ctx, cfg, log, StepRecord{
+		IssueNumber: cfg.IssueNumber,
+		RunID:       rid,
+		Stage:       stage,
+		Outcome:     "error",
+		DurationMs:  time.Since(stepStart).Milliseconds(),
+		Detail:      lastLines(err.Error(), 30),
+	})
+	return err
 }
 
 // runID is a stable identifier for one factory run: issue number + the run's

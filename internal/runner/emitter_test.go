@@ -145,3 +145,87 @@ func TestRunner_EmitsErrorRecordOnInvokeFailure(t *testing.T) {
 		t.Error("error record missing stage/run_id")
 	}
 }
+
+// findRecord returns the first record matching outcome, or nil.
+func findRecord(records []StepRecord, outcome string) *StepRecord {
+	for i := range records {
+		if records[i].Outcome == outcome {
+			return &records[i]
+		}
+	}
+	return nil
+}
+
+// A checkpoint failure (a load-bearing step left the tree dirty) must emit an
+// "error" record carrying the cause — otherwise the run stops with only a stdout
+// line and the diagnose skill is blind to it (the TestRed dirty-tree case).
+func TestRunner_EmitsErrorRecordOnCheckpointFailure(t *testing.T) {
+	workDir := t.TempDir()
+	saveStateAt(t, workDir, pipeline.StepImplement)
+	em := &captureEmitter{}
+	cfg := Config{
+		WorkDir:     workDir,
+		IssueNumber: 42,
+		Fetcher:     &stubFetcher{issue: sampleIssue()},
+		Invoker:     &recordingInvoker{},
+		IssueWriter: &stubIssueWriter{},
+		TemplateDir: emitterTemplateDir(t),
+		CheckpointFn: func(context.Context, pipeline.Step, string) error {
+			return errors.New("working tree has uncommitted changes; git status shows modified Containerfile")
+		},
+		Emitter: em,
+	}
+	if _, err := Run(context.Background(), cfg); err == nil {
+		t.Fatal("expected Run to return the checkpoint error")
+	}
+	errRec := findRecord(em.records, "error")
+	if errRec == nil {
+		t.Fatal("expected an error record on checkpoint failure")
+	}
+	if errRec.Stage != pipeline.StepImplement.String() {
+		t.Errorf("error record stage = %q, want %q", errRec.Stage, pipeline.StepImplement.String())
+	}
+	if !strings.Contains(errRec.Detail, "uncommitted changes") {
+		t.Errorf("error record must carry the checkpoint cause; got %q", errRec.Detail)
+	}
+	if errRec.RunID == "" {
+		t.Error("error record missing run_id")
+	}
+}
+
+// A Ship push failure must emit an "error" record carrying the push error — the
+// gap that made the SSH/auth push failure look like a "silent stop" between Docs
+// and Ship to the diagnose skill.
+func TestRunner_EmitsErrorRecordOnShipPushFailure(t *testing.T) {
+	workDir := t.TempDir()
+	saveStateAt(t, workDir, pipeline.StepShip)
+	em := &captureEmitter{}
+	cfg := Config{
+		WorkDir:      workDir,
+		IssueNumber:  42,
+		Fetcher:      &stubFetcher{issue: sampleIssue()},
+		Invoker:      &stubInvoker{},
+		IssueWriter:  &stubIssueWriter{prURL: "https://example.com/pr/1"},
+		TemplateDir:  emitterTemplateDir(t),
+		CheckpointFn: noopCheckpoint,
+		Emitter:      em,
+		Git: &fakeGitOps{
+			currentBranchFn: func(context.Context, string) (string, error) { return "issue/42-thing", nil },
+			commitsAhead:    1,
+			pushBranchErr:   errors.New("git push origin issue/42-thing: exit status 128: Host key verification failed"),
+		},
+	}
+	if _, err := Run(context.Background(), cfg); err == nil {
+		t.Fatal("expected Run to return the push error")
+	}
+	errRec := findRecord(em.records, "error")
+	if errRec == nil {
+		t.Fatal("expected an error record on ship push failure")
+	}
+	if errRec.Stage != pipeline.StepShip.String() {
+		t.Errorf("error record stage = %q, want %q", errRec.Stage, pipeline.StepShip.String())
+	}
+	if !strings.Contains(errRec.Detail, "Host key verification failed") {
+		t.Errorf("error record must carry the push cause; got %q", errRec.Detail)
+	}
+}

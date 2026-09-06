@@ -100,6 +100,17 @@ a genuine factory defect routes to the `themis-bug-report` skill.
 
 ## 3. Report
 
+**Read the terminal record before judging.** A run that stops mid-pipeline emits an
+`error` (or `blocked`) record for the failing stage, with the cause in `detail`
+(and `verify_output` on a green-gate failure) — checkpoint failures and every Ship
+guard (base-branch, no-commits, push, PR-create) included. Find that record and
+read it. Never report a "silent stop" or blame Themis from the mere *absence* of a
+`shipped` record — the failure record names the cause, and it is usually the user's
+(a dirty tree, a wrong launch branch, a missing token/label). Only if records exist
+through some stage and then stop with **no** terminal `error`/`blocked`/`shipped`
+record did the run die outside the emitter — that points at the harness (a crash,
+an OOM, a stale image), not at a pipeline defect; say so rather than guessing.
+
 Give the user: which stage failed, the signature you matched, whether it's **their
 problem or Themis's**, and the concrete fix. If it's their problem, stop there. If
 the evidence points at a **Themis defect** (the factory itself behaved wrong, not

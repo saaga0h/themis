@@ -54,6 +54,10 @@ type fakeGitOps struct {
 	// not) invoked.
 	cleanWorkingTreeFn    func(ctx context.Context, dir string) (int, error)
 	cleanWorkingTreeCalls int
+
+	// pushBranchErr, when set, is returned by PushBranch to simulate a push
+	// failure (e.g. an SSH/token auth error inside the sandbox).
+	pushBranchErr error
 }
 
 func (f *fakeGitOps) CheckoutNewBranch(ctx context.Context, dir, name string) error {
@@ -89,6 +93,9 @@ func (f *fakeGitOps) CleanWorkingTree(ctx context.Context, dir string) (int, err
 }
 
 func (f *fakeGitOps) PushBranch(ctx context.Context, dir, branch string) error {
+	if f.pushBranchErr != nil {
+		return f.pushBranchErr
+	}
 	f.pushed = append(f.pushed, branch)
 	return nil
 }

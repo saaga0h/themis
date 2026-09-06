@@ -29,6 +29,8 @@ var ErrPRAlreadyExists = errors.New("pull request already exists for this branch
 // creates the PR, and returns the Result. It also saves final pipeline state and
 // removes the review-results.json artifact.
 func runShipStep(ctx context.Context, cfg Config, issue *tracker.IssueData, state *pipeline.PipelineState, prof ProfileData, stepStart time.Time, log io.Writer) (*Result, error) {
+	rid := runID(cfg.IssueNumber, state.StartedAt.Unix())
+	stage := pipeline.StepShip.String()
 	var branch string
 	var branchErr error
 	if cfg.Git != nil {
@@ -53,13 +55,16 @@ func runShipStep(ctx context.Context, cfg Config, issue *tracker.IssueData, stat
 
 	if cfg.Git != nil {
 		if branchErr == nil && branch == base {
-			return nil, fmt.Errorf("current branch is the base branch — no issue branch was created")
+			return nil, emitStepFailure(ctx, cfg, log, rid, stage, stepStart,
+				fmt.Errorf("current branch is the base branch — no issue branch was created"))
 		}
 		if n, countErr := cfg.Git.CommitsAheadOfBase(ctx, cfg.WorkDir, base); countErr == nil && n == 0 {
-			return nil, fmt.Errorf("no commits on branch %s — nothing to ship", branch)
+			return nil, emitStepFailure(ctx, cfg, log, rid, stage, stepStart,
+				fmt.Errorf("no commits on branch %s — nothing to ship", branch))
 		}
 		if err := cfg.Git.PushBranch(ctx, cfg.WorkDir, branch); err != nil {
-			return nil, fmt.Errorf("pushing branch %s: %w", branch, err)
+			return nil, emitStepFailure(ctx, cfg, log, rid, stage, stepStart,
+				fmt.Errorf("pushing branch %s: %w", branch, err))
 		}
 	}
 
@@ -119,7 +124,8 @@ func runShipStep(ctx context.Context, cfg Config, issue *tracker.IssueData, stat
 		// success rather than a hard block.
 		fmt.Fprintf(log, "%s: a PR already exists for this branch — treating as an idempotent ship\n", pipeline.StepShip)
 	case err != nil:
-		return nil, fmt.Errorf("creating PR: %w", err)
+		return nil, emitStepFailure(ctx, cfg, log, rid, stage, stepStart,
+			fmt.Errorf("creating PR: %w", err))
 	}
 
 	// A PR now exists for this issue (just created, or from a prior run). Drop the
@@ -149,8 +155,8 @@ func runShipStep(ctx context.Context, cfg Config, issue *tracker.IssueData, stat
 	}
 	emitStep(ctx, cfg, log, StepRecord{
 		IssueNumber: cfg.IssueNumber,
-		RunID:       runID(cfg.IssueNumber, state.StartedAt.Unix()),
-		Stage:       pipeline.StepShip.String(),
+		RunID:       rid,
+		Stage:       stage,
 		Outcome:     "shipped",
 		Verdict:     verdictLabel,
 		PRURL:       prURL,

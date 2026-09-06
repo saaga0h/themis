@@ -396,7 +396,8 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 					state.CurrentStep = next
 					continue
 				}
-				return nil, fmt.Errorf("checkpoint failed after step %v: %w", step, chkErr)
+				return nil, emitStepFailure(ctx, cfg, log, rid, step.String(), stepStart,
+					fmt.Errorf("checkpoint failed after step %v: %w", step, chkErr))
 			}
 			fmt.Fprintf(log, "%s: checkpoint pass\n", step)
 		}
