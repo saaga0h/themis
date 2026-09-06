@@ -157,9 +157,8 @@ survivability** (telemetry bundle + diagnosis skill + troubleshooting).
 
 ### Ranked remaining before unsupervised beta
 
-1. **Bundle telemetry** (completes item 2) — ship/run **VictoriaLogs** (single binary, native OTLP ingest + LogsQL query), point `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` at it; no emitter change. The LogsQL query path becomes the diagnosis skill's data source (#2/#3).
-2. **Author `diagnose-themis-run` skill** (item 3) — the make-or-break survivability tool; seed taxonomy above + this session's real runs.
-3. **"When it blocks" troubleshooting page** (item 6) — built on #2.
+1. **Telemetry config + docs** (completes item 2) — the sink is **VictoriaLogs**, user-run (native OTLP + LogsQL), *not* scaffolded: telemetry is a separate service. Config unit is `{project}/.claude/settings.json` `env` (opt-in per project). Filed as **#149** (factory honors that `env` — the one code slice) + **#150** (docs: self-hosted VM-logs examples + honest boundaries). No emitter change; Themis stays OTLP-agnostic.
+2. **Author `diagnose-themis-run` skill** — **#151**, the make-or-break survivability tool (read telemetry → classify → your-problem-vs-Themis's + fix); seed taxonomy above + this session's real runs. Plus **#152** (optional `themis-bug-report`, the feedback loop). The diagnose skill also serves item 6 ("when it blocks"); a thin troubleshooting page can point at it later.
 4. **Prove `go`/`python`/`rust` presets e2e** — build one image + run one issue per language.
 5. **External cold-read of onboarding + Windows `init` check.**
 6. **Polish:** refresh the stale README `## Status` line; state cost/trust loudly.
