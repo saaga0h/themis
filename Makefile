@@ -3,8 +3,22 @@ PROVIDER ?= gitea
 BINARY     := themis
 CMD        := ./cmd/themis
 BUILD_DIR  := bin
+DIST_DIR   := dist
 
-.PHONY: factory factory-issue factory-dry factory-cc shell build-image build test lint backtest
+# GITHUB_REPO is the public repo host-binary releases are published to.
+GITHUB_REPO := saaga0h/themis
+
+# VERSION is stamped into the binary via -ldflags. Defaults to the git tag/commit;
+# pass VERSION=v0.2.0 explicitly for a release. -s -w strip debug info (smaller).
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS := -s -w -X main.version=$(VERSION)
+
+# Host release matrix — the platforms a beta user's laptop runs `themis init` /
+# the launcher on. The sandbox binary is built from source in the container
+# (Containerfile), so it is NOT part of this matrix.
+PLATFORMS := darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64
+
+.PHONY: factory factory-issue factory-dry factory-cc shell build-image build dist release test lint backtest
 
 # Architecture of the sandbox containers the factory binary runs in. Defaults to
 # the build host's architecture (go env GOHOSTARCH) — the common case, where the
@@ -73,8 +87,23 @@ build-image: ## Build the factory container image
 
 build: ## Build the static linux/$(FACTORY_ARCH) factory binary (-> bin/themis) that target sandboxes mount
 	mkdir -p $(BUILD_DIR)
-	CGO_ENABLED=0 GOOS=linux GOARCH=$(FACTORY_ARCH) go build -o $(BUILD_DIR)/$(BINARY) $(CMD)
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(FACTORY_ARCH) go build -trimpath -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY) $(CMD)
 	@file $(BUILD_DIR)/$(BINARY) 2>/dev/null || true
+
+dist: ## Cross-compile static host binaries for the release matrix (+ SHA256SUMS) -> dist/
+	@rm -rf $(DIST_DIR) && mkdir -p $(DIST_DIR)
+	@for p in $(PLATFORMS); do \
+		os=$${p%/*}; arch=$${p#*/}; ext=""; [ "$$os" = "windows" ] && ext=".exe"; \
+		out=$(DIST_DIR)/$(BINARY)-$$os-$$arch$$ext; \
+		echo "  building $$out ($(VERSION))"; \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags "$(LDFLAGS)" -o $$out $(CMD) || exit 1; \
+	done
+	@cd $(DIST_DIR) && { command -v sha256sum >/dev/null 2>&1 && sha256sum * || shasum -a 256 *; } > SHA256SUMS
+	@echo "dist: $(DIST_DIR)/ ready ($(VERSION)); checksums in $(DIST_DIR)/SHA256SUMS"
+
+release: dist ## Publish dist/ to a GitHub release. Requires a tag: make release VERSION=v0.2.0
+	@case "$(VERSION)" in v*) : ;; *) echo "release: pass an explicit tag, e.g. make release VERSION=v0.2.0" >&2; exit 1 ;; esac
+	gh release create $(VERSION) $(DIST_DIR)/* --repo $(GITHUB_REPO) --generate-notes --title $(VERSION)
 
 test: ## Run Go tests
 	go test ./...

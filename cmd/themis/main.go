@@ -195,7 +195,10 @@ func profileLoader(dir string) (runner.ProfileData, error) {
 	}, nil
 }
 
-const version = "0.1.0"
+// version is the build version, reported by `themis version` and stamped into
+// telemetry. It defaults to "dev" for a plain `go build` and is overridden at
+// release time via -ldflags "-X main.version=<tag>" (see the Makefile).
+var version = "dev"
 
 // defaultMaxTurns is the CLI default for --max-turns, sourced from the runner
 // so the runner remains the single source of truth for the value.

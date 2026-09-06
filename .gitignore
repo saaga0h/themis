@@ -2,6 +2,7 @@
 .claude/
 .env
 bin/
+dist/
 .themis/*
 !.themis/workflow.yaml
 /themis

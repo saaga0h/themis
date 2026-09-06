@@ -4,17 +4,32 @@ You can't run the factory yet — it needs a configured project and a built sand
 
 ## Prerequisites
 
-- **Go** — to build the `themis` binary.
+- **Go** — only if you build from source or use `go install`; not needed if you download a release binary.
 - **Podman (rootless) or Docker** — the sandbox. `--userns=keep-id` is required for rootless Podman.
 - **`CLAUDE_CODE_OAUTH_TOKEN`** — generated on your host with `claude setup-token`. Themis's one hard dependency.
 - **A host token** — `GH_TOKEN` (GitHub) or `GITEA_TOKEN` (Gitea), with Issues + Pull-requests read/write.
 
-## Build the binary
+## Get the `themis` binary
 
-```bash
-make build   # -> bin/themis (static linux binary; FACTORY_ARCH defaults to your host arch,
-             #    override e.g. FACTORY_ARCH=amd64 for a cross-arch sandbox)
-```
+You need `themis` on your machine to run `themis init` and the factory launcher. This is the **host** binary for your own OS — the *sandbox* binary is built from source inside the container (see [Configure](02-configure.md)), so you don't build that yourself. Pick one:
+
+- **Download a release (recommended).** Grab the binary for your OS/arch from the [GitHub releases](https://github.com/saaga0h/themis/releases), **verify it against `SHA256SUMS`**, then put it on your `PATH`:
+  ```bash
+  # adjust the filename to your platform (…-darwin-arm64, …-linux-amd64, …-windows-amd64.exe, …)
+  curl -fsSLO https://github.com/saaga0h/themis/releases/latest/download/themis-linux-amd64
+  curl -fsSLO https://github.com/saaga0h/themis/releases/latest/download/SHA256SUMS
+  sha256sum -c --ignore-missing SHA256SUMS      # Linux; macOS: shasum -a 256 -c --ignore-missing SHA256SUMS
+  install -m755 themis-linux-amd64 /usr/local/bin/themis
+  ```
+  Binaries are static (`CGO_ENABLED=0`) — no libc dependency. **Always verify the checksum before trusting a downloaded binary.**
+
+- **`go install`** (if you have Go): `go install github.com/saaga0h/themis/cmd/themis@latest`
+
+- **Build from source:**
+  ```bash
+  go build -o themis ./cmd/themis   # for your current OS/arch
+  make build                        # -> bin/themis (static linux/<host arch>)
+  ```
 
 ## The sandbox
 
