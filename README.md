@@ -34,4 +34,4 @@ New to Themis? Walk these in order — each is short:
 
 ## Status
 
-Pre-beta. Dogfooded on itself (Go, via Gitea). GitHub support exists but is not yet proven end-to-end, and the packaged run-against-your-own-project flow is being finalized — see [`docs/beta-readiness.md`](docs/beta-readiness.md).
+**v2, beta.** Dogfooded on itself (Go, via Gitea) and proven end-to-end on GitHub — a greenfield Node project driven through `themis init` → configure → run → PR, across both the ready and blocking-review routes. Onboarding (`themis init`) and host-binary distribution are in place. In progress: optional telemetry + a run-diagnosis skill (the survivability layer). See [`docs/beta-readiness.md`](docs/beta-readiness.md).

@@ -101,9 +101,13 @@ dist: ## Cross-compile static host binaries for the release matrix (+ SHA256SUMS
 	@cd $(DIST_DIR) && { command -v sha256sum >/dev/null 2>&1 && sha256sum * || shasum -a 256 *; } > SHA256SUMS
 	@echo "dist: $(DIST_DIR)/ ready ($(VERSION)); checksums in $(DIST_DIR)/SHA256SUMS"
 
-release: dist ## Publish dist/ to a GitHub release. Requires a tag: make release VERSION=v0.2.0
-	@case "$(VERSION)" in v*) : ;; *) echo "release: pass an explicit tag, e.g. make release VERSION=v0.2.0" >&2; exit 1 ;; esac
-	gh release create $(VERSION) $(DIST_DIR)/* --repo $(GITHUB_REPO) --generate-notes --title $(VERSION)
+# A semver pre-release (v2.0.0-beta, v1.2.0-rc.1) carries a hyphen — mark it a
+# GitHub pre-release so it is not surfaced as "latest".
+PRERELEASE := $(if $(findstring -,$(VERSION)),--prerelease,)
+
+release: dist ## Publish dist/ to a GitHub release. Requires a tag: make release VERSION=v2.0.0-beta
+	@case "$(VERSION)" in v*) : ;; *) echo "release: pass an explicit tag, e.g. make release VERSION=v2.0.0-beta" >&2; exit 1 ;; esac
+	gh release create $(VERSION) $(DIST_DIR)/* --repo $(GITHUB_REPO) --generate-notes --title $(VERSION) $(PRERELEASE)
 
 test: ## Run Go tests
 	go test ./...
