@@ -58,7 +58,10 @@ the current image tag and any auth flags.)
 Put the OTLP env in **`{project}/.claude/settings.json`** — the one file that
 configures your interactive CC, the sandbox CC, **and** Themis's own emitter (the
 factory reads this file's `env` for its process; an explicit launch env always
-wins). Use **your** endpoint host — the examples use placeholders:
+wins). `themis init` gitignores `.claude/`, so this stays **local to you** — if you
+choose to commit `.claude/` for a team, keep the endpoint/host out of it (it's
+infrastructure, not something for a public repo). Use **your** endpoint host — the
+examples use placeholders:
 
 ```jsonc
 {

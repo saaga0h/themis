@@ -287,6 +287,9 @@ func TestEnsureGitignore(t *testing.T) {
 	if !strings.Contains(string(raw), ".env") {
 		t.Errorf(".gitignore must ignore .env; got:\n%s", raw)
 	}
+	if !strings.Contains(string(raw), ".claude/") {
+		t.Errorf(".gitignore must ignore .claude/ (settings.json holds endpoints/env; skills are regenerable); got:\n%s", raw)
+	}
 
 	// Idempotent: a second call changes nothing.
 	changed, err = EnsureGitignore(dir)
