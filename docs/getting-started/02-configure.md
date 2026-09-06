@@ -84,7 +84,7 @@ repo, pass `--build-arg THEMIS_REPO=…` — see the
 Copy `.env.example` to `.env` (gitignored — never commit it) and fill in two secrets:
 
 - **`CLAUDE_CODE_OAUTH_TOKEN`** — Claude Code auth. Generate it with `claude setup-token`.
-- **Your provider token** — `GH_TOKEN` (GitHub) or `GITEA_TOKEN` (Gitea), with Issues + Pull-requests read/write.
+- **Your provider token** — `GH_TOKEN` (GitHub) or `GITEA_TOKEN` (Gitea), with Issues + Pull-requests read/write. **GitHub:** the factory's `gh` runs *in the sandbox* and can't use a host browser login — put a token in `.env` with `echo "GH_TOKEN=$(gh auth token)" >> .env` (works after a web login) or use a PAT with `repo` scope. See [`docs/providers.md`](../providers.md).
 
 Provider specifics (the `gh` CLI, the Gitea MCP, the factory labels) are in
 [`docs/providers.md`](../providers.md).

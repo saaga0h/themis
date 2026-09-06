@@ -18,7 +18,11 @@ Both adapters promise the same behaviour. Your repo, on either host, must satisf
 ## GitHub setup
 
 1. **Provider:** default — no flag needed, or `--provider github`.
-2. **Auth:** the `gh` CLI must be **installed and authenticated** — `gh auth login`, or `GH_TOKEN` / `GITHUB_TOKEN` in the environment. Themis shells out to `gh` and relies on its ambient auth (there's no separate token plumbing).
+2. **Auth:** the factory runs `gh` **inside the sandbox**, so it authenticates from **`GH_TOKEN`** (or `GITHUB_TOKEN`) in the environment, passed via `.env` / `--env-file`. A host `gh auth login` — **including a browser/web login** — does **not** cross into the container, and neither does your host's `gh` binary. Get the token value with `gh auth token` (this works even after a browser login) or create a PAT with `repo` scope, and put it in `.env`:
+   ```bash
+   echo "GH_TOKEN=$(gh auth token)" >> .env   # writes the token without printing it
+   ```
+   `gh` must also be present in the sandbox image — `themis init` scaffolds its install for a GitHub project.
 3. **Labels:** create both factory labels in the repo before running — the `gh` path adds/removes labels by name and errors if they don't exist:
    ```bash
    gh label create ready-for-agent --description "Ready for the factory"
