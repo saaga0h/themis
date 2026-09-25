@@ -31,6 +31,29 @@ The factory succeeds on well-specified vertical slices and **thrashes** on width
 - **Fuzzy specs** — resolve the design first (that's what `grill-me` is for).
 - **Huge scope** — decompose until each slice is small and precise.
 
+## The three dimensions you work in
+
+Themis writes the code — it doesn't do the thinking. That stays with you, and it
+lives in three places along the flow.
+
+- **Resolving the design** — with `grill-me` (see [the build loop](05-build-loop.md)).
+  Before anything is sliced or built, the idea has to become a *decided* design — the
+  questions answered, the approach settled. `grill-me` interrogates the plan until the
+  fuzziness is gone. Resolve it here, or the factory builds confidently on sand — this
+  is where the work starts.
+- **Guiding the implementation** — with your [contract docs](04-contracts.md).
+  `CODING_STANDARDS.md` sits *between* the two ends: it doesn't specify a feature or
+  judge a result, it directs *how* the factory implements. It's a small, living guide —
+  grown gradually, kept focused, trimmed as often as it's added to, never "done."
+  Knowing what belongs in it is a skill you build by watching the factory work. (It's
+  why starting nearly empty is right.)
+- **Judging the result** — the PR (see [review & aftercare](06-review-and-aftercare.md)).
+  The code is already there; your job is to judge whether it does what was asked *and*
+  fits the architecture intended, and to keep successive PRs aligned into one coherent
+  whole. For that moment, you're the lead developer. Expect a PR larger than the small
+  commits you may be used to — a slice lands as one whole behavior — and how large it
+  is traces straight back to how you sliced it.
+
 ## One dependency; everything else is yours
 
 Themis needs **Claude**. Beyond that it is agnostic — language, conventions, and host are all declared by *your* project, never baked into the tool. The factory enforces *your* rules (your [contract docs](04-contracts.md), your [workflow.yaml](02-configure.md)), not its opinions.
