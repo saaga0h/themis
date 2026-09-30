@@ -76,6 +76,29 @@ examples use placeholders:
 }
 ```
 
+### Optional: include prompt content
+
+By default, Claude Code logs telemetry **events and metadata, not the text of the
+prompts**. Adding `OTEL_LOG_USER_PROMPTS=1` to the `env` above also logs the **full
+prompt bodies** — for the factory, that is each rendered step template: the issue,
+its acceptance criteria, your contract docs, and the code context the agent was
+given.
+
+It makes diagnosis richer — you see exactly what the agent was asked. It is **off by
+default and opt-in on purpose**: it moves a large amount of your project's content
+into the telemetry store, so everything in the "may contain sensitive data" warning
+below applies with far more force. The review-before-you-share bar is higher, and if
+you enable this *and* share telemetry for a bug report, you are sharing prompt
+content. Unsure whether that's safe to share? Don't enable it — or strip it before
+sharing.
+
+```jsonc
+"env": {
+  // …the block above, plus:
+  "OTEL_LOG_USER_PROMPTS": "1"
+}
+```
+
 ## 3. Reach it from the sandbox
 
 The factory runs in a container, so `<your-otlp-host>` must be reachable **from
@@ -116,4 +139,5 @@ mis-scoped issue, config, git state) or *Themis's*. Install the interactive skil
 - **May contain sensitive data.** Telemetry can include source, file paths,
   internal hostnames/IPs, and secrets echoed in error output. There is **no
   reliable way to auto-classify what's sensitive**, so **review anything before you
-  share it** anywhere (see the bug-report skill's warnings).
+  share it** anywhere (see the bug-report skill's warnings) — and far more so if you
+  enable prompt-content logging (above).
