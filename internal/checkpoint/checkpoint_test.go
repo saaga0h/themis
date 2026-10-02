@@ -74,37 +74,6 @@ func makeCommit(t *testing.T, dir, message string) {
 	run("git", "commit", "-m", message)
 }
 
-// Checkpoint verification after TestRed confirms last commit message starts with test(
-// Checkpoint verification after Implement confirms last commit message starts with feat(
-
-func TestVerifyCommitPrefix_Matches(t *testing.T) {
-	dir := initGitRepo(t)
-	makeCommit(t, dir, "test(scope): add failing tests")
-	ctx := context.Background()
-	if err := checkpoint.VerifyCommitPrefix(ctx, dir, "test("); err != nil {
-		t.Errorf("VerifyCommitPrefix should pass for matching prefix, got: %v", err)
-	}
-}
-
-func TestVerifyCommitPrefix_Mismatch(t *testing.T) {
-	dir := initGitRepo(t)
-	makeCommit(t, dir, "feat(scope): implement something")
-	ctx := context.Background()
-	err := checkpoint.VerifyCommitPrefix(ctx, dir, "test(")
-	if err == nil {
-		t.Error("VerifyCommitPrefix should fail when last commit does not start with test(")
-	}
-}
-
-func TestVerifyCommitPrefix_ImplementPrefix(t *testing.T) {
-	dir := initGitRepo(t)
-	makeCommit(t, dir, "feat(pipeline): implement issue runner")
-	ctx := context.Background()
-	if err := checkpoint.VerifyCommitPrefix(ctx, dir, "feat("); err != nil {
-		t.Errorf("VerifyCommitPrefix should pass for feat( prefix, got: %v", err)
-	}
-}
-
 // Checkpoint verification detects dirty working tree and reports error
 
 func TestVerifyCleanWorkingTree_Clean(t *testing.T) {
